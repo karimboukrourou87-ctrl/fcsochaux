@@ -698,7 +698,7 @@ const jjmm = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("fr-FR", { 
    Renseigne ces deux valeurs : Supabase > Project Settings > API
    ============================================================ */
 const SUPABASE_URL = "https://hehdquwbwtzublrscmnd.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhlaGRxdXdid3R6dWJscnNjbW5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1Nzk1MzcsImV4cCI6MjA5ODE1NTUzN30.NWpByCcwWQUMxxzG2n-EaC9-8HnjBIUjSIkkDxf1Zk0":
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhlaGRxdXdid3R6dWJscnNjbW5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1Nzk1MzcsImV4cCI6MjA5ODE1NTUzN30.NWpByCcwWQUMxxzG2n-EaC9-8HnjBIUjSIkkDxf1Zk0";
 
 const EMPTY_DB = { players: [], matches: [], trainings: [], injuries: [], scouting: [], lineups: {}, demandes: [], encadrement: [], transports: [], config: { trainingDays: {}, breaks: {}, classement: {} } };
 
