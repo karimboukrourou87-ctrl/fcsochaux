@@ -698,7 +698,7 @@ const jjmm = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("fr-FR", { 
    Renseigne ces deux valeurs : Supabase > Project Settings > API
    ============================================================ */
 const SUPABASE_URL = "https://hehdquwbwtzublrscmnd.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhlaGRxdXdid3R6dWJscnNjbW5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1Nzk1MzcsImV4cCI6MjA5ODE1NTUzN30.NWpByCcwWQUMxxzG2n-EaC9-8HnjBIUjSIkkDxf1Zk0";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhlaGRxdXdid3R6dWJscnNjbW5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1Nzk1MzcsImV4cCI6MjA5ODE1NTUzN30.NWpByCcwWQUMxxzG2n-EaC9-8HnjBIUjSIkkDxf1Zk0":
 
 const EMPTY_DB = { players: [], matches: [], trainings: [], injuries: [], scouting: [], lineups: {}, demandes: [], encadrement: [], transports: [], config: { trainingDays: {}, breaks: {}, classement: {} } };
 
@@ -2141,7 +2141,13 @@ function EditJoueur({ joueur, onClose, onSave }) {
    ============================================================ */
 function Compo({ players, cat, catInfo, db, mutate }) {
   const formationsDispo = Object.keys(FORMATIONS[catInfo.type]);
-  const lineup = db.lineups[cat] || { formation: formationsDispo[0], slots: {}, remplacants: [] };
+  const matchsCat = (db.matches || []).filter((m) => m.cat === cat).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const matchProchain = matchsCat.find((m) => (m.date || "") >= aujourdhui);
+  const matchDefaut = matchProchain ? matchProchain.id : (matchsCat.length ? matchsCat[matchsCat.length - 1].id : "");
+  const [matchSel, setMatchSel] = useState(matchDefaut);
+  const key = matchSel || cat;
+  const lineup = db.lineups[key] || { formation: formationsDispo[0], slots: {}, remplacants: [] };
   const formation = FORMATIONS[catInfo.type][lineup.formation] || FORMATIONS[catInfo.type][formationsDispo[0]];
   const remplacants = lineup.remplacants || [];
   const capitaine = lineup.capitaine || null;
@@ -2155,45 +2161,45 @@ function Compo({ players, cat, catInfo, db, mutate }) {
 
   function setFormation(name) {
     mutate((d) => {
-      const ex = d.lineups[cat] || {};
-      d.lineups[cat] = { formation: name, slots: {}, remplacants: ex.remplacants || [] };
+      const ex = d.lineups[key] || {};
+      d.lineups[key] = { formation: name, slots: ex.slots || {}, remplacants: ex.remplacants || [], capitaine: ex.capitaine || null };
       return d;
     });
   }
   function assign(slotIndex, joueurId) {
     mutate((d) => {
-      const lu = d.lineups[cat] || { formation: lineup.formation, slots: {}, remplacants: [] };
+      const lu = d.lineups[key] || { formation: lineup.formation, slots: {}, remplacants: [] };
       lu.remplacants = lu.remplacants || [];
       Object.keys(lu.slots).forEach((k) => { if (lu.slots[k] === joueurId) delete lu.slots[k]; });
       if (joueurId) {
         lu.slots[slotIndex] = joueurId;
         lu.remplacants = lu.remplacants.filter((id) => id !== joueurId); // un titulaire n'est plus remplaçant
       } else { delete lu.slots[slotIndex]; }
-      d.lineups[cat] = lu; return d;
+      d.lineups[key] = lu; return d;
     });
     setPick(null);
   }
   function ajouterRemplacant(joueurId) {
     mutate((d) => {
-      const lu = d.lineups[cat] || { formation: lineup.formation, slots: {}, remplacants: [] };
+      const lu = d.lineups[key] || { formation: lineup.formation, slots: {}, remplacants: [] };
       lu.remplacants = lu.remplacants || [];
       if (!lu.remplacants.includes(joueurId) && lu.remplacants.length < maxRempl) lu.remplacants.push(joueurId);
-      d.lineups[cat] = lu; return d;
+      d.lineups[key] = lu; return d;
     });
     setPickRempl(false);
   }
   function retirerRemplacant(joueurId) {
     mutate((d) => {
-      const lu = d.lineups[cat]; if (!lu) return d;
+      const lu = d.lineups[key]; if (!lu) return d;
       lu.remplacants = (lu.remplacants || []).filter((id) => id !== joueurId);
       return d;
     });
   }
   function designerCapitaine(joueurId) {
     mutate((d) => {
-      const lu = d.lineups[cat] || { formation: lineup.formation, slots: {}, remplacants: [] };
+      const lu = d.lineups[key] || { formation: lineup.formation, slots: {}, remplacants: [] };
       lu.capitaine = (lu.capitaine === joueurId) ? null : joueurId;
-      d.lineups[cat] = lu; return d;
+      d.lineups[key] = lu; return d;
     });
   }
 
@@ -2204,6 +2210,23 @@ function Compo({ players, cat, catInfo, db, mutate }) {
   return (
     <div>
       <h2 style={{ margin: "4px 0 12px", fontSize: 20, fontWeight: 900 }}>Composition {cat}</h2>
+
+      {matchsCat.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 12, fontWeight: 700, color: C.gris, display: "block", marginBottom: 5 }}>Composition pour le match</label>
+          <select value={matchSel} onChange={(e) => setMatchSel(e.target.value)} style={{
+            width: "100%", padding: "11px 12px", borderRadius: 12, border: `1px solid ${C.grisClair}`,
+            background: "#fff", fontWeight: 700, fontSize: 14, color: C.encre,
+          }}>
+            <option value="">Composition générale (sans match)</option>
+            {matchsCat.map((m) => (
+              <option key={m.id} value={m.id}>
+                {(m.date ? fmtDate(m.date) : "Date à définir")}{m.adversaire ? ` · ${m.adversaire}` : ""}{m.lieu ? ` (${m.lieu})` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         {formationsDispo.map((name) => {
@@ -2527,7 +2550,7 @@ function RosterEncadrement({ db, mutate, onClose }) {
 function Convocation({ db, cat, match, mutate, onClose }) {
   const [copie, setCopie] = useState(false);
   const cur = db.matches.find((x) => x.id === match.id) || match;
-  const lu = (db.lineups || {})[cat] || {};
+  const lu = (db.lineups || {})[match.id] || (db.lineups || {})[cat] || {};
   const cap = lu.capitaine;
   const nomDe = (id) => { const p = db.players.find((x) => x.id === id); return p ? `${p.prenom} ${p.nom}`.trim() : null; };
   const titulaires = Object.values(lu.slots || {}).map((id) => ({ id, nom: nomDe(id) })).filter((x) => x.nom);
