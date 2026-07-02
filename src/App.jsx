@@ -2658,7 +2658,7 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
       <Btn variant="accent" full style={{ marginBottom: 16 }} onClick={() => setConvoc(true)}><Send size={16} /> Feuille de convocation</Btn>
       {domicile && (
         <>
-          {exterieur && (<><div style={{ fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 7 }}><MapPin size=u} /> Terrain et vestiaires</div>
+   <div style={{ fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 7 }}><MapPin size=u} /> Terrain et vestiaires</div>
           <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Match à domicile. La demande est validée par le responsable, qui fixe l'heure de libération du vestiaire.</div>
 
           <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Terrain demandé</div>
@@ -2817,7 +2817,7 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
         )}
       </div>
 
-      </>)}<div style={{ fontWeight: 800, marginBottom: 6, display: "flex", alignItems: "center", gap: 7 }}><ShieldAlert size={17} coC.bleu} /> Encadrement</div>
+      <div style={{ fontWeight: 800, marginBottom: 6, display: "flex", alignItems: "center", gap: 7 }}><ShieldAlert size={17} coC.bleu} /> Encadrement</div>
       <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Désigne le dirigeant, le délégué et l'arbitre depuis la liste enregistrée.</div>
       {champs.map(({ role, key }) => {
         const gens = parRole(role);
