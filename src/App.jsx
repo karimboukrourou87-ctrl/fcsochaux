@@ -570,7 +570,7 @@ const CLUB_LONG = "FC SOCHAUX-MONTBÉLIARD";
    ============================================================ */
 const GROUPES = ["École de foot", "Pré-formation", "Formation", "PRO", "Féminines"];
 const CATEGORIES = [
-  { id: "U7", type: 8, groupe: "École de foot" }, { id: "U8", type: 8, groupe: "École de foot" }, { id: "U9", type: 8, groupe: "École de foot" },
+  { id: "U7", type: 4, groupe: "École de foot" }, { id: "U8", type: 5, groupe: "École de foot" }, { id: "U9", type: 8, groupe: "École de foot" },
   { id: "U10", type: 8, groupe: "École de foot" }, { id: "U11", type: 8, groupe: "École de foot" }, { id: "U12", type: 8, groupe: "École de foot" },
   { id: "U13", type: 8, groupe: "École de foot" },
   { id: "U14", type: 11, groupe: "Pré-formation" }, { id: "U15", type: 11, groupe: "Pré-formation" },
@@ -578,7 +578,7 @@ const CATEGORIES = [
   { id: "4e/3e", type: 8, college: "Collège Hautes Vignes", groupe: "Pré-formation" },
   { id: "U17 NAT", type: 11, groupe: "Formation" }, { id: "U19 NAT", type: 11, groupe: "Formation" },
   { id: "N3", type: 11, groupe: "Formation" }, { id: "Ligue 2", type: 11, groupe: "PRO" },
-  { id: "U7F", type: 8, groupe: "Féminines" }, { id: "U8F", type: 8, groupe: "Féminines" }, { id: "U9F", type: 8, groupe: "Féminines" }, { id: "U10F", type: 8, groupe: "Féminines" },
+  { id: "U7F", type: 4, groupe: "Féminines" }, { id: "U8F", type: 5, groupe: "Féminines" }, { id: "U9F", type: 8, groupe: "Féminines" }, { id: "U10F", type: 8, groupe: "Féminines" },
   { id: "U11F", type: 8, groupe: "Féminines" }, { id: "U13F", type: 8, groupe: "Féminines" }, { id: "U15F", type: 11, groupe: "Féminines" },
   { id: "U18F", type: 11, groupe: "Féminines" }, { id: "U19F NAT", type: 11, groupe: "Féminines" }, { id: "SENIORS F", type: 11, groupe: "Féminines" },
 ];
@@ -590,7 +590,7 @@ const POSTES = [
 ];
 
 // slots : x et y en pourcentage, gardien en bas
-const FORMATIONS = {
+const FORMATIONS = { 4: { "2-1": [{ l: "G", x: 50, y: 88 }, { l: "DG", x: 30, y: 62 }, { l: "DD", x: 70, y: 62 }, { l: "AT", x:
   8: {
     "3-3-1": [
       { l: "G", x: 50, y: 90 },
@@ -1808,9 +1808,9 @@ function FicheJoueur({ p: pp, db, mutate, onClose, onEdit, onDelete }) {
 
   const info = (icon, label, val) => (
     <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderBottom: `1px solid ${C.grisClair}` }}>
-      <div style={{ color: C.bleu }}>{icon}</div>
-      <span style={{ fontSize: 13.5, color: C.gris, flex: 1 }}>{label}</span>
-      <strong style={{ fontSize: 14.5 }}>{val || "n.c."}</strong>
+      <div style={{ color: C.bleu, width: 22, flex: "0 0 auto", display: "flex", justifyContent: "center" }}>{icon}</div>
+      <span style={{ fontSize: 13.5, color: C.gris, width: 150, flex: "0 0 auto", textAlign: "center" }}>{label}</span>
+      <strong style={{ fontSize: 14.5, flex: 1, textAlign: "right" }}>{val || "n.c."}</strong>
     </div>
   );
   const jline = (label, n) => (
@@ -2156,7 +2156,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
   const [pickRempl, setPickRempl] = useState(false);
 
   // Convoqués : 12 maxi en foot à 8, 16 maxi (14 à 16) en foot à 11
-  const maxConvoques = catInfo.type === 8 ? 12 : 16;
+  const maxConvoques = catInfo.type === 8 ? 12 : catInfo.type === 11 ? 16 : formation.length + 4;
   const maxRempl = maxConvoques - formation.length; // 4 en foot à 8, 5 en foot à 11
 
   function setFormation(name) {
@@ -2658,7 +2658,7 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
       <Btn variant="accent" full style={{ marginBottom: 16 }} onClick={() => setConvoc(true)}><Send size={16} /> Feuille de convocation</Btn>
       {domicile && (
         <>
-          <div style={{ fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 7 }}><MapPin size={17} color={C.bleu} /> Terrain et vestiaires</div>
+          {exterieur && (<><div style={{ fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 7 }}><MapPin size=u} /> Terrain et vestiaires</div>
           <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Match à domicile. La demande est validée par le responsable, qui fixe l'heure de libération du vestiaire.</div>
 
           <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Terrain demandé</div>
@@ -2741,7 +2741,7 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
         </>
       )}
 
-      <div style={{ fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 7 }}><MapPin size={17} color={C.bleu} /> Transport</div>
+      {exterieur && (<><div style={{ fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 7 }}><MapPin size=u} /> Transport</div>
       <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>{exterieur ? "Match à l'extérieur : choisis le transport." : "Surtout utile pour les matchs à l'extérieur."}</div>
       <div style={{ marginBottom: 18 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Mode de transport</div>
@@ -2817,7 +2817,7 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
         )}
       </div>
 
-      <div style={{ fontWeight: 800, marginBottom: 6, display: "flex", alignItems: "center", gap: 7 }}><ShieldAlert size={17} color={C.bleu} /> Encadrement</div>
+      </>)}<div style={{ fontWeight: 800, marginBottom: 6, display: "flex", alignItems: "center", gap: 7 }}><ShieldAlert size={17} coC.bleu} /> Encadrement</div>
       <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Désigne le dirigeant, le délégué et l'arbitre depuis la liste enregistrée.</div>
       {champs.map(({ role, key }) => {
         const gens = parRole(role);
