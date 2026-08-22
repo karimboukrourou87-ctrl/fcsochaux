@@ -1203,6 +1203,7 @@ export default function App() {
   const [cat, setCat] = useState(null);
   const [tab, setTab] = useState("accueil");
   const [db, setDb] = useState(null);
+  const [reunionsDb, setReunionsDb] = useState(null);
   const [showScores, setShowScores] = useState(false);
   const [showDemandes, setShowDemandes] = useState(false);
   const [showClassement, setShowClassement] = useState(false);
@@ -1272,11 +1273,29 @@ export default function App() {
     return () => { annule = true; };
   }, [demo]);
 
+  useEffect(() => {
+    if (demo || !session) return;
+    let annule = false;
+    (async () => {
+      try { const rd = await loadCat("__REUNIONS__"); if (!annule) setReunionsDb({ reunions: rd.reunions || [] }); }
+      catch (e) { if (!annule) setReunionsDb({ reunions: [] }); }
+    })();
+    return () => { annule = true; };
+  }, [session, demo]);
+
   function mutate(fn) {
     setDb((prev) => {
       const next = fn(structuredClone(prev));
       if (demo) { saveLocal(next); }
       else { cacheRef.current[cat] = next; if (session && cat) saveCat(cat, next, session.user.id).catch((e) => console.error("Sauvegarde:", e)); }
+      return next;
+    });
+  }
+
+  function mutateReunions(fn) {
+    setReunionsDb((prev) => {
+      const next = fn(structuredClone(prev || { reunions: [] }));
+      if (session) saveCat("__REUNIONS__", next, session.user.id).catch((e) => console.error("Sauvegarde réunions:", e));
       return next;
     });
   }
@@ -1298,6 +1317,8 @@ export default function App() {
 
   const catInfo = CATEGORIES.find((c) => c.id === cat);
   const players = db.players.filter((p) => p.cat === cat);
+  const reunionsSource = demo ? ((db && db.reunions) || []) : ((reunionsDb && reunionsDb.reunions) || []);
+  const mutateReu = demo ? mutate : mutateReunions;
   const cats = demo ? CATEGORIES.map((c) => c.id) : profil.cats;
   const sousTitre = demo ? "" : (profil && profil.role === "direction" ? " · DIRECTION" : "");
   const peutValider = demo || (profil && (profil.role === "responsable" || profil.role === "direction"));
@@ -1392,7 +1413,7 @@ export default function App() {
       </header>
 
       <main style={{ maxWidth: 760, margin: "0 auto", padding: 16 }}>
-        {tab === "accueil" && <Accueil db={db} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) window.open(u, "_blank", "noopener"); setShowClassement(true); }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={() => setShowSauvegarde(true)} onPlanning={() => setShowPlanning(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onBilan={() => setShowBilan(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} />}
+        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) window.open(u, "_blank", "noopener"); setShowClassement(true); }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={() => setShowSauvegarde(true)} onPlanning={() => setShowPlanning(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onBilan={() => setShowBilan(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} monNom={demo ? "Karim Boukrourou" : ((profil && profil.nom) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "compo" && <Compo players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} />}
@@ -1434,8 +1455,8 @@ export default function App() {
       {showDocs && <DocumentsAdmin players={players} cat={cat} onClose={() => setShowDocs(false)} />}
       {showBilan && <BilanEquipe db={db} players={players} cat={cat} onClose={() => setShowBilan(false)} onTournois={() => setShowTournois(true)} />}
       {showTournois && <Tournois db={db} mutate={mutate} cat={cat} onClose={() => setShowTournois(false)} />}
-      {showReunions && <Reunions db={db} mutate={mutate} onClose={() => setShowReunions(false)} />}
-      {showCalendrier && <Calendrier db={db} mutate={mutate} peutValider={peutValider} onClose={() => setShowCalendrier(false)} />}
+      {showReunions && <Reunions db={{ reunions: reunionsSource, acces: (db && db.acces) || [] }} mutate={mutateReu} onClose={() => setShowReunions(false)} />}
+      {showCalendrier && <Calendrier db={{ ...db, reunions: reunionsSource }} mutate={mutate} mutateReunions={mutateReu} peutValider={peutValider} onClose={() => setShowCalendrier(false)} />}
     </div>
   );
 }
@@ -1628,7 +1649,7 @@ function ScoresWeekend({ onClose, localDb }) {
 /* ============================================================
    Accueil
    ============================================================ */
-function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onAcces, onProgramme, onDocuments, onBilan, onReunions, onCalendrier }) {
+function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onAcces, onProgramme, onDocuments, onBilan, onReunions, onCalendrier, monNom }) {
   const players = db.players.filter((p) => p.cat === cat);
   const d0 = new Date();
   const todayStr = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
@@ -1642,7 +1663,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
   }).length;
 
   const alerteDocs = players.filter((p) => p.licenceStatut !== "Valide" || statutMedical(p).urgence > 0).length;
-  const alerteReunions = (db.reunions || []).filter((r) => (r.date || "") >= todayStr).length;
+  const alerteReunions = (db.reunions || []).filter((r) => (r.date || "") >= todayStr && (r.participants || []).some((p) => p.nom === monNom)).length;
 
   const cartes = [
     { titre: "Scores du week-end", sous: "Résultats de toutes les catégories", icon: Trophy, action: onScores, accent: true },
@@ -4812,7 +4833,7 @@ const LABELS_EV = { match: "Matchs", entrainement: "Entraînements", reunion: "R
 const MOIS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 const fmtISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-function Calendrier({ db, mutate, peutValider, onClose }) {
+function Calendrier({ db, mutate, mutateReunions, peutValider, onClose }) {
   const d0 = new Date();
   const todayStr = fmtISO(d0);
   const [vue, setVue] = useState("mois");
@@ -4845,8 +4866,9 @@ function Calendrier({ db, mutate, peutValider, onClose }) {
   const toggle = (t) => setFiltres((o) => ({ ...o, [t]: !o[t] }));
   const evDe = (dstr) => evVisibles.filter((e) => e.date === dstr).sort((a, b) => (a.heure || "99").localeCompare(b.heure || "99"));
   const [edit, setEdit] = useState(null);
-  const saveEvt = (coll, obj) => { mutate((d) => { d[coll] = d[coll] || []; const i = d[coll].findIndex((x) => x.id === obj.id); if (i >= 0) d[coll][i] = obj; else d[coll].push(obj); return d; }); setEdit(null); };
-  const delEvt = (coll, id) => { mutate((d) => { d[coll] = (d[coll] || []).filter((x) => x.id !== id); return d; }); setEdit(null); };
+  const mRoute = (coll) => (coll === "reunions" && mutateReunions) ? mutateReunions : mutate;
+  const saveEvt = (coll, obj) => { mRoute(coll)((d) => { d[coll] = d[coll] || []; const i = d[coll].findIndex((x) => x.id === obj.id); if (i >= 0) d[coll][i] = obj; else d[coll].push(obj); return d; }); setEdit(null); };
+  const delEvt = (coll, id) => { mRoute(coll)((d) => { d[coll] = (d[coll] || []).filter((x) => x.id !== id); return d; }); setEdit(null); };
 
   const naviguer = (sens) => { const d = new Date(ref); if (vue === "mois") d.setMonth(d.getMonth() + sens); else if (vue === "semaine") d.setDate(d.getDate() + 7 * sens); else d.setDate(d.getDate() + sens); setRef(d); };
 
