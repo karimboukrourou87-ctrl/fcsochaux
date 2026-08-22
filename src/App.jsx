@@ -1292,12 +1292,14 @@ export default function App() {
     });
   }
 
-  function mutateReunions(fn) {
-    setReunionsDb((prev) => {
-      const next = fn(structuredClone(prev || { reunions: [], acces: [] }));
-      if (session) saveCat("__REUNIONS__", next, session.user.id).catch((e) => console.error("Sauvegarde réunions:", e));
-      return next;
-    });
+  async function mutateReunions(fn) {
+    if (!session) return;
+    let base;
+    try { const rd = await loadCat("__REUNIONS__"); base = { reunions: rd.reunions || [], acces: rd.acces || [] }; }
+    catch (e) { base = reunionsDb || { reunions: [], acces: [] }; }
+    const next = fn(structuredClone(base));
+    setReunionsDb(next);
+    saveCat("__REUNIONS__", next, session.user.id).catch((e) => console.error("Sauvegarde réunions:", e));
   }
 
   async function deconnexion() {
@@ -4633,10 +4635,15 @@ function EditReunion({ reunion, educateurs, onClose, onSave, onDelete }) {
   const retirer = (id) => set("participants", (f.participants || []).filter((p) => p.id !== id));
   const educsDispo = (educateurs || []).filter((e) => e.nom && !(f.participants || []).some((p) => p.nom === e.nom));
   const ajouterEduc = (ed) => { const cats = (ed.categories || []); const fn = ed.fonction || "Éducateur"; const q = (fn === "Éducateur" && cats.length) ? `Éducateur (${cats.join(", ")})` : fn; set("participants", [...(f.participants || []), { id: uid(), nom: ed.nom, email: ed.email || "", qualite: q, reponse: "attente", motif: "" }]); };
+  const finaliser = () => {
+    let parts = f.participants || [];
+    if (nom.trim()) parts = [...parts, { id: uid(), nom: nom.trim(), email: email.trim(), qualite, reponse: "attente", motif: "" }];
+    onSave({ ...f, participants: parts });
+  };
 
   return (
     <Modal title={reunion.id ? "Modifier la réunion" : "Programmer une réunion"} onClose={onClose}
-      footer={<><Btn variant="accent" full disabled={!f.objet.trim() || !f.date} onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{reunion.id && onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}</>}>
+      footer={<><Btn variant="accent" full disabled={!f.objet.trim() || !f.date} onClick={finaliser}><Save size={16} /> Enregistrer</Btn>{reunion.id && onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}</>}>
       <Field label="Objet de la réunion"><Inp value={f.objet} onChange={(e) => set("objet", e.target.value)} placeholder="Réunion de préparation, bilan..." /></Field>
       <div style={{ display: "flex", gap: 10 }}>
         <div style={{ flex: 1 }}><Field label="Date"><Inp type="date" value={f.date} onChange={(e) => set("date", e.target.value)} /></Field></div>
