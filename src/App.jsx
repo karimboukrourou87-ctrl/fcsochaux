@@ -1277,8 +1277,8 @@ export default function App() {
     if (demo || !session) return;
     let annule = false;
     (async () => {
-      try { const rd = await loadCat("__REUNIONS__"); if (!annule) setReunionsDb({ reunions: rd.reunions || [] }); }
-      catch (e) { if (!annule) setReunionsDb({ reunions: [] }); }
+      try { const rd = await loadCat("__REUNIONS__"); if (!annule) setReunionsDb({ reunions: rd.reunions || [], acces: rd.acces || [] }); }
+      catch (e) { if (!annule) setReunionsDb({ reunions: [], acces: [] }); }
     })();
     return () => { annule = true; };
   }, [session, demo]);
@@ -1294,7 +1294,7 @@ export default function App() {
 
   function mutateReunions(fn) {
     setReunionsDb((prev) => {
-      const next = fn(structuredClone(prev || { reunions: [] }));
+      const next = fn(structuredClone(prev || { reunions: [], acces: [] }));
       if (session) saveCat("__REUNIONS__", next, session.user.id).catch((e) => console.error("Sauvegarde réunions:", e));
       return next;
     });
@@ -1319,6 +1319,7 @@ export default function App() {
   const players = db.players.filter((p) => p.cat === cat);
   const reunionsSource = demo ? ((db && db.reunions) || []) : ((reunionsDb && reunionsDb.reunions) || []);
   const mutateReu = demo ? mutate : mutateReunions;
+  const accesSource = demo ? ((db && db.acces) || []) : ((reunionsDb && reunionsDb.acces) || []);
   const cats = demo ? CATEGORIES.map((c) => c.id) : profil.cats;
   const sousTitre = demo ? "" : (profil && profil.role === "direction" ? " · DIRECTION" : "");
   const peutValider = demo || (profil && (profil.role === "responsable" || profil.role === "direction"));
@@ -1413,7 +1414,7 @@ export default function App() {
       </header>
 
       <main style={{ maxWidth: 760, margin: "0 auto", padding: 16 }}>
-        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) window.open(u, "_blank", "noopener"); setShowClassement(true); }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={() => setShowSauvegarde(true)} onPlanning={() => setShowPlanning(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onBilan={() => setShowBilan(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} monNom={demo ? "Karim Boukrourou" : ((profil && profil.nom) || "")} />}
+        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) window.open(u, "_blank", "noopener"); setShowClassement(true); }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={() => setShowSauvegarde(true)} onPlanning={() => setShowPlanning(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onBilan={() => setShowBilan(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "compo" && <Compo players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} />}
@@ -1450,12 +1451,12 @@ export default function App() {
       {showOrganisation && <OrganisationMatchs db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} onClose={() => setShowSauvegarde(false)} />}
       {showPlanning && <Planning db={db} mutate={mutate} cats={cats} profil={profil} peutValider={peutValider} onClose={() => setShowPlanning(false)} />}
-      {showAcces && <AccesSecteurs db={db} mutate={mutate} estAdmin={estAdmin} onClose={() => setShowAcces(false)} />}
+      {showAcces && <AccesSecteurs db={{ acces: accesSource }} mutate={mutateReu} estAdmin={estAdmin} onClose={() => setShowAcces(false)} />}
       {showProgramme && <ProgrammeSemaine db={db} onClose={() => setShowProgramme(false)} />}
       {showDocs && <DocumentsAdmin players={players} cat={cat} onClose={() => setShowDocs(false)} />}
       {showBilan && <BilanEquipe db={db} players={players} cat={cat} onClose={() => setShowBilan(false)} onTournois={() => setShowTournois(true)} />}
       {showTournois && <Tournois db={db} mutate={mutate} cat={cat} onClose={() => setShowTournois(false)} />}
-      {showReunions && <Reunions db={{ reunions: reunionsSource, acces: (db && db.acces) || [] }} mutate={mutateReu} onClose={() => setShowReunions(false)} />}
+      {showReunions && <Reunions db={{ reunions: reunionsSource, acces: accesSource }} mutate={mutateReu} onClose={() => setShowReunions(false)} />}
       {showCalendrier && <Calendrier db={{ ...db, reunions: reunionsSource }} mutate={mutate} mutateReunions={mutateReu} peutValider={peutValider} onClose={() => setShowCalendrier(false)} />}
     </div>
   );
@@ -1649,7 +1650,7 @@ function ScoresWeekend({ onClose, localDb }) {
 /* ============================================================
    Accueil
    ============================================================ */
-function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onAcces, onProgramme, onDocuments, onBilan, onReunions, onCalendrier, monNom }) {
+function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onAcces, onProgramme, onDocuments, onBilan, onReunions, onCalendrier, monEmail }) {
   const players = db.players.filter((p) => p.cat === cat);
   const d0 = new Date();
   const todayStr = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
@@ -1663,7 +1664,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
   }).length;
 
   const alerteDocs = players.filter((p) => p.licenceStatut !== "Valide" || statutMedical(p).urgence > 0).length;
-  const alerteReunions = (db.reunions || []).filter((r) => (r.date || "") >= todayStr && (r.participants || []).some((p) => p.nom === monNom)).length;
+  const alerteReunions = (db.reunions || []).filter((r) => (r.date || "") >= todayStr && (r.participants || []).some((p) => (p.email || "").toLowerCase() === (monEmail || "").toLowerCase() && p.email)).length;
 
   const cartes = [
     { titre: "Scores du week-end", sous: "Résultats de toutes les catégories", icon: Trophy, action: onScores, accent: true },
@@ -4630,7 +4631,7 @@ function EditReunion({ reunion, educateurs, onClose, onSave, onDelete }) {
   };
   const retirer = (id) => set("participants", (f.participants || []).filter((p) => p.id !== id));
   const educsDispo = (educateurs || []).filter((e) => e.nom && !(f.participants || []).some((p) => p.nom === e.nom));
-  const ajouterEduc = (ed) => { const cats = (ed.categories || []); const fn = ed.fonction || "Éducateur"; const q = (fn === "Éducateur" && cats.length) ? `Éducateur (${cats.join(", ")})` : fn; set("participants", [...(f.participants || []), { id: uid(), nom: ed.nom, qualite: q, reponse: "attente", motif: "" }]); };
+  const ajouterEduc = (ed) => { const cats = (ed.categories || []); const fn = ed.fonction || "Éducateur"; const q = (fn === "Éducateur" && cats.length) ? `Éducateur (${cats.join(", ")})` : fn; set("participants", [...(f.participants || []), { id: uid(), nom: ed.nom, email: ed.email || "", qualite: q, reponse: "attente", motif: "" }]); };
 
   return (
     <Modal title={reunion.id ? "Modifier la réunion" : "Programmer une réunion"} onClose={onClose}
