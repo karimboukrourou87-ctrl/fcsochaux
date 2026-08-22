@@ -4623,11 +4623,12 @@ function EditReunion({ reunion, educateurs, onClose, onSave, onDelete }) {
   const [f, setF] = useState({ objet: "", date: "", heure: "", lieu: "", ordreJour: "", rappel: "La veille", participants: [], ...reunion });
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
   const [nom, setNom] = useState("");
+  const [email, setEmail] = useState("");
   const [qualite, setQualite] = useState("Éducateur");
   const ajouter = () => {
     if (!nom.trim()) return;
-    set("participants", [...(f.participants || []), { id: uid(), nom: nom.trim(), qualite, reponse: "attente", motif: "" }]);
-    setNom("");
+    set("participants", [...(f.participants || []), { id: uid(), nom: nom.trim(), email: email.trim(), qualite, reponse: "attente", motif: "" }]);
+    setNom(""); setEmail("");
   };
   const retirer = (id) => set("participants", (f.participants || []).filter((p) => p.id !== id));
   const educsDispo = (educateurs || []).filter((e) => e.nom && !(f.participants || []).some((p) => p.nom === e.nom));
@@ -4663,13 +4664,17 @@ function EditReunion({ reunion, educateurs, onClose, onSave, onDelete }) {
         <div style={{ flex: 1 }}><Inp value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nom et prénom" /></div>
         <div style={{ width: 120 }}><Sel value={qualite} onChange={(e) => setQualite(e.target.value)}>{QUALITES.map((q) => <option key={q}>{q}</option>)}</Sel></div>
       </div>
+      <div style={{ marginBottom: 8 }}><Inp type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Adresse email (indispensable pour recevoir l'alarme)" /></div>
       <Btn variant="ghost" full style={{ marginBottom: 12 }} disabled={!nom.trim()} onClick={ajouter}><Plus size={16} /> Ajouter la personne</Btn>
       {(f.participants || []).length > 0 && (
         <div style={{ display: "grid", gap: 7 }}>
           {(f.participants || []).map((p) => (
             <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, background: C.fond, borderRadius: 9, padding: "8px 10px" }}>
-              <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600 }}>{p.nom} <span style={{ color: C.gris, fontWeight: 500 }}>· {p.qualite}</span></span>
-              <X size={15} color={C.gris} style={{ cursor: "pointer" }} onClick={() => retirer(p.id)} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600 }}>{p.nom} <span style={{ color: C.gris, fontWeight: 500 }}>· {p.qualite}</span></div>
+                {p.email ? <div style={{ fontSize: 11, color: C.gris }}>{p.email}</div> : <div style={{ fontSize: 11, color: C.rouge, fontWeight: 600 }}>sans email : pas d'alarme</div>}
+              </div>
+              <X size={15} color={C.gris} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => retirer(p.id)} />
             </div>
           ))}
         </div>
