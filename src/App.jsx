@@ -1203,7 +1203,6 @@ export default function App() {
   const [cat, setCat] = useState(null);
   const [tab, setTab] = useState("accueil");
   const [db, setDb] = useState(null);
-  const [reunionsDb, setReunionsDb] = useState(null);
   const [showScores, setShowScores] = useState(false);
   const [showDemandes, setShowDemandes] = useState(false);
   const [showClassement, setShowClassement] = useState(false);
@@ -1273,10 +1272,6 @@ export default function App() {
     return () => { annule = true; };
   }, [demo]);
 
-  useEffect(() => {
-    return;
-  }, [session, demo]);
-
   function mutate(fn) {
     setDb((prev) => {
       const next = fn(structuredClone(prev));
@@ -1284,16 +1279,6 @@ export default function App() {
       else { cacheRef.current[cat] = next; if (session && cat) saveCat(cat, next, session.user.id).catch((e) => console.error("Sauvegarde:", e)); }
       return next;
     });
-  }
-
-  async function mutateReunions(fn) {
-    if (!session) return;
-    let base;
-    try { const rd = await loadCat("__REUNIONS__"); base = { reunions: rd.reunions || [], acces: rd.acces || [] }; }
-    catch (e) { base = reunionsDb || { reunions: [], acces: [] }; }
-    const next = fn(structuredClone(base));
-    setReunionsDb(next);
-    saveCat("__REUNIONS__", next, session.user.id).catch((e) => console.error("Sauvegarde réunions:", e));
   }
 
   async function deconnexion() {
