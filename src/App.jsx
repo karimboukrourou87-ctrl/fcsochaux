@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Home, Users, ClipboardList, CalendarDays, Dumbbell, Search,
-  Plus, X, Trash2, ChevronLeft, Trophy, Activity, Target,
+  Plus, X, Trash2, ChevronLeft, Trophy, Award, Bell, Activity, Target,
   Footprints, Ruler, Weight, Gauge, Timer, Edit3, Save,
   HeartPulse, ShieldAlert, Star, MapPin, ArrowRightLeft, Eye, FileDown, Phone, Camera, LogOut,
   Send, Check, Inbox, ListOrdered, ExternalLink, Bus, Upload
@@ -398,7 +398,7 @@ function Demandes({ demo, db, mutate, cat, session, onClose }) {
   const [annuaireRemote, setAnnuaireRemote] = useState([]);
   const [loading, setLoading] = useState(!demo);
   const [err, setErr] = useState(null);
-  const [refus, setRefus] = useState(null); // demande en cours de refus
+  const [refus, setRefus] = useState(null);
   const [cause, setCause] = useState("");
 
   async function charger() {
@@ -424,9 +424,10 @@ function Demandes({ demo, db, mutate, cat, session, onClose }) {
   const envoyees = liste.filter((x) => x.demandeurCat === cat);
   const nbAttente = recues.filter((x) => x.statut === "en_attente").length;
 
+  const voisins = voisinsDemandables(cat);
   const annuaire = demo
-    ? db.players.filter((p) => p.cat !== cat).map((p) => ({ joueurId: p.id, prenom: p.prenom, nom: p.nom, poste: p.poste, cat: p.cat }))
-    : annuaireRemote.filter((a) => a.categorie !== cat).map((a) => ({ joueurId: a.joueur_id, prenom: a.prenom, nom: a.nom, poste: a.poste, cat: a.categorie }));
+    ? db.players.filter((p) => voisins.includes(p.cat)).map((p) => ({ joueurId: p.id, prenom: p.prenom, nom: p.nom, poste: p.poste, cat: p.cat }))
+    : annuaireRemote.filter((a) => voisins.includes(a.categorie)).map((a) => ({ joueurId: a.joueur_id, prenom: a.prenom, nom: a.nom, poste: a.poste, cat: a.categorie }));
 
   async function creer({ joueur, date, motif }) {
     if (demo) {
@@ -548,9 +549,9 @@ function Demandes({ demo, db, mutate, cat, session, onClose }) {
    Identité visuelle FC Sochaux-Montbéliard
    ============================================================ */
 const C = {
-  bleu: "#1A3553",      // bleu marine sobre
-  bleuNuit: "#0E1E33",  // marine profond
-  jaune: "#C6A24C",     // or champagne discret
+  bleu: "#1A3553",
+  bleuNuit: "#0E1E33",
+  jaune: "#C6A24C",
   jauneFonce: "#9C7C2E",
   fond: "#F4F5F7",
   carte: "#FFFFFF",
@@ -568,7 +569,7 @@ const CLUB_LONG = "FC SOCHAUX-MONTBÉLIARD";
 /* ============================================================
    Données de référence
    ============================================================ */
-const GROUPES = ["École de foot", "Pré-formation", "Formation", "PRO", "Féminines"];
+const GROUPES = ["École de foot", "Pré-formation", "Formation", "PRO", "Loisirs", "Féminines"];
 const CATEGORIES = [
   { id: "U7", type: 4, groupe: "École de foot" }, { id: "U8", type: 5, groupe: "École de foot" }, { id: "U9", type: 8, groupe: "École de foot" },
   { id: "U10", type: 8, groupe: "École de foot" }, { id: "U11", type: 8, groupe: "École de foot" }, { id: "U12", type: 8, groupe: "École de foot" },
@@ -578,10 +579,32 @@ const CATEGORIES = [
   { id: "4e/3e", type: 8, college: "Collège Hautes Vignes", groupe: "Pré-formation" },
   { id: "U17 NAT", type: 11, groupe: "Formation" }, { id: "U19 NAT", type: 11, groupe: "Formation" },
   { id: "N3", type: 11, groupe: "Formation" }, { id: "Ligue 2", type: 11, groupe: "PRO" },
+  { id: "Foot loisirs", type: 11, groupe: "Loisirs" },
   { id: "U7F", type: 4, groupe: "Féminines" }, { id: "U8F", type: 5, groupe: "Féminines" }, { id: "U9F", type: 8, groupe: "Féminines" }, { id: "U10F", type: 8, groupe: "Féminines" },
   { id: "U11F", type: 8, groupe: "Féminines" }, { id: "U13F", type: 8, groupe: "Féminines" }, { id: "U15F", type: 11, groupe: "Féminines" },
   { id: "U18F", type: 11, groupe: "Féminines" }, { id: "U19F NAT", type: 11, groupe: "Féminines" }, { id: "SENIORS F", type: 11, groupe: "Féminines" },
 ];
+
+// Catégories qu'une catégorie peut demander (joueur surclassé de deux ans en dessous)
+const VOISINS_SPECIAUX = {
+  "U17 NAT": ["U15"],
+  "U19 NAT": ["U17 NAT"],
+  "N3": ["U19 NAT"],
+  "Ligue 2": ["N3"],
+  "U18F": ["U15F"],
+  "U19F NAT": ["U18F"],
+  "SENIORS F": ["U19F NAT"],
+  "4e/3e": ["6e/5e"],
+};
+function voisinsDemandables(cat) {
+  if (VOISINS_SPECIAUX[cat]) return VOISINS_SPECIAUX[cat];
+  const m = /^U(\d+)(F?)$/.exec(cat || "");
+  if (m) {
+    const cible = `U${+m[1] - 2}${m[2]}`;
+    if (CATEGORIES.some((x) => x.id === cible)) return [cible];
+  }
+  return [];
+}
 
 const POSTES = [
   "Gardien", "Défenseur central", "Latéral droit", "Latéral gauche",
@@ -590,7 +613,38 @@ const POSTES = [
 ];
 
 // slots : x et y en pourcentage, gardien en bas
-const FORMATIONS = { 4: { "2-1": [{ l: "G", x: 50, y: 88 }, { l: "DG", x: 30, y: 62 }, { l: "DD", x: 70, y: 62 }, { l: "AT", x: 50, y: 26 }], "1-2": [{ l: "G", x: 50, y: 88 }, { l: "DC", x: 50, y: 64 }, { l: "AG", x: 30, y: 28 }, { l: "AD", x: 70, y: 28 }] }, 5: { "2-1-1": [{ l: "G", x: 50, y: 89 }, { l: "DG", x: 30, y: 66 }, { l: "DD", x: 70, y: 66 }, { l: "MC", x: 50, y: 44 }, { l: "AT", x: 50, y: 20 }], "2-2": [{ l: "G", x: 50, y: 89 }, { l: "DG", x: 30, y: 64 }, { l: "DD", x: 70, y: 64 }, { l: "AG", x: 30, y: 26 }, { l: "AD", x: 70, y: 26 }], "1-2-1": [{ l: "G", x: 50, y: 89 }, { l: "DC", x: 50, y: 68 }, { l: "MG", x: 28, y: 45 }, { l: "MD", x: 72, y: 45 }, { l: "AT", x: 50, y: 20 }] },
+const FORMATIONS = {
+  4: {
+    "2-1": [
+      { l: "G", x: 50, y: 88 },
+      { l: "DG", x: 30, y: 62 }, { l: "DD", x: 70, y: 62 },
+      { l: "AT", x: 50, y: 26 },
+    ],
+    "1-2": [
+      { l: "G", x: 50, y: 88 },
+      { l: "DC", x: 50, y: 64 },
+      { l: "AG", x: 30, y: 28 }, { l: "AD", x: 70, y: 28 },
+    ],
+  },
+  5: {
+    "2-1-1": [
+      { l: "G", x: 50, y: 89 },
+      { l: "DG", x: 30, y: 66 }, { l: "DD", x: 70, y: 66 },
+      { l: "MC", x: 50, y: 44 },
+      { l: "AT", x: 50, y: 20 },
+    ],
+    "2-2": [
+      { l: "G", x: 50, y: 89 },
+      { l: "DG", x: 30, y: 64 }, { l: "DD", x: 70, y: 64 },
+      { l: "AG", x: 30, y: 26 }, { l: "AD", x: 70, y: 26 },
+    ],
+    "1-2-1": [
+      { l: "G", x: 50, y: 89 },
+      { l: "DC", x: 50, y: 68 },
+      { l: "MG", x: 28, y: 45 }, { l: "MD", x: 72, y: 45 },
+      { l: "AT", x: 50, y: 20 },
+    ],
+  },
   8: {
     "3-3-1": [
       { l: "G", x: 50, y: 90 },
@@ -616,7 +670,7 @@ const FORMATIONS = { 4: { "2-1": [{ l: "G", x: 50, y: 88 }, { l: "DG", x: 30, y:
     "4-3-3": [
       { l: "G", x: 50, y: 92 },
       { l: "DG", x: 16, y: 73 }, { l: "DCG", x: 39, y: 76 }, { l: "DCD", x: 61, y: 76 }, { l: "DD", x: 84, y: 73 },
-      { l: "MG", x: 28, y: 51 }, { l: "MC", x: 50, y: 49 }, { l: "MD", x: 72, y: 51 },
+      { l: "MG", x: 28, y: 52 }, { l: "MC", x: 50, y: 36 }, { l: "MD", x: 72, y: 52 },
       { l: "AG", x: 21, y: 21 }, { l: "AC", x: 50, y: 14 }, { l: "AD", x: 79, y: 21 },
     ],
   },
@@ -636,13 +690,12 @@ const MODES_TRANSPORT = ["Minibus club", "Bus en location", "Voitures des parent
 const LOUEURS = ["ADJ", "Hertz"];
 const ROLES_ENCADREMENT = ["Éducateur", "Dirigeant", "Délégué", "Arbitre"];
 
-const TERRAINS = ["Synthétique centre", "Synthétique dôme"];
+const TERRAINS = ["Synthétique centre", "Synthétique dôme", "Herbe centre (nouveau synthétique)", "Herbe villa"];
 const VESTIAIRES = ["1", "2", "3", "4", "5", "Villa 1", "Villa 2"];
 
 const MOIS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 const JOURS_COURT = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
 
-// Catalogue de thèmes de séance, regroupés par domaine
 const THEMES = [
   { groupe: "Technique", items: ["Conduite de balle", "Passes et contrôles", "Jonglages", "Finition", "Jeu de tête", "Dribble"] },
   { groupe: "Tactique", items: ["Conservation", "Transitions", "Pressing", "Animation offensive", "Animation défensive", "Jeu en supériorité"] },
@@ -651,7 +704,6 @@ const THEMES = [
   { groupe: "Match", items: ["Jeu réduit", "Opposition", "Match à thème", "Préparation de match"] },
 ];
 
-// Vacances scolaires Zone A (académie de Besançon). debut = premier jour sans cours, reprise = jour de reprise.
 const VACANCES = [
   { id: "tou25", nom: "Toussaint", debut: "2025-10-18", reprise: "2025-11-03" },
   { id: "noe25", nom: "Noël", debut: "2025-12-20", reprise: "2026-01-05" },
@@ -668,6 +720,7 @@ const VACANCES = [
 ];
 
 const pad = (n) => String(n).padStart(2, "0");
+const hoyISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const dateStr = (y, mi, d) => `${y}-${pad(mi + 1)}-${pad(d)}`;
 const daysInMonth = (y, mi) => new Date(y, mi + 1, 0).getDate();
 const dowOf = (y, mi, d) => new Date(y, mi, d).getDay();
@@ -677,7 +730,6 @@ function addDays(iso, n) {
   d.setDate(d.getDate() + n);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
-// Renvoie la vacance qui contient la date, en indiquant si l'arrêt est actif selon le choix 1 ou 2 semaines.
 function holidayOf(s, breaks) {
   for (const h of VACANCES) {
     if (s >= h.debut && s < h.reprise) {
@@ -695,12 +747,11 @@ const jjmm = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("fr-FR", { 
 
 /* ============================================================
    Connexion Supabase (base sécurisée du club)
-   Renseigne ces deux valeurs : Supabase > Project Settings > API
    ============================================================ */
 const SUPABASE_URL = "https://hehdquwbwtzublrscmnd.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhlaGRxdXdid3R6dWJscnNjbW5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1Nzk1MzcsImV4cCI6MjA5ODE1NTUzN30.NWpByCcwWQUMxxzG2n-EaC9-8HnjBIUjSIkkDxf1Zk0";
 
-const EMPTY_DB = { players: [], matches: [], trainings: [], injuries: [], scouting: [], lineups: {}, demandes: [], encadrement: [], transports: [], config: { trainingDays: {}, breaks: {}, classement: {} } };
+const EMPTY_DB = { players: [], matches: [], trainings: [], injuries: [], scouting: [], lineups: {}, demandes: [], encadrement: [], transports: [], reunions: [], tournois: [], acces: [], planning: { vestiaires: {}, terrains: {} }, config: { trainingDays: {}, breaks: {}, classement: {} } };
 
 const estConfigure = () => SUPABASE_URL.startsWith("https://") && !SUPABASE_URL.includes("VOTRE-PROJET");
 
@@ -713,21 +764,18 @@ function getSupabase() {
   return _sbPromise;
 }
 
-// Charge les données d'une catégorie (le RLS limite l'accès à l'éducateur)
 async function loadCat(cat) {
   const sb = await getSupabase();
   const { data, error } = await sb.from("categorie_data").select("data").eq("categorie", cat).maybeSingle();
   if (error) throw error;
   return (data && data.data) ? { ...EMPTY_DB, ...data.data } : { ...EMPTY_DB };
 }
-// Enregistre les données d'une catégorie
 async function saveCat(cat, blob, userId) {
   const sb = await getSupabase();
   const { error } = await sb.from("categorie_data").upsert({ categorie: cat, data: blob, maj_le: new Date().toISOString(), maj_par: userId });
   if (error) throw error;
 }
 
-// Stockage local pour le mode essai (sans Supabase). Conserve toutes les catégories.
 const DEMO_KEY = "fcsm-demo-db";
 async function loadLocal() {
   try {
@@ -747,6 +795,7 @@ const uid = () =>
   (window.crypto && window.crypto.randomUUID)
     ? window.crypto.randomUUID()
     : String(Date.now()) + Math.random().toString(16).slice(2);
+
 
 /* ============================================================
    Petits composants d'interface
@@ -842,24 +891,22 @@ function initials(p) {
 }
 function ageOf(dob) {
   if (!dob) return null;
-  const d = new Date(dob); if (isNaN(d)) return null;
+  const d = new Date(String(dob).length === 10 ? dob + "T00:00:00" : dob); if (isNaN(d)) return null;
   const diff = Date.now() - d.getTime();
   return Math.floor(diff / (365.25 * 24 * 3600 * 1000));
 }
 function fmtDate(s) {
   if (!s) return "";
-  const d = new Date(s); if (isNaN(d)) return s;
+  const d = new Date(String(s).length === 10 ? s + "T00:00:00" : s); if (isNaN(d)) return s;
   return d.toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "short" });
 }
 
 function Avatar({ p, size, radius }) {
   const r = radius != null ? radius : Math.round(size * 0.28);
-  // objectPosition vers le haut pour ne pas couper la tête sur une photo portrait
   if (p.photo) return <img src={p.photo} alt="" style={{ width: size, height: size, borderRadius: r, objectFit: "cover", objectPosition: "center 20%", display: "block" }} />;
   return <div style={{ width: size, height: size, borderRadius: r, background: C.bleu, color: C.jaune, display: "grid", placeItems: "center", fontWeight: 900, fontSize: Math.round(size * 0.36) }}>{initials(p)}</div>;
 }
 
-// Emplacement portrait (proportions photo d'identité) : affiche le visage en entier, centré, sans rognage
 function PhotoFiche({ p, w = 78, h = 98 }) {
   if (p.photo) {
     return (
@@ -871,7 +918,6 @@ function PhotoFiche({ p, w = 78, h = 98 }) {
   return <div style={{ width: w, height: h, borderRadius: 12, background: C.bleu, color: C.jaune, display: "grid", placeItems: "center", fontWeight: 900, fontSize: Math.round(w * 0.42), flex: "0 0 auto" }}>{initials(p)}</div>;
 }
 
-// Réduit et compresse une image avant stockage
 function compresserImage(file, maxDim, cb) {
   const reader = new FileReader();
   reader.onload = () => {
@@ -910,8 +956,8 @@ function chargerJsPDF() {
   });
 }
 
-// Construit et télécharge la fiche joueur complète en PDF
-function exporterFichePDF(jsPDF, p, db, tests, stats) {
+
+function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   try {
     doc.setProperties({
@@ -922,14 +968,13 @@ function exporterFichePDF(jsPDF, p, db, tests, stats) {
       keywords: "",
     });
   } catch (e) {}
-  const W = 595, H = 842, M = 42;
+  const W = 595, H = 842, M = 40;
   const NAVY = [14, 30, 51], BLEU = [26, 53, 83], OR = [198, 162, 76];
   const ENCRE = [22, 32, 46], GRIS = [122, 130, 142], TRAIT = [228, 232, 238], FOND = [247, 248, 250];
   const sc = (c) => doc.setTextColor(c[0], c[1], c[2]);
   const sd = (c) => doc.setDrawColor(c[0], c[1], c[2]);
   const sf = (c) => doc.setFillColor(c[0], c[1], c[2]);
 
-  // Filet marine discret en tête + identité du club
   sf(NAVY); doc.rect(0, 0, W, 5, "F");
   sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
   doc.text(CLUB_LONG, M, 42);
@@ -937,8 +982,7 @@ function exporterFichePDF(jsPDF, p, db, tests, stats) {
   doc.text("ÉCOLE DE FOOT   ·   FICHE JOUEUR", M, 55);
   sd(OR); doc.setLineWidth(1); doc.line(M, 64, W - M, 64); doc.setLineWidth(0.5);
 
-  // Bloc joueur : photo portrait à droite, identité à gauche
-  const by = 80, bw = 86, bh = 110, bx = W - M - bw;
+  const by = 68, bw = 70, bh = 88, bx = W - M - bw;
   if (p.photo) {
     sf(FOND); doc.rect(bx, by, bw, bh, "F");
     sd(TRAIT); doc.rect(bx, by, bw, bh);
@@ -950,42 +994,44 @@ function exporterFichePDF(jsPDF, p, db, tests, stats) {
       doc.addImage(p.photo, "JPEG", bx + (bw - iw) / 2, by + (bh - ih) / 2, iw, ih);
     } catch (e) { try { doc.addImage(p.photo, "JPEG", bx, by, bw, bh); } catch (e2) {} }
   }
-  sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(21);
-  doc.text(`${p.prenom || ""} ${p.nom || ""}`.trim() || "Joueur", M, 102);
-  sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(10.5);
-  doc.text(`${p.poste || "Poste non défini"}   ·   ${p.cat}${p.numero ? `   ·   N° ${p.numero}` : ""}`, M, 120);
+  sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(19);
+  doc.text(`${p.prenom || ""} ${p.nom || ""}`.trim() || "Joueur", M, 88);
+  sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+  doc.text(`${p.poste || "Poste non défini"}   ·   ${p.cat}${p.numero ? `   ·   N° ${p.numero}` : ""}`, M, 104);
 
-  let y = p.photo ? 204 : 150;
-  const colW = (W - 2 * M - 26) / 2;
+  let y = p.photo ? 168 : 130;
+  const colW = (W - 2 * M - 24) / 2;
   const cols = [M, M + colW + 26];
 
+  const sautPage = (besoin) => { if (y + besoin > H - 46) { doc.addPage(); y = 56; } };
   const section = (titre) => {
-    y += 6;
-    sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+    y += 4;
+    sautPage(30);
+    sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
     doc.text(titre.toUpperCase(), M, y);
     const tw = doc.getTextWidth(titre.toUpperCase());
-    sd(OR); doc.setLineWidth(1.4); doc.line(M, y + 4.5, M + tw, y + 4.5); doc.setLineWidth(0.5);
-    y += 16;
+    sd(OR); doc.setLineWidth(1.3); doc.line(M, y + 4, M + tw, y + 4); doc.setLineWidth(0.5);
+    y += 13;
   };
   const cellule = (x, label, val) => {
     if (val == null || val === "") val = "n.c.";
-    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
     doc.text(String(label), x, y);
-    sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+    sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
     doc.text(String(val), x + colW, y, { align: "right" });
   };
   const paires = (arr) => {
     for (let i = 0; i < arr.length; i += 2) {
       cellule(cols[0], arr[i][0], arr[i][1]);
       if (arr[i + 1]) cellule(cols[1], arr[i + 1][0], arr[i + 1][1]);
-      sd(TRAIT); doc.line(M, y + 5, W - M, y + 5);
-      y += 17;
+      sd(TRAIT); doc.line(M, y + 4, W - M, y + 4);
+      y += 14;
     }
   };
 
   section("Identité");
   paires([
-    ["Date de naissance", p.dob ? `${new Date(p.dob).toLocaleDateString("fr-FR")}${ageOf(p.dob) != null ? ` (${ageOf(p.dob)} ans)` : ""}` : null],
+    ["Date de naissance", p.dob ? `${new Date(p.dob + "T00:00:00").toLocaleDateString("fr-FR")}${ageOf(p.dob) != null ? ` (${ageOf(p.dob)} ans)` : ""}` : null],
     ["Catégorie", p.cat],
     ["Taille", p.taille ? `${p.taille} cm` : null],
     ["Poids", p.poids ? `${p.poids} kg` : null],
@@ -1045,35 +1091,79 @@ function exporterFichePDF(jsPDF, p, db, tests, stats) {
     y += 14;
   }
 
-  section("Statistiques de saison");
+  section("Statistiques" + (saison ? ` de la saison ${saison}` : " de saison"));
   const tiles = [
     ["Minutes", String(stats.minutes ?? 0)],
     ["Buts", String(stats.buts ?? 0)],
     ["Passes déc.", String(stats.passes ?? 0)],
     ["Note moy.", stats.moy != null ? `${stats.moy.toFixed(1)}/7` : "n.c."],
   ];
-  const gap = 10, tw2 = (W - 2 * M - 3 * gap) / 4, th = 44;
+  const gap = 8, tw2 = (W - 2 * M - 3 * gap) / 4, th = 36;
   tiles.forEach((t, i) => {
     const x = M + i * (tw2 + gap);
     sf(FOND); doc.roundedRect(x, y, tw2, th, 5, 5, "F");
-    sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
-    doc.text(t[1], x + tw2 / 2, y + 22, { align: "center" });
-    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-    doc.text(t[0], x + tw2 / 2, y + 35, { align: "center" });
+    sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
+    doc.text(t[1], x + tw2 / 2, y + 19, { align: "center" });
+    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+    doc.text(t[0], x + tw2 / 2, y + 30, { align: "center" });
   });
-  y += th + 6;
+  y += th + 4;
 
-  const blessures = db.injuries.filter((i) => i.joueurId === p.id);
-  if (blessures.length) {
-    section("Suivi blessures");
-    paires(blessures.map((b) => [b.zone || "Blessure", `${b.fini ? "Rétabli" : "En cours"}${b.debut ? " · " + new Date(b.debut).toLocaleDateString("fr-FR") : ""}`]));
+  const assi = assiduiteJoueur(p, db, saison);
+  section("Assiduité");
+  paires([
+    ["Matchs joués", assi.matchs],
+    ["Présences", assi.presences],
+    ["Absences", assi.absences],
+    ["Retards", assi.retards],
+  ]);
+
+  const cartonsActifs = (() => { const ci = CATEGORIES.find((x) => x.id === p.cat); return (ci && ci.type === 11) || p.cat === "U13"; })();
+  if (cartonsActifs || assi.jaunes || assi.rouges) {
+    section("Discipline");
+    paires([
+      ["Cartons jaunes", assi.jaunes],
+      ["Cartons rouges", assi.rouges],
+    ]);
   }
 
-  // Pied de page
-  sd(OR); doc.setLineWidth(0.8); doc.line(M, H - 36, W - M, H - 36); doc.setLineWidth(0.5);
+  const blessures = db.injuries.filter((i) => i.joueurId === p.id && (!i.debut || saisonDe(i.debut) === saison));
+  if (blessures.length) {
+    section("Périodes de blessures");
+    paires(blessures.map((b) => [b.zone || "Blessure", `${b.debut ? jjmm(b.debut) : "?"}${b.duree ? " · " + b.duree : ""} · ${b.fini ? "rétabli" : "en cours"}`]));
+  }
+
+  if (bilans && bilans.length) {
+    section("Bilans et entretiens" + (saison ? ` (${saison})` : ""));
+    const rubriquePDF = (titre, val) => {
+      if (!val) return;
+      sautPage(26);
+      sc(GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+      doc.text(titre.toUpperCase(), M, y); y += 9;
+      sc(ENCRE); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+      const lignes = doc.splitTextToSize(String(val), W - 2 * M);
+      lignes.forEach((l) => { sautPage(12); doc.text(l, M, y); y += 10.5; });
+      y += 1.5;
+    };
+    bilans.forEach((b, idx) => {
+      sautPage(42);
+      sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+      doc.text(`${b.date ? new Date(b.date + "T00:00:00").toLocaleDateString("fr-FR") : "Bilan"}${b.educateur ? "   ·   " + b.educateur : ""}`, M, y);
+      y += 13;
+      rubriquePDF("Appréciation générale", b.appreciation);
+      rubriquePDF("Points forts", b.pointsForts);
+      rubriquePDF("Axes de progrès", b.axesProgres);
+      rubriquePDF("Objectifs", b.objectifs);
+      rubriquePDF("Comportement et état d'esprit", b.comportement);
+      rubriquePDF("Entretien avec le joueur ou les parents", b.entretien);
+      if (idx < bilans.length - 1) { y += 2; sd(TRAIT); doc.line(M, y, W - M, y); y += 12; }
+    });
+  }
+
+  sd(OR); doc.setLineWidth(0.8); doc.line(M, H - 28, W - M, H - 28); doc.setLineWidth(0.5);
   sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-  doc.text(`Fiche éditée le ${new Date().toLocaleDateString("fr-FR")}`, M, H - 24);
-  doc.text(CLUB_LONG, W - M, H - 24, { align: "right" });
+  doc.text(`Fiche éditée le ${new Date().toLocaleDateString("fr-FR")}`, M, H - 19);
+  doc.text(CLUB_LONG, W - M, H - 19, { align: "right" });
 
   const nom = `${(p.nom || "joueur").toUpperCase()}_${p.prenom || ""}`.replace(/\s+/g, "");
   const fichier = `Fiche_${nom}.pdf`;
@@ -1091,12 +1181,13 @@ function exporterFichePDF(jsPDF, p, db, tests, stats) {
   }
 }
 
+
 /* ============================================================
    Application
    ============================================================ */
 export default function App() {
-  const [session, setSession] = useState(undefined); // undefined = chargement, null = déconnecté
-  const [profil, setProfil] = useState(null);        // { role, nom, cats: [] }
+  const [session, setSession] = useState(undefined);
+  const [profil, setProfil] = useState(null);
   const [cat, setCat] = useState(null);
   const [tab, setTab] = useState("accueil");
   const [db, setDb] = useState(null);
@@ -1106,11 +1197,18 @@ export default function App() {
   const [showTransport, setShowTransport] = useState(false);
   const [showOrganisation, setShowOrganisation] = useState(false);
   const [showSauvegarde, setShowSauvegarde] = useState(false);
+  const [showPlanning, setShowPlanning] = useState(false);
+  const [showAcces, setShowAcces] = useState(false);
+  const [showProgramme, setShowProgramme] = useState(false);
+  const [showDocs, setShowDocs] = useState(false);
+  const [showBilan, setShowBilan] = useState(false);
+  const [showTournois, setShowTournois] = useState(false);
+  const [showReunions, setShowReunions] = useState(false);
+  const [showCalendrier, setShowCalendrier] = useState(false);
   const [groupeSel, setGroupeSel] = useState(null);
   const [demo, setDemo] = useState(false);
   const cacheRef = useRef({});
 
-  // Suivi de la session
   useEffect(() => {
     if (!estConfigure()) { setSession(null); return; }
     let sub;
@@ -1122,7 +1220,6 @@ export default function App() {
     return () => { if (sub) sub.unsubscribe(); };
   }, []);
 
-  // Profil et catégories autorisées
   useEffect(() => {
     if (!session) { setProfil(null); setCat(null); setDb(null); return; }
     let annule = false;
@@ -1144,7 +1241,6 @@ export default function App() {
     return () => { annule = true; };
   }, [session]);
 
-  // Chargement des données de la catégorie sélectionnée
   useEffect(() => {
     if (demo || !session || !cat) return;
     let annule = false;
@@ -1157,7 +1253,6 @@ export default function App() {
     return () => { annule = true; };
   }, [session, cat, demo]);
 
-  // Mode essai : base locale unique (toutes catégories)
   useEffect(() => {
     if (!demo) return;
     let annule = false;
@@ -1180,7 +1275,6 @@ export default function App() {
     cacheRef.current = {};
   }
 
-  // Écrans d'état
   if (!demo) {
     if (!estConfigure()) return <Login configManquante onDemo={() => setDemo(true)} />;
     if (session === undefined) return <PleinEcran>Chargement...</PleinEcran>;
@@ -1195,6 +1289,7 @@ export default function App() {
   const cats = demo ? CATEGORIES.map((c) => c.id) : profil.cats;
   const sousTitre = demo ? "" : (profil && profil.role === "direction" ? " · DIRECTION" : "");
   const peutValider = demo || (profil && (profil.role === "responsable" || profil.role === "direction"));
+  const estAdmin = demo || (profil && profil.role === "direction");
   const groupesDispo = GROUPES.filter((g) => CATEGORIES.some((c) => c.groupe === g && cats.includes(c.id)));
   const groupeActif = (groupeSel && groupesDispo.includes(groupeSel)) ? groupeSel
     : (catInfo && groupesDispo.includes(catInfo.groupe) ? catInfo.groupe : groupesDispo[0]);
@@ -1285,7 +1380,7 @@ export default function App() {
       </header>
 
       <main style={{ maxWidth: 760, margin: "0 auto", padding: 16 }}>
-        {tab === "accueil" && <Accueil db={db} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => setShowClassement(true)} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={() => setShowSauvegarde(true)} />}
+        {tab === "accueil" && <Accueil db={db} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => setShowClassement(true)} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={() => setShowSauvegarde(true)} onPlanning={() => setShowPlanning(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onBilan={() => setShowBilan(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "compo" && <Compo players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} />}
@@ -1321,6 +1416,14 @@ export default function App() {
       {showTransport && <Transports db={db} mutate={mutate} cat={cat} onClose={() => setShowTransport(false)} />}
       {showOrganisation && <OrganisationMatchs db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} onClose={() => setShowSauvegarde(false)} />}
+      {showPlanning && <Planning db={db} mutate={mutate} cats={cats} profil={profil} peutValider={peutValider} onClose={() => setShowPlanning(false)} />}
+      {showAcces && <AccesSecteurs db={db} mutate={mutate} estAdmin={estAdmin} onClose={() => setShowAcces(false)} />}
+      {showProgramme && <ProgrammeSemaine db={db} onClose={() => setShowProgramme(false)} />}
+      {showDocs && <DocumentsAdmin players={players} cat={cat} onClose={() => setShowDocs(false)} />}
+      {showBilan && <BilanEquipe db={db} players={players} cat={cat} onClose={() => setShowBilan(false)} onTournois={() => setShowTournois(true)} />}
+      {showTournois && <Tournois db={db} mutate={mutate} cat={cat} onClose={() => setShowTournois(false)} />}
+      {showReunions && <Reunions db={db} mutate={mutate} onClose={() => setShowReunions(false)} />}
+      {showCalendrier && <Calendrier db={db} mutate={mutate} peutValider={peutValider} onClose={() => setShowCalendrier(false)} />}
     </div>
   );
 }
@@ -1337,6 +1440,7 @@ function traduireErreur(e) {
   if (m.includes("email")) return "Adresse email invalide.";
   return "Action impossible pour le moment. Vérifie ta connexion et réessaie.";
 }
+
 
 function Login({ configManquante, onDemo }) {
   const [mode, setMode] = useState("connexion");
@@ -1438,7 +1542,6 @@ function ScoresWeekend({ onClose, localDb }) {
   useEffect(() => {
     let annule = false;
     setRows(null); setErr(false);
-    // Mode essai : calcul local depuis la base unique
     if (localDb) {
       const r = (localDb.matches || [])
         .filter((m) => m.date && m.date >= sam && m.date <= dim)
@@ -1509,213 +1612,274 @@ function ScoresWeekend({ onClose, localDb }) {
   );
 }
 
+
 /* ============================================================
-   Accueil / tableau de bord
+   Accueil
    ============================================================ */
-function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde }) {
+function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onAcces, onProgramme, onDocuments, onBilan, onReunions, onCalendrier }) {
   const players = db.players.filter((p) => p.cat === cat);
-  const matches = db.matches.filter((m) => m.cat === cat);
-  const trainings = db.trainings.filter((t) => t.cat === cat);
-  const blesses = db.injuries.filter((i) => i.cat === cat && !i.fini);
-  const nbAttente = (db.demandes || []).filter((d) => d.joueurCat === cat && d.statut === "en_attente").length;
-  const nbTransport = (db.transports || []).filter((x) => x.cat === cat && x.statut === "en_attente").length;
-  const dOrg = new Date();
-  const todayStr = `${dOrg.getFullYear()}-${pad(dOrg.getMonth() + 1)}-${pad(dOrg.getDate())}`;
-  const nbOrga = (db.matches || []).filter((m) => m.cat === cat && (!m.date || m.date >= todayStr)).filter((m) => {
-    const r = m.reservation || {}, t = m.transport || {};
-    if (m.lieu === "Domicile") return r.statut !== "validee";
-    if (m.lieu === "Extérieur") return t.statut !== "acceptee";
-    return false;
+  const d0 = new Date();
+  const todayStr = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
+  const prochainMatch = db.matches.filter((m) => m.cat === cat && m.date && m.date >= todayStr).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const blesses = db.injuries.filter((i) => !i.fini && players.some((p) => p.id === i.joueurId)).length;
+  const nbOrga = db.matches.filter((m) => {
+    if (m.cat !== cat || !m.date || m.date < todayStr) return false;
+    const t = m.transport || {}, e = m.encadrement || {}, r = m.reservation || {};
+    const manque = (m.lieu === "Extérieur" && !t.statut) || !e.arbitre || (m.lieu === "Domicile" && r.statut !== "validee");
+    return manque;
   }).length;
 
-  let v = 0, n = 0, d = 0, bp = 0, bc = 0;
-  matches.forEach((m) => {
-    if (m.scorePour == null || m.scoreContre == null) return;
-    bp += +m.scorePour; bc += +m.scoreContre;
-    if (+m.scorePour > +m.scoreContre) v++;
-    else if (+m.scorePour === +m.scoreContre) n++;
-    else d++;
-  });
+  const alerteDocs = players.filter((p) => p.licenceStatut !== "Valide" || statutMedical(p).urgence > 0).length;
+  const alerteReunions = (db.reunions || []).filter((r) => (r.date || "") >= todayStr).length;
 
-  const stat = (label, val, icon) => (
-    <Card style={{ padding: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, color: C.gris, fontSize: 12, fontWeight: 700 }}>{icon}{label}</div>
-      <div style={{ fontSize: 26, fontWeight: 900, marginTop: 4, color: C.bleu }}>{val}</div>
-    </Card>
-  );
-
-  const liens = [
-    { id: "effectif", label: "Gérer l'effectif", icon: <Users size={18} />, sub: "Fiches joueurs, tests physiques" },
-    { id: "compo", label: "Composition d'équipe", icon: <ClipboardList size={18} />, sub: "Placer les joueurs sur le terrain" },
-    { id: "matchs", label: "Calendrier et rapports", icon: <CalendarDays size={18} />, sub: "Scores, buteurs, notes" },
-    { id: "entrainements", label: "Séances et présences", icon: <Dumbbell size={18} />, sub: "Absences et blessures" },
-    { id: "detection", label: "Détection adverse", icon: <Search size={18} />, sub: "Talents repérés" },
+  const cartes = [
+    { titre: "Scores du week-end", sous: "Résultats de toutes les catégories", icon: Trophy, action: onScores, accent: true },
+    { titre: "Demandes de joueurs", sous: "Demander un joueur d'une autre catégorie", icon: ArrowRightLeft, action: onDemandes },
+    { titre: "Classement du championnat", sous: "District, Ligue, National et Ligue 2 en direct", icon: ListOrdered, action: onClassement },
+    { titre: "Demande de transport", sous: "Minibus, bus en location ou voitures, à l'avance", icon: Bus, action: onTransport },
+    { titre: "Organisation des matchs", sous: "Terrain, vestiaires, transport et encadrement", icon: MapPin, action: onOrganisation, badge: nbOrga },
+    { titre: "Programme de la semaine", sous: "Récapitulatif des matchs à imprimer", icon: ClipboardList, action: onProgramme },
+    { titre: "Documents administratifs", sous: "Licences et contrôle médical à surveiller", icon: ShieldAlert, action: onDocuments, badge: alerteDocs },
+    { titre: "Bilan de saison de l'équipe", sous: "Résultats, buteurs et passeurs de la saison", icon: Trophy, action: onBilan },
+    { titre: "Réunions", sous: "Programmer les réunions et recueillir les présences", icon: Users, action: onReunions, badge: alerteReunions },
+    { titre: "Calendrier du club", sous: "Tous les événements, toutes catégories réunies", icon: CalendarDays, action: onCalendrier },
+    { titre: "Planning des vestiaires et terrains", sous: "Réserver terrains et vestiaires par créneau", icon: CalendarDays, action: onPlanning },
+    { titre: "Droits d'accès", sous: "Gérer les accès des éducateurs par secteur", icon: ShieldAlert, action: onAcces },
+    { titre: "Sauvegarde des données", sous: "Exporter ou restaurer les informations du club", icon: Save, action: onSauvegarde },
   ];
+
+  const stat = (label, val, icon, onClick) => {
+    const I = icon;
+    return (
+      <div onClick={onClick} style={{ background: "#fff", borderRadius: 14, padding: "14px 12px", border: `1px solid ${C.grisClair}`, cursor: onClick ? "pointer" : "default", display: "flex", flexDirection: "column", gap: 6 }}>
+        <I size={19} color={C.bleu} />
+        <div style={{ fontSize: 24, fontWeight: 900, color: C.encre, lineHeight: 1 }}>{val}</div>
+        <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 600 }}>{label}</div>
+      </div>
+    );
+  };
 
   return (
     <div>
-      <h2 style={{ margin: "4px 0 14px", fontSize: 20, fontWeight: 900 }}>Tableau de bord {cat}</h2>
-
-      <Card onClick={onScores} style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 13, background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, borderColor: C.bleu }}>
-        <div style={{ width: 40, height: 40, borderRadius: 11, background: C.jaune, color: C.bleuNuit, display: "grid", placeItems: "center", flex: "0 0 auto" }}><Trophy size={20} /></div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800, color: "#fff" }}>Scores du week-end</div>
-          <div style={{ fontSize: 12.5, color: "rgba(255,255,255,0.8)" }}>Résultats de toutes les catégories</div>
-        </div>
-        <ChevronLeft size={18} color={C.jaune} style={{ transform: "rotate(180deg)" }} />
-      </Card>
-
-      <Card onClick={onDemandes} style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 13 }}>
-        <div style={{ width: 40, height: 40, borderRadius: 11, background: C.bleu, color: "#fff", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ArrowRightLeft size={20} /></div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800 }}>Demandes de joueurs</div>
-          <div style={{ fontSize: 12.5, color: C.gris }}>Demander un joueur d'une autre catégorie</div>
-        </div>
-        {nbAttente > 0 && <span style={{ background: C.rouge, color: "#fff", borderRadius: 999, fontSize: 12, fontWeight: 800, padding: "2px 9px" }}>{nbAttente}</span>}
-        <ChevronLeft size={18} color={C.gris} style={{ transform: "rotate(180deg)" }} />
-      </Card>
-
-      <Card onClick={onClassement} style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 13 }}>
-        <div style={{ width: 40, height: 40, borderRadius: 11, background: C.jaune, color: C.bleuNuit, display: "grid", placeItems: "center", flex: "0 0 auto" }}><ListOrdered size={20} /></div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800 }}>Classement du championnat</div>
-          <div style={{ fontSize: 12.5, color: C.gris }}>District, Ligue, National et Ligue 2 en direct</div>
-        </div>
-        <ChevronLeft size={18} color={C.gris} style={{ transform: "rotate(180deg)" }} />
-      </Card>
-
-      <Card onClick={onTransport} style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 13 }}>
-        <div style={{ width: 40, height: 40, borderRadius: 11, background: C.bleu, color: "#fff", display: "grid", placeItems: "center", flex: "0 0 auto" }}><Bus size={20} /></div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800 }}>Demande de transport</div>
-          <div style={{ fontSize: 12.5, color: C.gris }}>Minibus, bus en location ou voitures, à l'avance</div>
-        </div>
-        {nbTransport > 0 && <span style={{ background: C.rouge, color: "#fff", borderRadius: 999, fontSize: 12, fontWeight: 800, padding: "2px 9px" }}>{nbTransport}</span>}
-        <ChevronLeft size={18} color={C.gris} style={{ transform: "rotate(180deg)" }} />
-      </Card>
-
-      <Card onClick={onOrganisation} style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 13 }}>
-        <div style={{ width: 40, height: 40, borderRadius: 11, background: C.jaune, color: C.bleuNuit, display: "grid", placeItems: "center", flex: "0 0 auto" }}><MapPin size={20} /></div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800 }}>Organisation des matchs</div>
-          <div style={{ fontSize: 12.5, color: C.gris }}>Terrain, vestiaires, transport, encadrement à préparer</div>
-        </div>
-        {nbOrga > 0 && <span style={{ background: C.jauneFonce, color: "#fff", borderRadius: 999, fontSize: 12, fontWeight: 800, padding: "2px 9px" }}>{nbOrga}</span>}
-        <ChevronLeft size={18} color={C.gris} style={{ transform: "rotate(180deg)" }} />
-      </Card>
-
-      <Card onClick={onSauvegarde} style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 13 }}>
-        <div style={{ width: 40, height: 40, borderRadius: 11, background: C.bleu, color: "#fff", display: "grid", placeItems: "center", flex: "0 0 auto" }}><FileDown size={20} /></div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800 }}>Sauvegarde des données</div>
-          <div style={{ fontSize: 12.5, color: C.gris }}>Exporter ou restaurer les données</div>
-        </div>
-        <ChevronLeft size={18} color={C.gris} style={{ transform: "rotate(180deg)" }} />
-      </Card>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 12 }}>
-        {stat("Joueurs", players.length, <Users size={15} />)}
-        {stat("Matchs joués", v + n + d, <Trophy size={15} />)}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 18 }}>
+        {stat("Joueurs", players.length, Users, () => setTab("effectif"))}
+        {stat("Blessés", blesses, HeartPulse, () => setTab("effectif"))}
+        {stat("À préparer", nbOrga, MapPin, onOrganisation)}
       </div>
 
-      <Card style={{ marginBottom: 12 }}>
-        <div style={{ fontWeight: 800, marginBottom: 10 }}>Bilan des rencontres</div>
-        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-          <Pastille bg="#E2F4E9" color={C.vert}>{v} V</Pastille>
-          <Pastille bg={C.grisClair} color={C.gris}>{n} N</Pastille>
-          <Pastille bg="#FBE3E3" color={C.rouge}>{d} D</Pastille>
-        </div>
-        <div style={{ fontSize: 13, color: C.gris }}>Buts marqués {bp} · Buts encaissés {bc} · Différence {bp - bc >= 0 ? "+" : ""}{bp - bc}</div>
-      </Card>
-
-      {blesses.length > 0 && (
-        <Card style={{ marginBottom: 12, borderColor: "#F3C9C9", background: "#FFF6F6" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: C.rouge }}>
-            <HeartPulse size={18} /> {blesses.length} joueur{blesses.length > 1 ? "s" : ""} à l'infirmerie
-          </div>
-          <div style={{ fontSize: 13, color: C.gris, marginTop: 6 }}>
-            {blesses.map((b) => {
-              const p = db.players.find((x) => x.id === b.joueurId);
-              return p ? `${p.prenom} ${p.nom}` : null;
-            }).filter(Boolean).join(", ")}
-          </div>
+      {prochainMatch && (
+        <Card style={{ marginBottom: 18, background: `linear-gradient(150deg, ${C.bleu}, ${C.bleuNuit})`, border: "none", color: "#fff" }} onClick={onOrganisation}>
+          <div style={{ fontSize: 11.5, color: C.jaune, fontWeight: 800, letterSpacing: 1.5, marginBottom: 6 }}>PROCHAIN MATCH</div>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>{prochainMatch.lieu === "Domicile" ? CLUB : (prochainMatch.adversaire || "Adversaire")} <span style={{ color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>c.</span> {prochainMatch.lieu === "Domicile" ? (prochainMatch.adversaire || "Adversaire") : CLUB}</div>
+          <div style={{ fontSize: 12.5, color: "rgba(255,255,255,0.82)", marginTop: 4 }}>{prochainMatch.date ? jourLong(prochainMatch.date) : "Date à définir"}{prochainMatch.heure ? ` · ${prochainMatch.heure}` : ""} · {prochainMatch.lieu}</div>
         </Card>
       )}
 
-      <div style={{ display: "grid", gap: 10 }}>
-        {liens.map((l) => (
-          <Card key={l.id} onClick={() => setTab(l.id)} style={{ display: "flex", alignItems: "center", gap: 13 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 11, background: C.bleu, color: "#fff", display: "grid", placeItems: "center" }}>{l.icon}</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 800 }}>{l.label}</div>
-              <div style={{ fontSize: 12.5, color: C.gris }}>{l.sub}</div>
+      {(alerteReunions > 0 || alerteDocs > 0) && (
+        <div style={{ background: "#FFF3DA", border: "1px solid #EBD3AE", borderRadius: 14, padding: "12px 14px", marginBottom: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: "#B87A2B", fontSize: 13.5, marginBottom: 6 }}><Bell size={16} /> À ne pas oublier</div>
+          {alerteReunions > 0 && (
+            <div onClick={onReunions} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre }}>
+              <Users size={15} color={C.bleu} /> <span style={{ flex: 1 }}>{alerteReunions} réunion{alerteReunions > 1 ? "s" : ""} à venir</span>
+              <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
             </div>
-            <ChevronLeft size={18} color={C.gris} style={{ transform: "rotate(180deg)" }} />
-          </Card>
-        ))}
+          )}
+          {alerteDocs > 0 && (
+            <div onClick={onDocuments} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: alerteReunions > 0 ? "1px solid #EBD3AE" : "none" }}>
+              <ShieldAlert size={15} color={C.rouge} /> <span style={{ flex: 1 }}>{alerteDocs} joueur{alerteDocs > 1 ? "s" : ""} à régulariser (licence ou contrôle médical)</span>
+              <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ fontSize: 12.5, fontWeight: 800, color: C.gris, letterSpacing: 1, marginBottom: 10 }}>TABLEAU DE BORD {cat}</div>
+      <div style={{ display: "grid", gap: 11 }}>
+        {cartes.filter((c) => c.action).map((c) => {
+          const I = c.icon;
+          return (
+            <div key={c.titre} onClick={c.action} style={{
+              background: c.accent ? `linear-gradient(150deg, ${C.bleu}, ${C.bleuNuit})` : "#fff",
+              color: c.accent ? "#fff" : C.encre,
+              borderRadius: 16, padding: 16, border: c.accent ? "none" : `1px solid ${C.grisClair}`,
+              boxShadow: "0 1px 3px rgba(10,42,107,0.08)", cursor: "pointer",
+              display: "flex", alignItems: "center", gap: 14,
+            }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: c.accent ? "rgba(255,255,255,0.14)" : "#EEF2F8", display: "grid", placeItems: "center", flex: "0 0 auto", position: "relative" }}>
+                <I size={21} color={c.accent ? C.jaune : C.bleu} />
+                {c.badge > 0 && <span style={{ position: "absolute", top: -5, right: -5, background: C.rouge, color: "#fff", fontSize: 11, fontWeight: 800, minWidth: 18, height: 18, borderRadius: 9, display: "grid", placeItems: "center", padding: "0 4px" }}>{c.badge}</span>}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: 15.5 }}>{c.titre}</div>
+                <div style={{ fontSize: 12.5, color: c.accent ? "rgba(255,255,255,0.78)" : C.gris, marginTop: 2 }}>{c.sous}</div>
+              </div>
+              <ChevronLeft size={18} color={c.accent ? "rgba(255,255,255,0.6)" : C.gris} style={{ transform: "rotate(180deg)", flex: "0 0 auto" }} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
+
 /* ============================================================
-   Effectif et fiches joueurs
+   Effectif et fiche joueur
    ============================================================ */
-function jumpActif(catId) {
-  const ci = CATEGORIES.find((c) => c.id === catId);
-  if (!ci || ci.groupe === "École de foot") return false;
-  return !["U7F", "U8F", "U9F", "U10F", "U11F", "U13F"].includes(catId);
+function jumpActif(cat) {
+  const info = CATEGORIES.find((c) => c.id === cat);
+  if (!info) return false;
+  return info.groupe === "Formation" || info.groupe === "PRO" || cat === "U14" || cat === "U15";
 }
 
-function statsJoueur(db, joueurId) {
-  let minutes = 0, buts = 0, passes = 0, jaunes = 0, rouges = 0, notes = [];
-  db.matches.forEach((m) => {
-    const t = m.tempsJeu?.[joueurId]; if (t) minutes += +t;
-    const b = m.buteurs?.[joueurId]; if (b) buts += +b;
-    const a = m.passeurs?.[joueurId]; if (a) passes += +a;
-    const j = m.jaunes?.[joueurId]; if (j) jaunes += +j;
-    if (m.rouges?.[joueurId]) rouges += 1;
-    const r = m.notes?.[joueurId]?.note; if (r) notes.push(+r);
+function statsJoueur(p, db, saison) {
+  let minutes = 0, buts = 0, passes = 0, notes = [];
+  db.matches.filter((m) => m.cat === p.cat && (!saison || saisonDe(m.date) === saison)).forEach((m) => {
+    minutes += (m.tempsJeu && m.tempsJeu[p.id]) || 0;
+    buts += (m.buteurs && m.buteurs[p.id]) || 0;
+    passes += (m.passeurs && m.passeurs[p.id]) || 0;
+    if (m.notes && m.notes[p.id] != null) {
+      const nv = typeof m.notes[p.id] === "object" ? m.notes[p.id].note : m.notes[p.id];
+      if (nv != null && nv !== "") notes.push(+nv);
+    }
   });
-  const moy = notes.length ? (notes.reduce((s, x) => s + x, 0) / notes.length) : null;
-  return { minutes, buts, passes, jaunes, rouges, moy, nbNotes: notes.length };
+  const moy = notes.length ? notes.reduce((a, b) => a + b, 0) / notes.length : null;
+  return { minutes, buts, passes, moy };
+}
+
+/* Saison de football en cours (la saison va d'aout a juillet) */
+function saisonCourante(d = new Date()) {
+  const y = d.getFullYear();
+  return d.getMonth() >= 7 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+}
+
+/* Saison correspondant a une date "AAAA-MM-JJ" */
+function saisonDe(dateStr) {
+  if (!dateStr) return null;
+  const [y, m] = dateStr.split("-").map(Number);
+  if (!y || !m) return null;
+  return m >= 8 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+}
+
+/* Controle medical de la saison (regle mineurs : questionnaire de sante ou certificat si exige) */
+function statutMedical(p) {
+  const saison = saisonCourante();
+  if (p.medicalSaison === saison && (p.medicalStatut === "questionnaire" || p.medicalStatut === "certificat")) {
+    return { label: p.medicalStatut === "certificat" ? "Certificat fourni" : "Questionnaire fait", couleur: C.vert, urgence: 0 };
+  }
+  return { label: `À faire (${saison})`, couleur: "#B87A2B", urgence: 1 };
+}
+
+/* Instantane d'un joueur pour une saison, a ranger dans son parcours */
+function instantaneSaison(p, db, saison) {
+  const st = statsJoueur(p, db, saison);
+  const nbMatchs = db.matches.filter((m) => m.cat === p.cat && m.tempsJeu && m.tempsJeu[p.id]).length;
+  const tests = p.tests || [];
+  const dernierTest = tests.length ? tests[tests.length - 1] : null;
+  const blessures = db.injuries.filter((i) => i.joueurId === p.id).map((b) => ({ zone: b.zone, duree: b.duree, fini: !!b.fini }));
+  return {
+    saison, cat: p.cat,
+    stats: { matchs: nbMatchs, buts: st.buts, passes: st.passes, minutes: st.minutes, moy: st.moy },
+    taille: p.taille || "", poids: p.poids || "",
+    tests: dernierTest ? { vma: dernierTest.vma || "", v10: dernierTest.v10 || "", v20: dernierTest.v20 || "", cmj: dernierTest.cmj || "" } : null,
+    jonglages: p.jonglages ? { ...p.jonglages } : null,
+    blessures,
+    dateArchive: hoyISO(),
+  };
+}
+
+/* Assiduite d'un joueur sur une saison : matchs joues, presences, absences, retards */
+function assiduiteJoueur(p, db, saison) {
+  let matchs = 0, presences = 0, absences = 0, retards = 0, jaunes = 0, rouges = 0;
+  (db.matches || []).forEach((m) => {
+    if (m.cat !== p.cat) return;
+    if (saison && saisonDe(m.date) !== saison) return;
+    if (m.tempsJeu && m.tempsJeu[p.id]) matchs++;
+    if (m.jaunes && m.jaunes[p.id]) jaunes += (+m.jaunes[p.id] || 0);
+    if (m.rouges && m.rouges[p.id]) rouges += 1;
+  });
+  (db.trainings || []).forEach((t) => {
+    if (t.cat !== p.cat) return;
+    if (saison && saisonDe(t.date) !== saison) return;
+    const st = t.presence && t.presence[p.id];
+    if (st === "present" || st === "retard") presences++;
+    if (st === "absent") absences++;
+    if (st === "retard") retards++;
+  });
+  return { matchs, presences, absences, retards, jaunes, rouges };
 }
 
 function Effectif({ players, cat, catInfo, db, mutate }) {
-  const [edit, setEdit] = useState(null);   // joueur en edition
-  const [open, setOpen] = useState(null);    // fiche affichee
+  const [q, setQ] = useState("");
+  const [edit, setEdit] = useState(null);
+  const [fiche, setFiche] = useState(null);
+  const [tri, setTri] = useState("nom");
+  const [cloture, setCloture] = useState(false);
 
-  const sorted = [...players].sort((a, b) => (a.nom || "").localeCompare(b.nom || ""));
+  const liste = players
+    .filter((p) => `${p.prenom} ${p.nom} ${p.poste || ""}`.toLowerCase().includes(q.toLowerCase()))
+    .sort((a, b) => {
+      if (tri === "numero") return (a.numero || 99) - (b.numero || 99);
+      if (tri === "poste") return (a.poste || "zzz").localeCompare(b.poste || "zzz");
+      return `${a.nom}${a.prenom}`.localeCompare(`${b.nom}${b.prenom}`);
+    });
+
+  const ficheJoueur = fiche ? players.find((p) => p.id === fiche) : null;
+
+  function cloturerSaison() {
+    const saison = saisonCourante();
+    mutate((d) => {
+      d.players.forEach((p) => {
+        if (p.cat !== cat) return;
+        p.parcours = p.parcours || [];
+        if (p.parcours.some((s) => s.saison === saison)) return;
+        p.parcours.unshift(instantaneSaison(p, d, saison));
+      });
+      return d;
+    });
+  }
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900 }}>Effectif {cat}</h2>
-        <Btn variant="accent" size="sm" onClick={() => setEdit({ cat })}><Plus size={16} /> Joueur</Btn>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <div style={{ flex: 1, position: "relative" }}>
+          <Search size={17} color={C.gris} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un joueur" style={{ ...inputStyle, paddingLeft: 36 }} />
+        </div>
+        <Btn variant="accent" onClick={() => setEdit({ cat })}><Plus size={18} /></Btn>
       </div>
 
-      {sorted.length === 0 ? (
-        <Empty icon={<Users size={26} color={C.gris} />} text="Aucun joueur" sub="Ajoute le premier joueur de la catégorie" />
+      <div style={{ display: "flex", gap: 7, marginBottom: 14 }}>
+        {[["nom", "Nom"], ["numero", "Numéro"], ["poste", "Poste"]].map(([k, lab]) => (
+          <button key={k} onClick={() => setTri(k)} style={{
+            border: "none", cursor: "pointer", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 700,
+            background: tri === k ? C.bleu : "#fff", color: tri === k ? "#fff" : C.gris, boxShadow: "0 1px 2px rgba(10,42,107,0.06)",
+          }}>{lab}</button>
+        ))}
+      </div>
+
+      {liste.length === 0 ? (
+        <Empty icon={<Users size={24} color={C.gris} />} text="Aucun joueur" sub="Touche + pour ajouter un joueur à l'effectif" />
       ) : (
-        <div style={{ display: "grid", gap: 10 }}>
-          {sorted.map((p) => {
-            const s = statsJoueur(db, p.id);
-            const blesse = db.injuries.some((i) => i.joueurId === p.id && !i.fini);
+        <div style={{ display: "grid", gap: 9 }}>
+          {liste.map((p) => {
+            const bless = db.injuries.some((i) => i.joueurId === p.id && !i.fini);
+            const st = statsJoueur(p, db, saisonCourante());
             return (
-              <Card key={p.id} onClick={() => setOpen(p)} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <Avatar p={p} size={44} radius={12} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 6 }}>
-                    {p.prenom} {p.nom}
-                    {blesse && <HeartPulse size={15} color={C.rouge} />}
-                  </div>
-                  <div style={{ fontSize: 12.5, color: C.gris }}>
-                    {p.poste || "Poste non défini"}{ageOf(p.dob) != null ? ` · ${ageOf(p.dob)} ans` : ""}{p.pied ? ` · ${p.pied}` : ""}
-                  </div>
+              <Card key={p.id} onClick={() => setFiche(p.id)} style={{ display: "flex", alignItems: "center", gap: 13, padding: 12 }}>
+                <div style={{ position: "relative", flex: "0 0 auto" }}>
+                  <Avatar p={p} size={50} />
+                  {p.numero != null && p.numero !== "" && (
+                    <span style={{ position: "absolute", bottom: -3, right: -3, background: C.jaune, color: C.bleuNuit, fontSize: 11, fontWeight: 900, minWidth: 19, height: 19, borderRadius: 10, display: "grid", placeItems: "center", border: "2px solid #fff" }}>{p.numero}</span>
+                  )}
                 </div>
-                <div style={{ textAlign: "right" }}>
-                  {s.moy != null && <div style={{ fontWeight: 900, color: C.bleu }}>{s.moy.toFixed(1)}<span style={{ fontSize: 11, color: C.gris }}>/7</span></div>}
-                  <div style={{ fontSize: 11, color: C.gris }}>{s.buts}b · {s.passes}p</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: 15 }}>{p.prenom} {p.nom} {bless && <HeartPulse size={14} color={C.rouge} style={{ verticalAlign: "middle" }} />}</div>
+                  <div style={{ fontSize: 12.5, color: C.gris, marginTop: 1 }}>{p.poste || "Poste non défini"}{p.pied ? ` · ${p.pied}` : ""}</div>
+                </div>
+                <div style={{ textAlign: "right", flex: "0 0 auto" }}>
+                  <div style={{ fontSize: 12, color: C.gris }}>{st.buts} b · {st.passes} p</div>
+                  {st.moy != null && <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu }}>{st.moy.toFixed(1)}/7</div>}
                 </div>
               </Card>
             );
@@ -1723,89 +1887,191 @@ function Effectif({ players, cat, catInfo, db, mutate }) {
         </div>
       )}
 
-      {open && <FicheJoueur p={open} db={db} mutate={mutate} onClose={() => setOpen(null)} onEdit={() => { setEdit(open); setOpen(null); }}
-        onDelete={() => { mutate((d) => { d.players = d.players.filter((x) => x.id !== open.id); return d; }); setOpen(null); }} />}
+      {players.length > 0 && (
+        <Btn variant="ghost" full style={{ marginTop: 16 }} onClick={() => setCloture(true)}><CalendarDays size={16} /> Clôturer la saison {saisonCourante()}</Btn>
+      )}
 
-      {edit && <EditJoueur joueur={edit} onClose={() => setEdit(null)} onSave={(j) => {
+      {edit && <EditJoueur joueur={edit} cat={cat} onClose={() => setEdit(null)} onSave={(j) => {
         mutate((d) => {
           if (j.id) { const i = d.players.findIndex((x) => x.id === j.id); d.players[i] = j; }
-          else { d.players.push({ ...j, id: uid() }); }
+          else d.players.push({ ...j, id: uid() });
           return d;
         });
         setEdit(null);
       }} />}
+
+      {ficheJoueur && <FicheJoueur p={ficheJoueur} db={db} mutate={mutate} onClose={() => setFiche(null)} onEdit={() => { setEdit(ficheJoueur); setFiche(null); }} onDelete={() => {
+        mutate((d) => { d.players = d.players.filter((x) => x.id !== ficheJoueur.id); return d; });
+        setFiche(null);
+      }} />}
+
+      {cloture && (
+        <Modal title={`Clôturer la saison ${saisonCourante()}`} onClose={() => setCloture(false)}
+          footer={<><Btn variant="ghost" full onClick={() => setCloture(false)}>Annuler</Btn><Btn variant="accent" full onClick={() => { cloturerSaison(); setCloture(false); }}><Save size={16} /> Archiver le groupe</Btn></>}>
+          <div style={{ fontSize: 13.5, color: C.encre, lineHeight: 1.55 }}>
+            Cette action range la saison {saisonCourante()} dans le parcours de chaque joueur du groupe {cat} : catégorie, statistiques, taille, poids, tests et blessures.
+            <div style={{ marginTop: 8 }}>Les joueurs et leurs données restent en place. Tu retrouveras l'historique dans chaque fiche, rubrique Parcours.</div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
-function FicheJoueur({ p: pp, db, mutate, onClose, onEdit, onDelete }) {
-  const p = db.players.find((x) => x.id === pp.id) || pp;
-  const s = statsJoueur(db, p.id);
-  const jong = p.jonglages || {};
-  const blessures = db.injuries.filter((i) => i.joueurId === p.id);
-  const [metric, setMetric] = useState("vma");
-  const [addTest, setAddTest] = useState(false);
-  const [editTest, setEditTest] = useState(null);
-  const [pdfMsg, setPdfMsg] = useState("");
-  const jump = jumpActif(p.cat);
 
-  async function exportPDF() {
-    try {
-      setPdfMsg("Génération du PDF...");
-      const jsPDF = await chargerJsPDF();
-      exporterFichePDF(jsPDF, p, db, tests, s);
-      setPdfMsg("");
-    } catch (e) {
-      setPdfMsg("Téléchargement bloqué dans l'aperçu. Ouvre l'app dans Safari ou Chrome (ou la version déployée) pour récupérer le PDF.");
-    }
-  }
+function CarteSaisonParcours({ s, precedente }) {
+  const [ouverte, setOuverte] = useState(false);
+  const delta = (actuel, prec, unite) => {
+    if (prec == null || prec === "" || actuel === "" || actuel == null) return null;
+    const d = +actuel - +prec;
+    if (!d) return <span style={{ fontSize: 11.5, color: C.gris }}> =</span>;
+    return <span style={{ fontSize: 11.5, fontWeight: 800, color: d > 0 ? C.vert : C.rouge }}> {d > 0 ? "+" : ""}{d}{unite}</span>;
+  };
+  return (
+    <Card style={{ marginBottom: 10, padding: 0, overflow: "hidden" }}>
+      <button onClick={() => setOuverte((o) => !o)} style={{ width: "100%", border: "none", background: "transparent", cursor: "pointer", padding: 12, display: "flex", alignItems: "center", gap: 11, textAlign: "left" }}>
+        <div style={{ width: 38, height: 38, borderRadius: 10, background: C.bleu, color: C.jaune, display: "grid", placeItems: "center", fontWeight: 900, fontSize: 11.5, flex: "0 0 auto" }}>{s.cat}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 14, color: C.encre }}>Saison {s.saison}</div>
+          <div style={{ fontSize: 12, color: C.gris, marginTop: 1 }}>{s.stats.buts} buts · {s.stats.passes} passes{s.stats.moy != null ? ` · note ${(+s.stats.moy).toFixed(1)}/7` : ""}</div>
+        </div>
+        <ChevronLeft size={17} color={C.gris} style={{ transform: ouverte ? "rotate(90deg)" : "rotate(-90deg)", flex: "0 0 auto" }} />
+      </button>
+      {ouverte && (
+        <div style={{ padding: "0 12px 13px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 7, marginBottom: 12 }}>
+            {[["Matchs", s.stats.matchs], ["Minutes", s.stats.minutes], ["Buts", s.stats.buts], ["Passes", s.stats.passes]].map(([l, v]) => (
+              <div key={l} style={{ background: C.fond, borderRadius: 10, padding: "9px 4px", textAlign: "center" }}>
+                <div style={{ fontSize: 16, fontWeight: 900, color: C.bleu }}>{v != null ? v : 0}</div>
+                <div style={{ fontSize: 10, color: C.gris, marginTop: 2 }}>{l}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 18, marginBottom: s.tests ? 12 : 0, fontSize: 13 }}>
+            <div>Taille <strong>{s.taille || "n.c."}{s.taille ? " cm" : ""}</strong>{delta(s.taille, precedente ? precedente.taille : null, " cm")}</div>
+            <div>Poids <strong>{s.poids || "n.c."}{s.poids ? " kg" : ""}</strong>{delta(s.poids, precedente ? precedente.poids : null, " kg")}</div>
+          </div>
+          {s.tests && (s.tests.vma || s.tests.v10) && (
+            <div style={{ display: "flex", gap: 18, marginBottom: (s.blessures && s.blessures.length) ? 12 : 0, fontSize: 13 }}>
+              {s.tests.vma ? <div>VMA <strong>{s.tests.vma} km/h</strong>{delta(s.tests.vma, (precedente && precedente.tests) ? precedente.tests.vma : null, "")}</div> : null}
+              {s.tests.v10 ? <div>10 m <strong>{s.tests.v10} s</strong></div> : null}
+            </div>
+          )}
+          {s.blessures && s.blessures.length > 0 && s.blessures.map((b, i) => (
+            <div key={i} style={{ fontSize: 12.5, color: C.encre, background: "#FBE3E3", borderRadius: 9, padding: "6px 10px", marginBottom: 5 }}>
+              {b.zone || "Blessure"}{b.duree ? <span style={{ color: C.gris }}> · arret {b.duree}</span> : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
 
-  // Historique des tests, avec reprise des anciennes valeurs uniques s'il y en a
-  const tests = useMemo(() => {
-    let list = Array.isArray(p.tests) ? [...p.tests] : [];
-    if (list.length === 0 && (p.vma || p.v10 || p.v20 || p.v40)) {
-      list = [{ id: "legacy", date: "", vma: p.vma || "", v10: p.v10 || "", v20: p.v20 || "", v40: p.v40 || "" }];
-    }
-    return list.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-  }, [p]);
-  const dernier = tests[tests.length - 1] || {};
+function CarteBilan({ b, onEdit }) {
+  const [ouverte, setOuverte] = useState(false);
+  const bloc = (titre, val) => val ? (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ fontSize: 11.5, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 2 }}>{titre}</div>
+      <div style={{ fontSize: 13.5, color: C.encre, whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{val}</div>
+    </div>
+  ) : null;
+  return (
+    <Card style={{ marginBottom: 10, padding: 0, overflow: "hidden" }}>
+      <button onClick={() => setOuverte((o) => !o)} style={{ width: "100%", border: "none", background: "transparent", cursor: "pointer", padding: 12, display: "flex", alignItems: "center", gap: 10, textAlign: "left" }}>
+        <div style={{ width: 38, height: 38, borderRadius: 10, background: C.bleu, color: C.jaune, display: "grid", placeItems: "center", flex: "0 0 auto" }}><ClipboardList size={17} /></div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 14, color: C.encre }}>{b.date ? fmtDate(b.date) : "Bilan"}</div>
+          <div style={{ fontSize: 12, color: C.gris, marginTop: 1 }}>{b.educateur ? `Par ${b.educateur}` : "Éducateur non précisé"}</div>
+        </div>
+        <ChevronLeft size={17} color={C.gris} style={{ transform: ouverte ? "rotate(90deg)" : "rotate(-90deg)", flex: "0 0 auto" }} />
+      </button>
+      {ouverte && (
+        <div style={{ padding: "0 12px 13px" }}>
+          {bloc("Appréciation générale", b.appreciation)}
+          {bloc("Points forts", b.pointsForts)}
+          {bloc("Axes de progrès", b.axesProgres)}
+          {bloc("Objectifs", b.objectifs)}
+          {bloc("Comportement et état d'esprit", b.comportement)}
+          {bloc("Entretien avec le joueur ou les parents", b.entretien)}
+          <Btn variant="ghost" size="sm" onClick={onEdit} style={{ marginTop: 4 }}><Edit3 size={15} /> Modifier ce bilan</Btn>
+        </div>
+      )}
+    </Card>
+  );
+}
 
-  function ajouterTest(t) {
-    mutate((d) => {
-      const j = d.players.find((x) => x.id === p.id);
-      let list = Array.isArray(j.tests) ? [...j.tests] : [];
-      if (list.length === 0 && (j.vma || j.v10 || j.v20 || j.v40)) {
-        list.push({ id: uid(), date: "", vma: j.vma || "", v10: j.v10 || "", v20: j.v20 || "", v40: j.v40 || "" });
+function EditBilan({ bilan, educateurs, onClose, onSave, onDelete }) {
+  const [f, setF] = useState({ date: "", educateur: "", appreciation: "", pointsForts: "", axesProgres: "", objectifs: "", comportement: "", entretien: "", ...bilan });
+  const [autre, setAutre] = useState(!!bilan.educateur && educateurs.length > 0 && !educateurs.includes(bilan.educateur));
+  const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
+  const LIM = { appreciation: 300, pointsForts: 220, axesProgres: 220, objectifs: 200, comportement: 180, entretien: 300 };
+  const zone = (k, rows) => (
+    <div>
+      <textarea value={f[k] || ""} maxLength={LIM[k]} onChange={(e) => set(k, e.target.value)} rows={rows} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
+      <div style={{ fontSize: 11, color: (f[k] || "").length >= LIM[k] ? C.rouge : C.gris, textAlign: "right", marginTop: 2 }}>{(f[k] || "").length} / {LIM[k]} caractères</div>
+    </div>
+  );
+  return (
+    <Modal title={bilan.id ? "Modifier le bilan" : "Nouveau bilan"} onClose={onClose}
+      footer={<><Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}</>}>
+      <Field label="Date du bilan"><Inp type="date" value={f.date} onChange={(e) => set("date", e.target.value)} /></Field>
+      <Field label="Éducateur (qui a fait le bilan)">
+        {educateurs.length > 0 && !autre ? (
+          <Sel value={f.educateur} onChange={(e) => { if (e.target.value === "__autre__") { setAutre(true); set("educateur", ""); } else set("educateur", e.target.value); }}>
+            <option value="">Choisir</option>
+            {educateurs.map((n) => <option key={n}>{n}</option>)}
+            <option value="__autre__">Autre (saisir)</option>
+          </Sel>
+        ) : (
+          <Inp value={f.educateur} onChange={(e) => set("educateur", e.target.value)} placeholder="Nom de l'éducateur" />
+        )}
+      </Field>
+      <Field label="Appréciation générale">{zone("appreciation", 3)}</Field>
+      <Field label="Points forts">{zone("pointsForts", 2)}</Field>
+      <Field label="Axes de progrès">{zone("axesProgres", 2)}</Field>
+      <Field label="Objectifs pour la suite">{zone("objectifs", 2)}</Field>
+      <Field label="Comportement et état d'esprit">{zone("comportement", 2)}</Field>
+      <Field label="Entretien avec le joueur ou les parents">{zone("entretien", 3)}</Field>
+    </Modal>
+  );
+}
+
+function FicheJoueur({ p, db, mutate, onClose, onEdit, onDelete }) {
+  const [confirmer, setConfirmer] = useState(false);
+  const [testEdit, setTestEdit] = useState(false);
+  const [pdfMsg, setPdfMsg] = useState(null);
+  const [saisonSel, setSaisonSel] = useState(saisonCourante());
+  const [bilanEdit, setBilanEdit] = useState(null);
+  const saisonsJoueur = (() => {
+    const set = new Set();
+    db.matches.forEach((m) => {
+      if (m.cat === p.cat && ((m.tempsJeu && m.tempsJeu[p.id]) || (m.buteurs && m.buteurs[p.id]) || (m.notes && m.notes[p.id]))) {
+        const s = saisonDe(m.date); if (s) set.add(s);
       }
-      list.push({ ...t, id: uid() });
-      j.tests = list;
-      return d;
     });
-    setAddTest(false);
+    (p.parcours || []).forEach((x) => { if (x.saison) set.add(x.saison); });
+    (p.bilans || []).forEach((b) => { const s = saisonDe(b.date); if (s) set.add(s); });
+    set.add(saisonCourante());
+    return [...set].sort().reverse();
+  })();
+  function statsSaison(saison) {
+    const arch = (p.parcours || []).find((x) => x.saison === saison);
+    if (arch && arch.stats && saison !== saisonCourante()) {
+      return { minutes: arch.stats.minutes || 0, buts: arch.stats.buts || 0, passes: arch.stats.passes || 0, moy: arch.stats.moy != null ? arch.stats.moy : null };
+    }
+    return statsJoueur(p, db, saison);
   }
-  function modifierTest(t) {
-    mutate((d) => {
-      const j = d.players.find((x) => x.id === p.id);
-      let list = Array.isArray(j.tests) ? [...j.tests] : [];
-      if (list.length === 0 && (j.vma || j.v10 || j.v20 || j.v40)) {
-        list.push({ id: "legacy", date: "", vma: j.vma || "", v10: j.v10 || "", v20: j.v20 || "", v40: j.v40 || "" });
-      }
-      const idx = list.findIndex((x) => x.id === t.id);
-      if (idx >= 0) list[idx] = { ...t };
-      else list.push({ ...t, id: t.id && t.id !== "legacy" ? t.id : uid() });
-      j.tests = list;
-      return d;
-    });
-    setEditTest(null);
-  }
-  function supprimerTest(id) {
-    mutate((d) => {
-      const j = d.players.find((x) => x.id === p.id);
-      j.tests = (j.tests || []).filter((t) => t.id !== id);
-      return d;
-    });
-  }
+  const stats = statsSaison(saisonSel);
+  const educateurs = (db.encadrement || []).map((e) => e.nom).filter(Boolean);
+  const bilansSaison = (p.bilans || []).filter((b) => saisonDe(b.date) === saisonSel).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const assi = assiduiteJoueur(p, db, saisonSel);
+  const cartonsActifs = (() => { const ci = CATEGORIES.find((x) => x.id === p.cat); return (ci && ci.type === 11) || p.cat === "U13"; })();
+  const tests = (p.tests || []).slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  const blessures = db.injuries.filter((i) => i.joueurId === p.id && (!i.debut || saisonDe(i.debut) === saisonSel));
+  const age = ageOf(p.dob);
 
+  // Colonne du milieu centrée et alignée de façon identique sur toutes les fiches
   const info = (icon, label, val) => (
     <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderBottom: `1px solid ${C.grisClair}` }}>
       <div style={{ color: C.bleu, width: 22, flex: "0 0 auto", display: "flex", justifyContent: "center" }}>{icon}</div>
@@ -1813,239 +2079,265 @@ function FicheJoueur({ p: pp, db, mutate, onClose, onEdit, onDelete }) {
       <strong style={{ fontSize: 14.5, flex: 1, textAlign: "right" }}>{val || "n.c."}</strong>
     </div>
   );
-  const jline = (label, n) => (
-    <div style={{ flex: 1, textAlign: "center", padding: 10, background: C.fond, borderRadius: 12 }}>
-      <div style={{ fontSize: 22, fontWeight: 900, color: C.bleu }}>{n ?? 0}</div>
-      <div style={{ fontSize: 11, color: C.gris, fontWeight: 700 }}>{label}</div>
-    </div>
-  );
+
+  async function telechargerPDF() {
+    setPdfMsg("Préparation du PDF...");
+    try {
+      const jsPDF = await chargerJsPDF();
+      exporterFichePDF(jsPDF, p, db, tests, stats, bilansSaison.slice(0, 1), saisonSel);
+      setPdfMsg(null);
+    } catch (e) {
+      setPdfMsg("Téléchargement du module PDF impossible (vérifie la connexion). Réessaie.");
+    }
+  }
 
   return (
     <Modal title="Fiche joueur" onClose={onClose}
-      footer={<>
-        <Btn variant="ghost" onClick={onEdit} full><Edit3 size={16} /> Modifier</Btn>
-        <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>
-      </>}>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 12 }}>
+      footer={
+        <>
+          <Btn variant="ghost" onClick={onEdit} full><Edit3 size={16} /> Modifier</Btn>
+          <Btn variant="danger" onClick={() => setConfirmer(true)}><Trash2 size={16} /></Btn>
+        </>
+      }>
+      <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 18 }}>
         <PhotoFiche p={p} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 900, fontSize: 19 }}>{p.prenom} {p.nom}</div>
-          <div style={{ color: C.gris, fontSize: 13 }}>{p.poste || "Poste non défini"} · {p.cat}{p.numero ? ` · N° ${p.numero}` : ""}</div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 900, fontSize: 20 }}>{p.prenom} {p.nom}</div>
+          <div style={{ fontSize: 13, color: C.gris, marginTop: 2 }}>{p.poste || "Poste non défini"}{age != null ? ` · ${p.cat} · ${age} ans` : ` · ${p.cat}`}{p.numero ? ` · N° ${p.numero}` : ""}</div>
         </div>
       </div>
 
-      <Btn variant="primary" full size="sm" onClick={exportPDF} style={{ marginBottom: 4 }}><FileDown size={16} /> Exporter la fiche en PDF</Btn>
-      {pdfMsg && <div style={{ fontSize: 12, color: pdfMsg.includes("indisponible") ? C.rouge : C.gris, margin: "6px 0 0", textAlign: "center" }}>{pdfMsg}</div>}
-      <div style={{ height: 12 }} />
+      <Btn variant="accent" full style={{ marginBottom: 16 }} onClick={telechargerPDF}><FileDown size={16} /> Exporter la fiche en PDF</Btn>
+      {pdfMsg && <div style={{ fontSize: 12.5, color: pdfMsg.includes("impossible") ? C.rouge : C.gris, marginTop: -8, marginBottom: 14, textAlign: "center" }}>{pdfMsg}</div>}
 
-      <Card style={{ marginBottom: 12 }}>
-        {info(<CalendarDays size={17} />, "Date de naissance", p.dob ? `${new Date(p.dob).toLocaleDateString("fr-FR")}${ageOf(p.dob) != null ? ` (${ageOf(p.dob)} ans)` : ""}` : null)}
+      <Card style={{ marginBottom: 14 }}>
+        {info(<CalendarDays size={17} />, "Date de naissance", p.dob ? `${new Date(p.dob + "T00:00:00").toLocaleDateString("fr-FR")}${age != null ? ` (${age} ans)` : ""}` : null)}
         {info(<Ruler size={17} />, "Taille", p.taille ? `${p.taille} cm` : null)}
         {info(<Weight size={17} />, "Poids", p.poids ? `${p.poids} kg` : null)}
         {info(<Footprints size={17} />, "Pied fort", p.pied)}
-        {info(<MapPin size={17} />, "Poste", p.poste)}
+        {info(<Target size={17} />, "Poste", p.poste)}
         {info(<Trophy size={17} />, "Numéro de maillot", p.numero)}
         {info(<ClipboardList size={17} />, "Numéro de licence", p.licence)}
-        {info(<ShieldAlert size={17} />, "Club", p.club)}
+        {info(<ShieldAlert size={17} />, "Club", p.club || "FCSM")}
       </Card>
 
-      <div style={{ fontWeight: 800, margin: "4px 0 8px", display: "flex", alignItems: "center", gap: 7 }}><Phone size={17} color={C.bleu} /> Parents / responsable</div>
-      <Card style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, margin: "4px 0 8px", fontWeight: 800, color: C.bleu }}>
+        <Phone size={16} /> Parents / responsable
+      </div>
+      <Card style={{ marginBottom: 14 }}>
         {info(<Users size={17} />, "Responsable", p.parentNom)}
         {info(<Phone size={17} />, "Téléphone", p.parentTel)}
         {info(<MapPin size={17} />, "Contact", p.parentEmail)}
       </Card>
 
-      <div style={{ fontWeight: 800, margin: "4px 0 8px", display: "flex", alignItems: "center", gap: 7 }}><Target size={17} color={C.bleu} /> Jonglages (max 50)</div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        {jline("Pied fort", jong.fort)}
-        {jline("Pied faible", jong.faible)}
-        {jline("Tête", jong.tete)}
-      </div>
-
-      <div style={{ fontWeight: 800, margin: "4px 0 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 7 }}><Gauge size={17} color={C.bleu} /> Tests physiques</span>
-        <Btn variant="accent" size="sm" onClick={() => setAddTest(true)}><Plus size={15} /> Nouveau test</Btn>
-      </div>
-
-      {tests.length === 0 ? (
-        <Card style={{ marginBottom: 12 }}>
-          <Empty icon={<Gauge size={22} color={C.gris} />} text="Aucun test enregistré" sub="Ajoute un test pour suivre l'évolution" />
-        </Card>
-      ) : (
-        <>
-          <Card style={{ marginBottom: 10 }}>
-            {dernier.date && <div style={{ fontSize: 12, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Dernier test du {new Date(dernier.date + "T00:00:00").toLocaleDateString("fr-FR")}</div>}
-            <div style={{ fontSize: 11, fontWeight: 800, color: C.gris, letterSpacing: 0.4, margin: "2px 0 2px" }}>VITESSE</div>
-            {info(<Activity size={17} />, "VMA", dernier.vma ? `${dernier.vma} km/h` : null)}
-            {info(<Timer size={17} />, "Vitesse 10 m", dernier.v10 ? `${dernier.v10} s` : null)}
-            {info(<Timer size={17} />, "Vitesse 20 m", dernier.v20 ? `${dernier.v20} s` : null)}
-            {info(<Timer size={17} />, "Vitesse 40 m", dernier.v40 ? `${dernier.v40} s` : null)}
-            {jump && <div style={{ fontSize: 11, fontWeight: 800, color: C.gris, letterSpacing: 0.4, margin: "8px 0 2px" }}>DÉTENTE (SAUTS)</div>}
-            {jump && info(<Activity size={17} />, "SJ (Squat Jump)", dernier.sj ? `${dernier.sj} cm` : null)}
-            {jump && info(<Activity size={17} />, "CMJ", dernier.cmj ? `${dernier.cmj} cm` : null)}
-            {jump && info(<Activity size={17} />, "CMJB (bras)", dernier.cmjb ? `${dernier.cmjb} cm` : null)}
-            {jump && info(<Activity size={17} />, "DJ (Drop Jump)", dernier.dj ? `${dernier.dj} cm` : null)}
-          </Card>
-
-          <Card style={{ marginBottom: 10 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6, marginBottom: 10 }}>
-              {[["vma", "VMA"], ["v10", "10 m"], ["v20", "20 m"], ["v40", "40 m"], ...(jump ? [["sj", "SJ"], ["cmj", "CMJ"], ["cmjb", "CMJB"], ["dj", "DJ"]] : [])].map(([k, lab]) => {
-                const on = metric === k;
-                return (
-                  <button key={k} onClick={() => setMetric(k)} style={{
-                    border: "none", cursor: "pointer", borderRadius: 9, padding: "8px 0", fontSize: 13, fontWeight: 800,
-                    background: on ? C.bleu : C.grisClair, color: on ? "#fff" : C.gris,
-                  }}>{lab}</button>
-                );
-              })}
+      <div style={{ fontWeight: 800, color: C.bleu, display: "flex", alignItems: "center", gap: 7, margin: "4px 0 8px" }}><ClipboardList size={16} /> Administratif</div>
+      {(() => {
+        const sc = statutMedical(p);
+        const licBg = p.licenceStatut === "Valide" ? "#E2F4E9" : p.licenceStatut ? "#FBEAD9" : C.grisClair;
+        const licCol = p.licenceStatut === "Valide" ? C.vert : p.licenceStatut ? "#B87A2B" : C.gris;
+        const cerBg = sc.urgence >= 2 ? "#FBE3E3" : sc.urgence === 1 ? "#FBEAD9" : sc.urgence === 0 ? "#E2F4E9" : C.grisClair;
+        return (
+          <Card style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0" }}>
+              <span style={{ fontSize: 13.5, color: C.gris }}>Licence</span>
+              <Pastille bg={licBg} color={licCol}>{p.licenceStatut || "Non renseignée"}</Pastille>
             </div>
-            <GraphTests tests={tests} metric={metric} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "4px 0", borderTop: `1px solid ${C.grisClair}` }}>
+              <span style={{ fontSize: 13.5, color: C.gris }}>Contrôle médical de la saison</span>
+              <Pastille bg={cerBg} color={sc.couleur}>{sc.label}</Pastille>
+            </div>
           </Card>
+        );
+      })()}
 
-          <div style={{ display: "grid", gap: 7, marginBottom: 12 }}>
-            {[...tests].reverse().map((t) => (
-              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", background: "#fff", borderRadius: 11, border: `1px solid ${C.grisClair}` }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, width: 66, color: C.gris }}>{t.date ? new Date(t.date + "T00:00:00").toLocaleDateString("fr-FR") : "Initial"}</div>
-                <div style={{ flex: 1, fontSize: 12.5, color: C.encre, minWidth: 0 }}>
-                  {[t.vma ? `VMA ${t.vma}` : null, t.v10 ? `10m ${t.v10}` : null, t.v20 ? `20m ${t.v20}` : null, t.v40 ? `40m ${t.v40}` : null, t.sj ? `SJ ${t.sj}` : null, t.cmj ? `CMJ ${t.cmj}` : null, t.cmjb ? `CMJB ${t.cmjb}` : null, t.dj ? `DJ ${t.dj}` : null].filter(Boolean).join(" · ")}
-                </div>
-                <Edit3 size={16} color={C.bleu} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setEditTest(t)} />
-                <X size={16} color={C.gris} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => supprimerTest(t.id)} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, margin: "0 0 8px" }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: C.gris }}>Statistiques{saisonsJoueur.length <= 1 ? ` de la saison ${saisonSel}` : ""}</span>
+        {saisonsJoueur.length > 1 && (
+          <select value={saisonSel} onChange={(e) => setSaisonSel(e.target.value)} style={{ border: `1px solid ${C.grisClair}`, borderRadius: 9, padding: "5px 9px", fontSize: 12.5, fontWeight: 700, color: C.encre, background: "#fff" }}>
+            {saisonsJoueur.map((s) => <option key={s} value={s}>{s === saisonCourante() ? `${s} (en cours)` : s}</option>)}
+          </select>
+        )}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginBottom: 12 }}>
+        {[["Matchs", assi.matchs], ["Minutes", stats.minutes], ["Buts", stats.buts], ["Passes", stats.passes], ["Note", stats.moy != null ? stats.moy.toFixed(1) : "-"]].map(([l, v]) => (
+          <div key={l} style={{ background: "#fff", borderRadius: 12, padding: "12px 4px", textAlign: "center", border: `1px solid ${C.grisClair}` }}>
+            <div style={{ fontSize: 18, fontWeight: 900, color: C.bleu }}>{v}</div>
+            <div style={{ fontSize: 9.5, color: C.gris, marginTop: 2 }}>{l}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, margin: "0 0 6px" }}>Assiduité</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
+        {[["Présences", assi.presences, C.vert], ["Absences", assi.absences, C.rouge], ["Retards", assi.retards, C.jauneFonce]].map(([l, v, col]) => (
+          <div key={l} style={{ background: "#fff", borderRadius: 12, padding: "12px 6px", textAlign: "center", border: `1px solid ${C.grisClair}` }}>
+            <div style={{ fontSize: 20, fontWeight: 900, color: col }}>{v}</div>
+            <div style={{ fontSize: 10.5, color: C.gris, marginTop: 2 }}>{l}</div>
+          </div>
+        ))}
+      </div>
+      {(cartonsActifs || assi.jaunes > 0 || assi.rouges > 0) && (
+        <>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, margin: "0 0 6px" }}>Discipline</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 16 }}>
+            {[["Cartons jaunes", assi.jaunes, "#E3B505"], ["Cartons rouges", assi.rouges, C.rouge]].map(([l, v, col]) => (
+              <div key={l} style={{ background: "#fff", borderRadius: 12, padding: "12px 6px", textAlign: "center", border: `1px solid ${C.grisClair}` }}>
+                <div style={{ fontSize: 20, fontWeight: 900, color: col }}>{v}</div>
+                <div style={{ fontSize: 10.5, color: C.gris, marginTop: 2 }}>{l}</div>
               </div>
             ))}
           </div>
         </>
       )}
 
-      <div style={{ fontWeight: 800, margin: "4px 0 8px", display: "flex", alignItems: "center", gap: 7 }}><Trophy size={17} color={C.bleu} /> Statistiques de saison</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginBottom: 12 }}>
-        {[["Minutes", s.minutes], ["Buts", s.buts], ["Passes", s.passes], ["Note", s.moy != null ? s.moy.toFixed(1) : "n.c."]].map(([l, v]) => (
-          <div key={l} style={{ textAlign: "center", padding: 10, background: C.fond, borderRadius: 12 }}>
-            <div style={{ fontSize: 18, fontWeight: 900, color: C.bleu }}>{v}</div>
-            <div style={{ fontSize: 10.5, color: C.gris, fontWeight: 700 }}>{l}</div>
-          </div>
-        ))}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "4px 0 8px" }}>
+        <div style={{ fontWeight: 800, color: C.bleu, display: "flex", alignItems: "center", gap: 7 }}><Gauge size={16} /> Tests physiques</div>
+        <button onClick={() => setTestEdit(true)} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><Plus size={14} /> Nouveau test</button>
       </div>
-      {(s.jaunes > 0 || s.rouges > 0) && (
-        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 12, fontSize: 13, fontWeight: 700, color: C.gris }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 16, borderRadius: 2, background: "#F2C200", display: "inline-block" }} /> {s.jaunes} carton{s.jaunes > 1 ? "s" : ""} jaune{s.jaunes > 1 ? "s" : ""}</span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 16, borderRadius: 2, background: "#D33A2C", display: "inline-block" }} /> {s.rouges} rouge{s.rouges > 1 ? "s" : ""}</span>
+      {tests.length === 0 ? (
+        <Card style={{ marginBottom: 14, textAlign: "center", color: C.gris, fontSize: 13, padding: 18 }}>Aucun test enregistré</Card>
+      ) : (
+        <Card style={{ marginBottom: 14 }}>
+          <GraphTests tests={tests} cat={p.cat} />
+        </Card>
+      )}
+
+      {jumpActif(p.cat) && (
+        <div style={{ fontSize: 11.5, color: C.gris, marginTop: -8, marginBottom: 14, lineHeight: 1.5 }}>
+          Tests de détente (SJ, CMJ, CMJB, DJ) et vitesse suivis pour les catégories de formation et professionnelles.
         </div>
       )}
 
       {blessures.length > 0 && (
         <>
-          <div style={{ fontWeight: 800, margin: "4px 0 8px", display: "flex", alignItems: "center", gap: 7 }}><HeartPulse size={17} color={C.rouge} /> Suivi blessures</div>
-          <div style={{ display: "grid", gap: 8 }}>
-            {blessures.map((b) => (
-              <Card key={b.id} style={{ padding: 12, borderColor: b.fini ? C.grisClair : "#F3C9C9" }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <strong style={{ fontSize: 14 }}>{b.zone || "Blessure"}</strong>
-                  <Pastille bg={b.fini ? "#E2F4E9" : "#FBE3E3"} color={b.fini ? C.vert : C.rouge}>{b.fini ? "Rétabli" : "En cours"}</Pastille>
+          <div style={{ fontWeight: 800, color: C.bleu, display: "flex", alignItems: "center", gap: 7, margin: "4px 0 8px" }}><HeartPulse size={16} /> Suivi blessures</div>
+          <Card style={{ marginBottom: 8 }}>
+            {blessures.map((b, i) => (
+              <div key={b.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: i < blessures.length - 1 ? `1px solid ${C.grisClair}` : "none" }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{b.zone || "Blessure"}</div>
+                  <div style={{ fontSize: 12, color: C.gris }}>{b.debut ? `Depuis le ${new Date(b.debut + "T00:00:00").toLocaleDateString("fr-FR")}` : ""}{b.duree ? ` · arrêt estimé ${b.duree}` : ""}</div>
                 </div>
-                <div style={{ fontSize: 12.5, color: C.gris, marginTop: 4 }}>
-                  Début {b.debut ? new Date(b.debut).toLocaleDateString("fr-FR") : "?"} · Arrêt estimé {b.duree || "?"}
-                </div>
-              </Card>
+                <Pastille bg={b.fini ? "#E2F4E9" : "#FBE3E3"} color={b.fini ? C.vert : C.rouge}>{b.fini ? "Rétabli" : "En cours"}</Pastille>
+              </div>
             ))}
-          </div>
+          </Card>
         </>
       )}
 
-      {addTest && <EditTest jump={jump} onClose={() => setAddTest(false)} onSave={ajouterTest} />}
-      {editTest && <EditTest jump={jump} test={editTest} onClose={() => setEditTest(null)} onSave={modifierTest} />}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "4px 0 8px" }}>
+        <div style={{ fontWeight: 800, color: C.bleu, display: "flex", alignItems: "center", gap: 7 }}><ClipboardList size={16} /> Bilans et entretiens</div>
+        <button onClick={() => setBilanEdit({ date: hoyISO() })} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><Plus size={14} /> Nouveau bilan</button>
+      </div>
+      {bilansSaison.length === 0 ? (
+        <Card style={{ marginBottom: 14, textAlign: "center", color: C.gris, fontSize: 13, padding: 16 }}>Aucun bilan pour la saison {saisonSel}</Card>
+      ) : (
+        <div style={{ marginBottom: 6 }}>{bilansSaison.map((b) => <CarteBilan key={b.id} b={b} onEdit={() => setBilanEdit(b)} />)}</div>
+      )}
+
+      {p.parcours && p.parcours.length > 0 && (
+        <>
+          <div style={{ fontWeight: 800, color: C.bleu, display: "flex", alignItems: "center", gap: 7, margin: "4px 0 8px" }}><Trophy size={16} /> Parcours ({p.parcours.length} saison{p.parcours.length > 1 ? "s" : ""})</div>
+          {p.parcours.map((s, i) => <CarteSaisonParcours key={(s.saison || "") + i} s={s} precedente={p.parcours[i + 1] || null} />)}
+        </>
+      )}
+
+      {bilanEdit && <EditBilan bilan={bilanEdit} educateurs={educateurs} onClose={() => setBilanEdit(null)}
+        onSave={(b) => {
+          mutate((d) => {
+            const pl = d.players.find((x) => x.id === p.id);
+            pl.bilans = pl.bilans || [];
+            if (b.id) { const i = pl.bilans.findIndex((x) => x.id === b.id); pl.bilans[i] = b; }
+            else pl.bilans.push({ ...b, id: uid() });
+            return d;
+          });
+          setBilanEdit(null);
+        }}
+        onDelete={bilanEdit.id ? () => {
+          mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.bilans = (pl.bilans || []).filter((x) => x.id !== bilanEdit.id); return d; });
+          setBilanEdit(null);
+        } : null} />}
+
+      {testEdit && <EditTest joueur={p} onClose={() => setTestEdit(false)} onSave={(t) => {
+        mutate((d) => {
+          const pl = d.players.find((x) => x.id === p.id);
+          pl.tests = pl.tests || []; pl.tests.push({ ...t, id: uid() });
+          return d;
+        });
+        setTestEdit(false);
+      }} />}
+
+      {confirmer && (
+        <Modal title="Supprimer le joueur" onClose={() => setConfirmer(false)}
+          footer={<><Btn variant="ghost" full onClick={() => setConfirmer(false)}>Annuler</Btn><Btn variant="danger" full onClick={onDelete}>Supprimer</Btn></>}>
+          <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.5 }}>Supprimer définitivement <strong>{p.prenom} {p.nom}</strong> de l'effectif ? Cette action est irréversible.</div>
+        </Modal>
+      )}
     </Modal>
   );
 }
 
-function GraphTests({ tests, metric }) {
-  const meta = {
-    vma: { label: "VMA", unit: "km/h", sensBas: false },
-    v10: { label: "10 m", unit: "s", sensBas: true },
-    v20: { label: "20 m", unit: "s", sensBas: true },
-    v40: { label: "40 m", unit: "s", sensBas: true },
-    sj: { label: "SJ", unit: "cm", sensBas: false },
-    cmj: { label: "CMJ", unit: "cm", sensBas: false },
-    cmjb: { label: "CMJB", unit: "cm", sensBas: false },
-    dj: { label: "DJ", unit: "cm", sensBas: false },
-  }[metric] || { label: metric, unit: "", sensBas: false };
-  const data = tests
-    .map((t) => ({ label: t.date ? jjmm(t.date) : "Init", v: (t[metric] === "" || t[metric] == null) ? null : +t[metric] }))
-    .filter((d) => d.v != null && !isNaN(d.v));
 
-  if (data.length === 0)
-    return <div style={{ fontSize: 13, color: C.gris, textAlign: "center", padding: 16 }}>Aucune valeur pour ce test.</div>;
-  if (data.length === 1)
-    return (
-      <div style={{ textAlign: "center", padding: 16 }}>
-        <div style={{ fontSize: 27, fontWeight: 900, color: C.bleu }}>{data[0].v} <span style={{ fontSize: 13, color: C.gris }}>{meta.unit}</span></div>
-        <div style={{ fontSize: 12, color: C.gris, marginTop: 4 }}>Ajoute un second test pour voir l'évolution.</div>
-      </div>
-    );
-
-  const W = 320, H = 152, pL = 38, pR = 12, pT = 14, pB = 26;
-  const vals = data.map((d) => d.v);
-  let min = Math.min(...vals), max = Math.max(...vals);
-  if (min === max) { min -= 1; max += 1; }
-  const marge = (max - min) * 0.18; min -= marge; max += marge;
-  const X = (i) => pL + (i * (W - pL - pR)) / (data.length - 1);
-  const Y = (v) => pT + (H - pT - pB) * (1 - (v - min) / (max - min));
-  const poly = data.map((d, i) => `${X(i)},${Y(d.v)}`).join(" ");
-
-  const diff = data[data.length - 1].v - data[0].v;
-  const progresse = meta.sensBas ? diff < 0 : diff > 0;
-  const couleur = diff === 0 ? C.gris : (progresse ? C.vert : C.rouge);
-  const fleche = diff === 0 ? "=" : (diff > 0 ? "▲" : "▼");
-  const dec = meta.sensBas ? 2 : 1;
+function GraphTests({ tests, cat }) {
+  const avecJump = jumpActif(cat);
+  const series = avecJump
+    ? [["vma", "VMA", "km/h", C.bleu], ["cmj", "CMJ", "cm", C.jaune], ["v10", "10 m", "s", C.vert]]
+    : [["vma", "VMA", "km/h", C.bleu], ["v10", "10 m", "s", C.vert], ["v20", "20 m", "s", C.jaune]];
 
   return (
     <div>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
-        <line x1={pL} y1={pT} x2={pL} y2={H - pB} stroke={C.grisClair} strokeWidth="1" />
-        <line x1={pL} y1={H - pB} x2={W - pR} y2={H - pB} stroke={C.grisClair} strokeWidth="1" />
-        <text x={pL - 6} y={Y(max) + 4} textAnchor="end" fontSize="10" fill={C.gris}>{max.toFixed(dec)}</text>
-        <text x={pL - 6} y={Y(min) + 4} textAnchor="end" fontSize="10" fill={C.gris}>{min.toFixed(dec)}</text>
-        <polyline points={poly} fill="none" stroke={C.bleu} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-        {data.map((d, i) => (
-          <g key={i}>
-            <circle cx={X(i)} cy={Y(d.v)} r="4" fill={C.jaune} stroke={C.bleu} strokeWidth="2" />
-            <text x={X(i)} y={Y(d.v) - 9} textAnchor="middle" fontSize="10" fontWeight="700" fill={C.encre}>{d.v}</text>
-            <text x={X(i)} y={H - pB + 14} textAnchor="middle" fontSize="9.5" fill={C.gris}>{d.label}</text>
-          </g>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${series.length}, 1fr)`, gap: 8, marginBottom: 14 }}>
+        {series.map(([k, lab, unit, col]) => {
+          const derniere = [...tests].reverse().find((t) => t[k] != null && t[k] !== "");
+          return (
+            <div key={k} style={{ textAlign: "center", background: "#F7F9FC", borderRadius: 10, padding: "10px 4px" }}>
+              <div style={{ fontSize: 10.5, color: C.gris, fontWeight: 700 }}>{lab}</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: col }}>{derniere ? derniere[k] : "-"}</div>
+              <div style={{ fontSize: 9.5, color: C.gris }}>{unit}</div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {tests.map((t) => (
+          <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "5px 0", borderTop: `1px solid ${C.grisClair}` }}>
+            <span style={{ color: C.gris, minWidth: 52 }}>{t.date ? jjmm(t.date) : "-"}</span>
+            <span style={{ flex: 1 }}>VMA <strong>{t.vma || "-"}</strong> · 10m <strong>{t.v10 || "-"}</strong>{avecJump ? <> · CMJ <strong>{t.cmj || "-"}</strong></> : <> · 20m <strong>{t.v20 || "-"}</strong></>}</span>
+          </div>
         ))}
-      </svg>
-      <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 4, fontSize: 12.5, fontWeight: 800, color: couleur }}>
-        <span>{fleche}</span>
-        <span>{diff === 0 ? "Stable" : `${diff > 0 ? "+" : ""}${diff.toFixed(dec)} ${meta.unit} ${progresse ? "(progrès)" : "(à retravailler)"}`}</span>
       </div>
     </div>
   );
 }
 
-function EditTest({ onClose, onSave, jump, test }) {
-  const [f, setF] = useState(test
-    ? { date: "", vma: "", v10: "", v20: "", v40: "", sj: "", cmj: "", cmjb: "", dj: "", ...test }
-    : { date: new Date().toISOString().slice(0, 10), vma: "", v10: "", v20: "", v40: "", sj: "", cmj: "", cmjb: "", dj: "" });
-  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+function EditTest({ joueur, onClose, onSave }) {
+  const avecJump = jumpActif(joueur.cat);
+  const d0 = new Date();
+  const [t, setT] = useState({ date: `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`, vma: "", v10: "", v20: "", v40: "", sj: "", cmj: "", cmjb: "", dj: "" });
+  const set = (k, v) => setT((o) => ({ ...o, [k]: v }));
+  const champNum = (k, lab, unit) => (
+    <Field label={`${lab}${unit ? ` (${unit})` : ""}`}>
+      <Inp type="number" inputMode="decimal" value={t[k]} onChange={(e) => set(k, e.target.value)} />
+    </Field>
+  );
   return (
-    <Modal title={test ? "Modifier le test" : "Nouveau test physique"} onClose={onClose}
-      footer={<Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> {test ? "Enregistrer les corrections" : "Enregistrer le test"}</Btn>}>
-      <Field label="Date du test"><Inp type="date" value={f.date} onChange={(e) => set("date", e.target.value)} /></Field>
-      <Field label="Test VMA (km/h)"><Inp type="number" step="0.1" value={f.vma} onChange={(e) => set("vma", e.target.value)} /></Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-        <Field label="10 m (s)"><Inp type="number" step="0.01" value={f.v10} onChange={(e) => set("v10", e.target.value)} /></Field>
-        <Field label="20 m (s)"><Inp type="number" step="0.01" value={f.v20} onChange={(e) => set("v20", e.target.value)} /></Field>
-        <Field label="40 m (s)"><Inp type="number" step="0.01" value={f.v40} onChange={(e) => set("v40", e.target.value)} /></Field>
+    <Modal title="Nouveau test physique" onClose={onClose}
+      footer={<Btn variant="accent" full onClick={() => onSave(t)}><Save size={16} /> Enregistrer le test</Btn>}>
+      <Field label="Date du test"><Inp type="date" value={t.date} onChange={(e) => set("date", e.target.value)} /></Field>
+      <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13, margin: "6px 0 8px" }}>Vitesse</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        {champNum("vma", "VMA", "km/h")}
+        {champNum("v10", "Vitesse 10 m", "s")}
+        {champNum("v20", "Vitesse 20 m", "s")}
+        {champNum("v40", "Vitesse 40 m", "s")}
       </div>
-      {jump && (
+      {avecJump && (
         <>
-          <div style={{ fontWeight: 800, margin: "8px 0 4px", color: C.bleu }}>Détente (cm)</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="SJ (Squat Jump)"><Inp type="number" step="0.1" value={f.sj} onChange={(e) => set("sj", e.target.value)} /></Field>
-            <Field label="CMJ"><Inp type="number" step="0.1" value={f.cmj} onChange={(e) => set("cmj", e.target.value)} /></Field>
-            <Field label="CMJB (avec bras)"><Inp type="number" step="0.1" value={f.cmjb} onChange={(e) => set("cmjb", e.target.value)} /></Field>
-            <Field label="DJ (Drop Jump)"><Inp type="number" step="0.1" value={f.dj} onChange={(e) => set("dj", e.target.value)} /></Field>
+          <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13, margin: "10px 0 8px" }}>Détente (sauts)</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {champNum("sj", "Squat Jump", "cm")}
+            {champNum("cmj", "CMJ", "cm")}
+            {champNum("cmjb", "CMJ bras", "cm")}
+            {champNum("dj", "Drop Jump", "cm")}
           </div>
         </>
       )}
@@ -2053,116 +2345,138 @@ function EditTest({ onClose, onSave, jump, test }) {
   );
 }
 
-function EditJoueur({ joueur, onClose, onSave }) {
+function EditJoueur({ joueur, cat, onClose, onSave }) {
   const [f, setF] = useState({
-    jonglages: {}, ...joueur,
-    jong_fort: joueur.jonglages?.fort ?? "", jong_faible: joueur.jonglages?.faible ?? "", jong_tete: joueur.jonglages?.tete ?? "",
+    prenom: "", nom: "", dob: "", taille: "", poids: "", poste: "", pied: "Droit",
+    numero: "", licence: "", club: "FCSM", photo: "", jonglages: { fort: "", faible: "", tete: "" },
+    parentNom: "", parentTel: "", parentEmail: "", ...joueur,
   });
-  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  const cap50 = (v) => v === "" ? "" : Math.max(0, Math.min(50, +v));
+  const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
+  const setJo = (k, v) => setF((o) => ({ ...o, jonglages: { ...(o.jonglages || {}), [k]: v } }));
+  const fileRef = useRef(null);
 
-  function save() {
-    const out = {
-      id: f.id, cat: f.cat, prenom: f.prenom?.trim() || "", nom: f.nom?.trim() || "",
-      dob: f.dob || "", taille: f.taille || "", poids: f.poids || "", poste: f.poste || "",
-      pied: f.pied || "", numero: f.numero || "", photo: f.photo || "",
-      licence: f.licence || "", club: f.club || "",
-      parentNom: f.parentNom || "", parentTel: f.parentTel || "", parentEmail: f.parentEmail || "",
-      vma: f.vma || "", v10: f.v10 || "", v20: f.v20 || "", v40: f.v40 || "",
-      tests: f.tests || [],
-      jonglages: { fort: f.jong_fort, faible: f.jong_faible, tete: f.jong_tete },
-    };
-    onSave(out);
+  function choisirPhoto(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    compresserImage(file, 640, (dataUrl) => set("photo", dataUrl));
   }
 
   return (
     <Modal title={joueur.id ? "Modifier le joueur" : "Nouveau joueur"} onClose={onClose}
-      footer={<Btn variant="accent" full onClick={save}><Save size={16} /> Enregistrer</Btn>}>
-      <Field label="Photo du joueur">
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <PhotoFiche p={f} w={64} h={82} />
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 7, background: C.grisClair, color: C.encre, fontWeight: 700, fontSize: 13.5, padding: "10px 14px", borderRadius: 10, cursor: "pointer" }}>
-            <Camera size={15} /> {f.photo ? "Changer la photo" : "Ajouter une photo"}
-            <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const file = e.target.files && e.target.files[0]; if (file) compresserImage(file, 360, (d) => set("photo", d)); }} />
-          </label>
-          {f.photo && <Btn variant="danger" size="sm" onClick={() => set("photo", "")}><Trash2 size={15} /></Btn>}
+      footer={<Btn variant="accent" full disabled={!f.prenom || !f.nom} onClick={() => onSave({ ...f, taille: f.taille ? +f.taille : "", poids: f.poids ? +f.poids : "", numero: f.numero !== "" ? +f.numero : "" })}><Save size={16} /> Enregistrer</Btn>}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+        <div onClick={() => fileRef.current && fileRef.current.click()} style={{ cursor: "pointer", position: "relative" }}>
+          <PhotoFiche p={f} w={70} h={88} />
+          <div style={{ position: "absolute", bottom: -4, right: -4, background: C.jaune, borderRadius: 9, width: 26, height: 26, display: "grid", placeItems: "center", border: "2px solid #fff" }}>
+            <Camera size={14} color={C.bleuNuit} />
+          </div>
         </div>
-      </Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Field label="Prénom"><Inp value={f.prenom || ""} onChange={(e) => set("prenom", e.target.value)} /></Field>
-        <Field label="Nom"><Inp value={f.nom || ""} onChange={(e) => set("nom", e.target.value)} /></Field>
+        <div style={{ fontSize: 12.5, color: C.gris, flex: 1 }}>Touche la photo pour l'ajouter ou la changer. Cadre le visage, elle sera compressée automatiquement.</div>
+        <input ref={fileRef} type="file" accept="image/*" onChange={choisirPhoto} style={{ display: "none" }} />
       </div>
-      <Field label="Date de naissance"><Inp type="date" value={f.dob || ""} onChange={(e) => set("dob", e.target.value)} /></Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Field label="Taille (cm)"><Inp type="number" value={f.taille || ""} onChange={(e) => set("taille", e.target.value)} /></Field>
-        <Field label="Poids (kg)"><Inp type="number" value={f.poids || ""} onChange={(e) => set("poids", e.target.value)} /></Field>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <Field label="Prénom"><Inp value={f.prenom} onChange={(e) => set("prenom", e.target.value)} /></Field>
+        <Field label="Nom"><Inp value={f.nom} onChange={(e) => set("nom", e.target.value)} /></Field>
+      </div>
+      <Field label="Date de naissance"><Inp type="date" value={f.dob} onChange={(e) => set("dob", e.target.value)} /></Field>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <Field label="Taille (cm)"><Inp type="number" inputMode="numeric" value={f.taille} onChange={(e) => set("taille", e.target.value)} /></Field>
+        <Field label="Poids (kg)"><Inp type="number" inputMode="numeric" value={f.poids} onChange={(e) => set("poids", e.target.value)} /></Field>
       </div>
       <Field label="Poste">
-        <Sel value={f.poste || ""} onChange={(e) => set("poste", e.target.value)}>
+        <Sel value={f.poste} onChange={(e) => set("poste", e.target.value)}>
           <option value="">Choisir un poste</option>
           {POSTES.map((p) => <option key={p}>{p}</option>)}
         </Sel>
       </Field>
-      <Field label="Pied fort">
-        <Sel value={f.pied || ""} onChange={(e) => set("pied", e.target.value)}>
-          <option value="">Choisir</option>
-          <option>Droitier</option><option>Gaucher</option><option>Ambidextre</option>
-        </Sel>
-      </Field>
-      <Field label="Numéro de maillot"><Inp type="number" min="1" value={f.numero || ""} onChange={(e) => set("numero", e.target.value)} placeholder="Optionnel" /></Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Field label="Numéro de licence"><Inp value={f.licence || ""} onChange={(e) => set("licence", e.target.value)} placeholder="Optionnel" /></Field>
-        <Field label="Club"><Inp value={f.club || ""} onChange={(e) => set("club", e.target.value)} placeholder="FC Sochaux-Montbéliard" /></Field>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <Field label="Pied fort">
+          <Sel value={f.pied} onChange={(e) => set("pied", e.target.value)}>
+            <option>Droit</option><option>Gauche</option><option>Ambidextre</option>
+          </Sel>
+        </Field>
+        <Field label="Numéro"><Inp type="number" inputMode="numeric" value={f.numero} onChange={(e) => set("numero", e.target.value)} /></Field>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <Field label="Numéro de licence"><Inp value={f.licence} onChange={(e) => set("licence", e.target.value)} /></Field>
+        <Field label="Statut de la licence">
+          <Sel value={f.licenceStatut || ""} onChange={(e) => set("licenceStatut", e.target.value)}>
+            <option value="">Non renseignée</option>
+            <option>Valide</option>
+            <option>En cours</option>
+            <option>À renouveler</option>
+          </Sel>
+        </Field>
+        <Field label="Contrôle médical de la saison">
+          <Sel value={f.medicalSaison === saisonCourante() ? (f.medicalStatut || "") : ""} onChange={(e) => { const v = e.target.value; set("medicalStatut", v); set("medicalSaison", v ? saisonCourante() : ""); }}>
+            <option value="">À faire</option>
+            <option value="questionnaire">Questionnaire de santé fait (dispensé de certificat)</option>
+            <option value="certificat">Certificat médical fourni</option>
+          </Sel>
+        </Field>
+        <Field label="Club"><Inp value={f.club} onChange={(e) => set("club", e.target.value)} /></Field>
       </div>
 
-      <div style={{ fontWeight: 800, margin: "8px 0", color: C.bleu }}>Parents / responsable</div>
-      <Field label="Responsable (nom)"><Inp value={f.parentNom || ""} onChange={(e) => set("parentNom", e.target.value)} placeholder="Nom du parent ou tuteur" /></Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Field label="Téléphone"><Inp type="tel" value={f.parentTel || ""} onChange={(e) => set("parentTel", e.target.value)} placeholder="06 12 34 56 78" /></Field>
-        <Field label="Email / contact"><Inp value={f.parentEmail || ""} onChange={(e) => set("parentEmail", e.target.value)} /></Field>
+      <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13, margin: "8px 0" }}>Jonglages (max 50)</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+        <Field label="Pied fort"><Inp type="number" inputMode="numeric" value={(f.jonglages || {}).fort} onChange={(e) => setJo("fort", e.target.value)} /></Field>
+        <Field label="Pied faible"><Inp type="number" inputMode="numeric" value={(f.jonglages || {}).faible} onChange={(e) => setJo("faible", e.target.value)} /></Field>
+        <Field label="Tête"><Inp type="number" inputMode="numeric" value={(f.jonglages || {}).tete} onChange={(e) => setJo("tete", e.target.value)} /></Field>
       </div>
 
-      <div style={{ fontWeight: 800, margin: "8px 0", color: C.bleu }}>Jonglages (max 50)</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-        <Field label="Pied fort"><Inp type="number" min="0" max="50" value={f.jong_fort} onChange={(e) => set("jong_fort", cap50(e.target.value))} /></Field>
-        <Field label="Pied faible"><Inp type="number" min="0" max="50" value={f.jong_faible} onChange={(e) => set("jong_faible", cap50(e.target.value))} /></Field>
-        <Field label="Tête"><Inp type="number" min="0" max="50" value={f.jong_tete} onChange={(e) => set("jong_tete", cap50(e.target.value))} /></Field>
-      </div>
-
-      <div style={{ fontSize: 12.5, color: C.gris, marginTop: 10, background: C.fond, padding: 11, borderRadius: 11 }}>
-        Les tests VMA et vitesse se saisissent depuis la fiche du joueur, bouton « Nouveau test », pour conserver l'historique et le graphique d'évolution.
+      <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13, margin: "8px 0" }}>Parents / responsable</div>
+      <Field label="Nom du responsable"><Inp value={f.parentNom} onChange={(e) => set("parentNom", e.target.value)} /></Field>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <Field label="Téléphone"><Inp value={f.parentTel} onChange={(e) => set("parentTel", e.target.value)} /></Field>
+        <Field label="Email"><Inp type="email" value={f.parentEmail} onChange={(e) => set("parentEmail", e.target.value)} /></Field>
       </div>
     </Modal>
   );
 }
 
+
 /* ============================================================
-   Composition d'equipe
+   Composition d'équipe
    ============================================================ */
+const FORMATS_MULTI = { U13: [8, 11], "Foot loisirs": [11, 8] };
 function Compo({ players, cat, catInfo, db, mutate }) {
-  const formationsDispo = Object.keys(FORMATIONS[catInfo.type]);
   const matchsCat = (db.matches || []).filter((m) => m.cat === cat).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const aujourdhui = hoyISO();
   const matchProchain = matchsCat.find((m) => (m.date || "") >= aujourdhui);
   const matchDefaut = matchProchain ? matchProchain.id : (matchsCat.length ? matchsCat[matchsCat.length - 1].id : "");
   const [matchSel, setMatchSel] = useState(matchDefaut);
   const key = matchSel || cat;
+  const formats = FORMATS_MULTI[cat] || [catInfo.type];
+  const lineupRaw = db.lineups[key] || {};
+  const typeFoot = (lineupRaw.format && formats.includes(lineupRaw.format)) ? lineupRaw.format : formats[0];
+  const formationsDispo = Object.keys(FORMATIONS[typeFoot]);
   const lineup = db.lineups[key] || { formation: formationsDispo[0], slots: {}, remplacants: [] };
-  const formation = FORMATIONS[catInfo.type][lineup.formation] || FORMATIONS[catInfo.type][formationsDispo[0]];
+  const formation = FORMATIONS[typeFoot][lineup.formation] || FORMATIONS[typeFoot][formationsDispo[0]];
   const remplacants = lineup.remplacants || [];
   const capitaine = lineup.capitaine || null;
   const GK_COL = "#2FA36B"; // couleur distincte du gardien
-  const [pick, setPick] = useState(null);       // index de slot a remplir
+  const [pick, setPick] = useState(null);       // index de slot à remplir
   const [pickRempl, setPickRempl] = useState(false);
 
-  // Convoqués : 12 maxi en foot à 8, 16 maxi (14 à 16) en foot à 11
-  const maxConvoques = catInfo.type === 8 ? 12 : catInfo.type === 11 ? 16 : formation.length + 4;
-  const maxRempl = maxConvoques - formation.length; // 4 en foot à 8, 5 en foot à 11
+  // Convoqués : 12 maxi en foot à 8, 16 maxi en foot à 11, sinon titulaires plus 4 (foot à 4 et à 5)
+  const maxConvoques = typeFoot === 8 ? 12 : typeFoot === 11 ? 16 : formation.length + 8;
+  const maxRempl = maxConvoques - formation.length;
 
+  function changerFormat(fmt) {
+    mutate((d) => {
+      const lu = d.lineups[key] || { slots: {}, remplacants: [] };
+      lu.format = fmt;
+      lu.formation = Object.keys(FORMATIONS[fmt])[0];
+      lu.slots = {};
+      d.lineups[key] = lu;
+      return d;
+    });
+  }
   function setFormation(name) {
     mutate((d) => {
       const ex = d.lineups[key] || {};
-      d.lineups[key] = { formation: name, slots: ex.slots || {}, remplacants: ex.remplacants || [], capitaine: ex.capitaine || null };
+      d.lineups[key] = { formation: name, slots: ex.slots || {}, remplacants: ex.remplacants || [], capitaine: ex.capitaine || null, format: ex.format };
       return d;
     });
   }
@@ -2228,6 +2542,16 @@ function Compo({ players, cat, catInfo, db, mutate }) {
         </div>
       )}
 
+      {formats.length > 1 && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          {formats.map((ft) => (
+            <button key={ft} onClick={() => changerFormat(ft)} style={{
+              flex: 1, border: "none", cursor: "pointer", borderRadius: 11, padding: "10px 8px",
+              fontWeight: 800, fontSize: 14, background: typeFoot === ft ? C.bleu : "#EEF2F8", color: typeFoot === ft ? "#fff" : C.gris,
+            }}>Foot à {ft}</button>
+          ))}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         {formationsDispo.map((name) => {
           const active = lineup.formation === name;
@@ -2241,7 +2565,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
         })}
       </div>
       <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 8 }}>
-        Système au choix de l'éducateur · Foot à {catInfo.type}. Touche un poste pour placer un joueur, puis désigner le capitaine.
+        Système au choix de l'éducateur · Foot à {typeFoot}. Touche un poste pour placer un joueur, puis désigner le capitaine.
       </div>
       <div style={{ display: "flex", gap: 14, marginBottom: 10, fontSize: 11.5, fontWeight: 700, color: C.gris }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: "50%", background: C.jaune, display: "inline-block" }} /> Joueur</span>
@@ -2367,7 +2691,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
       )}
 
       {pickRempl && (
-        <Modal title="Ajouter un remplaçant" onClose={() => setPickRempl(false)}>
+        <Modal title placeholder onClose={() => setPickRempl(false)}>
           <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>Banc jusqu'à {maxRempl} joueurs (convoqués {convoques}/{maxConvoques}).</div>
           {benchDispo.length === 0 ? (
             <Empty icon={<Users size={24} color={C.gris} />} text="Aucun joueur disponible" sub="Tous les joueurs sont déjà titulaires ou sur le banc" />
@@ -2393,6 +2717,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
   );
 }
 
+
 /* ============================================================
    Matchs : calendrier, score, rapport, notes
    ============================================================ */
@@ -2400,8 +2725,15 @@ function Matchs({ players, cat, catInfo, db, mutate, peutValider }) {
   const [edit, setEdit] = useState(null);
   const [open, setOpen] = useState(null);
   const [filtre, setFiltre] = useState("Tous");
+  const [saisonSel, setSaisonSel] = useState(saisonCourante());
   const tous = db.matches.filter((m) => m.cat === cat).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-  const matches = filtre === "Tous" ? tous : tous.filter((m) => (m.type || "Championnat") === filtre);
+  const saisons = (() => {
+    const set = [...new Set(tous.map((m) => saisonDe(m.date)).filter(Boolean))];
+    if (!set.includes(saisonCourante())) set.push(saisonCourante());
+    return set.sort().reverse();
+  })();
+  const parSaison = tous.filter((m) => saisonDe(m.date) === saisonSel);
+  const matches = filtre === "Tous" ? parSaison : parSaison.filter((m) => (m.type || "Championnat") === filtre);
 
   return (
     <div>
@@ -2409,6 +2741,15 @@ function Matchs({ players, cat, catInfo, db, mutate, peutValider }) {
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900 }}>Matchs {cat}</h2>
         <Btn variant="accent" size="sm" onClick={() => setEdit({ cat, lieu: "Domicile", type: "Championnat" })}><Plus size={16} /> Match</Btn>
       </div>
+
+      {saisons.length > 1 && (
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 12, fontWeight: 700, color: C.gris, display: "block", marginBottom: 5 }}>Saison</label>
+          <Sel value={saisonSel} onChange={(e) => setSaisonSel(e.target.value)}>
+            {saisons.map((s) => <option key={s} value={s}>{s === saisonCourante() ? `${s} (en cours)` : s}</option>)}
+          </Sel>
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 4, marginBottom: 12 }}>
         {["Tous", ...TYPES_MATCH].map((t) => {
@@ -2487,6 +2828,9 @@ function EditMatch({ match, onClose, onSave }) {
         </Sel>
       </Field>
       <Field label="Nom de la compétition (optionnel)"><Inp value={f.competition || ""} onChange={(e) => set("competition", e.target.value)} placeholder="Journée 5, Coupe du Doubs..." /></Field>
+      <Field label="Heure du match"><Inp type="time" value={f.heure || ""} onChange={(e) => set("heure", e.target.value)} /></Field>
+      <Field label="Terrain ou lieu du match"><Inp value={f.lieuMatch || ""} onChange={(e) => set("lieuMatch", e.target.value)} placeholder="Synthétique centre, stade adverse..." /></Field>
+      <Field label="Intendance (optionnel)"><Inp value={f.intendance || ""} onChange={(e) => set("intendance", e.target.value)} placeholder="Goûters, bouteilles d'eau..." /></Field>
       <div style={{ fontWeight: 800, margin: "6px 0", color: C.bleu }}>Score (laisser vide si non joué)</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Field label="Buts SOCHAUX"><Inp type="number" min="0" value={f.scorePour ?? ""} onChange={(e) => set("scorePour", e.target.value === "" ? null : e.target.value)} /></Field>
@@ -2604,6 +2948,7 @@ function Convocation({ db, cat, match, mutate, onClose }) {
   );
 }
 
+
 function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
   const [roster, setRoster] = useState(false);
   const [causeRefus, setCauseRefus] = useState(false);
@@ -2658,7 +3003,7 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
       <Btn variant="accent" full style={{ marginBottom: 16 }} onClick={() => setConvoc(true)}><Send size={16} /> Feuille de convocation</Btn>
       {domicile && (
         <>
-   <div style={{ fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 7 }}><MapPin size=u} /> Terrain et vestiaires</div>
+          <div style={{ fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 7 }}><MapPin size={17} color={C.bleu} /> Terrain et vestiaires</div>
           <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Match à domicile. La demande est validée par le responsable, qui fixe l'heure de libération du vestiaire.</div>
 
           <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Terrain demandé</div>
@@ -2741,8 +3086,9 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
         </>
       )}
 
-      {exterieur && (<><div style={{ fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 7 }}><MapPin size=u} /> Transport</div>
-      <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>{exterieur ? "Match à l'extérieur : choisis le transport." : "Surtout utile pour les matchs à l'extérieur."}</div>
+      {exterieur && (<>
+      <div style={{ fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 7 }}><MapPin size={17} color={C.bleu} /> Transport</div>
+      <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Match à l'extérieur : choisis le transport.</div>
       <div style={{ marginBottom: 18 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Mode de transport</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
@@ -2816,8 +3162,9 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
           </div>
         )}
       </div>
+      </>)}
 
-      <div style={{ fontWeight: 800, marginBottom: 6, display: "flex", alignItems: "center", gap: 7 }}><ShieldAlert size={17} coC.bleu} /> Encadrement</div>
+      <div style={{ fontWeight: 800, marginBottom: 6, display: "flex", alignItems: "center", gap: 7 }}><ShieldAlert size={17} color={C.bleu} /> Encadrement</div>
       <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Désigne le dirigeant, le délégué et l'arbitre depuis la liste enregistrée.</div>
       {champs.map(({ role, key }) => {
         const gens = parRole(role);
@@ -2839,8 +3186,9 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
   );
 }
 
+
 function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, peutValider }) {
-  const [noteFor, setNoteFor] = useState(null); // joueur en cours de notation
+  const [noteFor, setNoteFor] = useState(null);
   const [orga, setOrga] = useState(false);
   const joue = match.scorePour != null && match.scoreContre != null;
 
@@ -3063,12 +3411,13 @@ function NoterJoueur({ match, player, db, mutate, onClose }) {
   );
 }
 
+
 /* ============================================================
    Entrainements, presences et blessures
    ============================================================ */
 function Entrainements({ players, cat, db, mutate }) {
   const today = new Date();
-  const [sous, setSous] = useState("planning"); // planning | infirmerie
+  const [sous, setSous] = useState("planning");
   const [annee, setAnnee] = useState(today.getFullYear());
   const [mois, setMois] = useState(today.getMonth());
   const [edit, setEdit] = useState(null);
@@ -3246,7 +3595,7 @@ function Entrainements({ players, cat, db, mutate }) {
                       <Pastille bg={b.fini ? "#E2F4E9" : "#FBE3E3"} color={b.fini ? C.vert : C.rouge}>{b.fini ? "Rétabli" : "En cours"}</Pastille>
                     </div>
                     <div style={{ fontSize: 13, color: C.gris, marginTop: 5 }}>
-                      {b.zone || "Blessure"} · début {b.debut ? new Date(b.debut).toLocaleDateString("fr-FR") : "?"} · arrêt estimé {b.duree || "?"}
+                      {b.zone || "Blessure"} · début {b.debut ? new Date(b.debut + "T00:00:00").toLocaleDateString("fr-FR") : "?"} · arrêt estimé {b.duree || "?"}
                     </div>
                   </Card>
                 );
@@ -3283,13 +3632,13 @@ function RecapPresences({ players, db, cat, annee, mois, onClose }) {
   const themes = [...new Set(seancesMois.map((t) => t.theme).filter(Boolean))];
 
   const rows = players.map((p) => {
-    let pr = 0, ab = 0, bl = 0;
+    let pr = 0, ab = 0, bl = 0, re = 0;
     pointees.forEach((s) => {
       const st = s.presence[p.id];
-      if (st === "present") pr++; else if (st === "absent") ab++; else if (st === "blesse") bl++;
+      if (st === "present") pr++; else if (st === "retard") { pr++; re++; } else if (st === "absent") ab++; else if (st === "blesse") bl++;
     });
     const taux = total ? Math.round((pr / total) * 100) : 0;
-    return { p, pr, ab, bl, taux };
+    return { p, pr, ab, bl, re, taux };
   }).sort((a, b) => b.taux - a.taux || b.pr - a.pr);
 
   return (
@@ -3305,14 +3654,16 @@ function RecapPresences({ players, db, cat, annee, mois, onClose }) {
             <span style={{ color: C.vert }}>● Présents</span>
             <span style={{ color: C.rouge }}>● Absents</span>
             <span style={{ color: C.jauneFonce }}>● Blessés</span>
+            <span style={{ color: "#C67C3C" }}>● Retards</span>
           </div>
           <div style={{ display: "grid", gap: 7 }}>
-            {rows.map(({ p, pr, ab, bl, taux }) => (
+            {rows.map(({ p, pr, ab, bl, re, taux }) => (
               <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", background: "#fff", borderRadius: 11, border: `1px solid ${C.grisClair}` }}>
                 <div style={{ flex: 1, fontWeight: 700, fontSize: 14, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.prenom} {p.nom}</div>
                 <Pastille bg="#E2F4E9" color={C.vert}>{pr}</Pastille>
                 <Pastille bg="#FBE3E3" color={C.rouge}>{ab}</Pastille>
                 <Pastille bg="#FFF3DA" color={C.jauneFonce}>{bl}</Pastille>
+                <Pastille bg="#FBEAD9" color="#C67C3C">{re}</Pastille>
                 <div style={{ width: 44, textAlign: "right", fontWeight: 900, color: C.bleu }}>{taux}%</div>
               </div>
             ))}
@@ -3335,7 +3686,7 @@ function EditSeance({ seance, players, onClose, onSave }) {
   const [f, setF] = useState({ presence: {}, ...seance });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const setP = (id, v) => setF((p) => ({ ...p, presence: { ...p.presence, [id]: v } }));
-  const opts = [["present", "Présent", C.vert], ["absent", "Absent", C.rouge], ["blesse", "Blessé", C.jauneFonce]];
+  const opts = [["present", "Présent", C.vert], ["absent", "Absent", C.rouge], ["blesse", "Blessé", C.jauneFonce], ["retard", "Retard", "#C67C3C"]];
   const themesConnus = THEMES.flatMap((g) => g.items);
   const [autreTheme, setAutreTheme] = useState(!!(seance.theme && !themesConnus.includes(seance.theme)));
 
@@ -3367,17 +3718,19 @@ function EditSeance({ seance, players, onClose, onSave }) {
       {players.length === 0 ? <Empty icon={<Users size={22} color={C.gris} />} text="Aucun joueur" /> :
         <div style={{ display: "grid", gap: 8 }}>
           {players.map((p) => (
-            <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ flex: 1, fontWeight: 700, fontSize: 14 }}>{p.prenom} {p.nom}</div>
-              {opts.map(([val, lab, col]) => {
-                const on = f.presence[p.id] === val;
-                return (
-                  <button key={val} onClick={() => setP(p.id, on ? null : val)} style={{
-                    border: "none", cursor: "pointer", borderRadius: 9, padding: "6px 9px", fontSize: 12, fontWeight: 800,
-                    background: on ? col : C.grisClair, color: on ? "#fff" : C.gris,
-                  }}>{lab}</button>
-                );
-              })}
+            <div key={p.id} style={{ padding: "8px 0", borderBottom: `1px solid ${C.grisClair}` }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{p.prenom} {p.nom}</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {opts.map(([val, lab, col]) => {
+                  const on = f.presence[p.id] === val;
+                  return (
+                    <button key={val} onClick={() => setP(p.id, on ? null : val)} style={{
+                      flex: 1, border: "none", cursor: "pointer", borderRadius: 9, padding: "7px 4px", fontSize: 12, fontWeight: 800,
+                      background: on ? col : C.grisClair, color: on ? "#fff" : C.gris,
+                    }}>{lab}</button>
+                  );
+                })}
+              </div>
             </div>
           ))}
         </div>}
@@ -3441,9 +3794,1163 @@ function EditBlessure({ blessure, players, onClose, onSave, onDelete }) {
   );
 }
 
+
 /* ============================================================
    Detection / scouting adverse
    ============================================================ */
+
+const CRENEAUX_DEFAUT = ["08h00", "09h00", "10h00", "11h00", "12h00", "13h00", "13h30", "14h00", "14h30", "15h30", "16h30", "17h30", "18h00", "19h00", "20h00"];
+
+function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValider, avecActivite, onClose, onSave, onDelete, onValider }) {
+  const [equipe, setEquipe] = useState(actuel ? actuel.equipe : "");
+  const [activite, setActivite] = useState((actuel && actuel.activite) || "match");
+  return (
+    <Modal title={`${typeLabel} ${colonne}`} onClose={onClose}
+      footer={
+        <>
+          <Btn variant="accent" full disabled={!equipe.trim()} onClick={() => onSave(equipe.trim(), activite)}><Save size={16} /> {peutValider ? "Attribuer" : "Demander"}</Btn>
+          {actuel && onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}
+        </>
+      }>
+      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12 }}>Créneau de {creneau}. {peutValider ? "En tant que responsable, ton attribution est directement validée." : "Ta demande sera à valider par la direction."}</div>
+
+      {actuel && (
+        <div style={{ background: actuel.statut === "valide" ? "#E2F4E9" : "#FBEAD9", borderRadius: 11, padding: 11, marginBottom: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: 14 }}>{actuel.equipe}</div>
+          <div style={{ fontSize: 12.5, color: C.gris, marginTop: 2 }}>{actuel.statut === "valide" ? "Créneau validé" : "En attente de validation"}{actuel.demandeur ? ` · demandé par ${actuel.demandeur}` : ""}</div>
+          {peutValider && actuel.statut !== "valide" && (
+            <Btn variant="accent" size="sm" style={{ marginTop: 9 }} onClick={onValider}><Check size={15} /> Valider ce créneau</Btn>
+          )}
+        </div>
+      )}
+
+      {avecActivite && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Type</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[["match", "Match"], ["entrainement", "Entraînement"]].map(([v, lab]) => (
+              <button key={v} onClick={() => setActivite(v)} style={{
+                flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "9px 0", fontWeight: 800, fontSize: 13.5,
+                background: activite === v ? C.bleu : "#EEF2F8", color: activite === v ? "#fff" : C.gris,
+              }}>{lab}</button>
+            ))}
+          </div>
+        </div>
+      )}
+      <Field label="Équipe"><Inp value={equipe} onChange={(e) => setEquipe(e.target.value)} placeholder="FCSM U13 ou équipe adverse" /></Field>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 8 }}>Raccourcis équipes du club</div>
+      {GROUPES.map((g) => {
+        const catsG = cats.filter((cat) => { const ci = CATEGORIES.find((x) => x.id === cat); return ci && ci.groupe === g; });
+        if (catsG.length === 0) return null;
+        return (
+          <div key={g} style={{ marginBottom: 11 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 5 }}>{g}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+              {catsG.map((cat) => (
+                <button key={cat} onClick={() => setEquipe(`FCSM ${cat}`)} style={{
+                  border: `1px solid ${C.grisClair}`, cursor: "pointer", borderRadius: 999, padding: "6px 12px",
+                  fontSize: 12.5, fontWeight: 700, background: "#fff", color: C.bleu,
+                }}>{cat}</button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </Modal>
+  );
+}
+
+function Planning({ db, mutate, cats, profil, peutValider, onClose }) {
+  const [type, setType] = useState("vestiaires");
+  const d0 = new Date();
+  const [date, setDate] = useState(`${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`);
+  const [edit, setEdit] = useState(null);
+  const [gererCreneaux, setGererCreneaux] = useState(false);
+  const [nvCreneau, setNvCreneau] = useState("");
+  const [editCreneau, setEditCreneau] = useState(null);
+  const [nvHeure, setNvHeure] = useState("");
+
+  const colonnes = type === "vestiaires" ? VESTIAIRES : TERRAINS;
+  const typeLabel = type === "vestiaires" ? "Vestiaire" : "Terrain";
+  const creneaux = (db.planning && db.planning.creneaux) || CRENEAUX_DEFAUT;
+  const data = (db.planning && db.planning[type] && db.planning[type][date]) || {};
+  const cle = (cr, col) => `${cr}__${col}`;
+  const moi = (profil && profil.nom) || "Éducateur";
+
+  function ecrire(cr, col, valeur) {
+    mutate((d) => {
+      d.planning = d.planning || { creneaux: CRENEAUX_DEFAUT, vestiaires: {}, terrains: {} };
+      d.planning[type] = d.planning[type] || {};
+      d.planning[type][date] = d.planning[type][date] || {};
+      if (valeur === null) delete d.planning[type][date][cle(cr, col)];
+      else d.planning[type][date][cle(cr, col)] = valeur;
+      return d;
+    });
+  }
+  function ajouterCreneau(t) {
+    if (!t) return;
+    const cr = t.replace(":", "h");
+    mutate((d) => {
+      d.planning = d.planning || { creneaux: CRENEAUX_DEFAUT.slice(), vestiaires: {}, terrains: {} };
+      const liste = (d.planning.creneaux || CRENEAUX_DEFAUT).slice();
+      if (!liste.includes(cr)) { liste.push(cr); liste.sort(); }
+      d.planning.creneaux = liste;
+      return d;
+    });
+  }
+  function supprimerCreneau(cr) {
+    mutate((d) => {
+      d.planning = d.planning || {};
+      d.planning.creneaux = ((d.planning.creneaux || CRENEAUX_DEFAUT)).filter((x) => x !== cr);
+      return d;
+    });
+  }
+  function modifierCreneau(ancien, t) {
+    if (!t) return;
+    const nv = t.replace(":", "h");
+    if (nv === ancien) return;
+    mutate((d) => {
+      d.planning = d.planning || { creneaux: CRENEAUX_DEFAUT.slice(), vestiaires: {}, terrains: {} };
+      let liste = (d.planning.creneaux || CRENEAUX_DEFAUT).slice().map((x) => (x === ancien ? nv : x));
+      liste = [...new Set(liste)].sort();
+      d.planning.creneaux = liste;
+      ["vestiaires", "terrains"].forEach((tp) => {
+        const parDate = d.planning[tp] || {};
+        Object.keys(parDate).forEach((dt) => {
+          const cases = parDate[dt];
+          Object.keys(cases).forEach((k) => {
+            const idx = k.indexOf("__");
+            const cr = k.slice(0, idx), col = k.slice(idx + 2);
+            if (cr === ancien) { cases[`${nv}__${col}`] = cases[k]; delete cases[k]; }
+          });
+        });
+      });
+      return d;
+    });
+  }
+
+  const couleur = (c) => {
+    if (!c) return { bg: "#fff", fg: C.gris, bd: C.grisClair };
+    if (c.statut === "valide") return { bg: "#E2F4E9", fg: C.vert, bd: "#BFE3CD" };
+    return { bg: "#FBEAD9", fg: "#B87A2B", bd: "#EBD3AE" };
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+      <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "16px 16px 14px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
+        <div style={{ fontWeight: 800, fontSize: 16 }}>Planning des {type === "vestiaires" ? "vestiaires" : "terrains"}</div>
+      </header>
+
+      <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10, borderBottom: `1px solid ${C.grisClair}`, background: "#fff" }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          {[["vestiaires", "Vestiaires"], ["terrains", "Terrains"]].map(([v, lab]) => (
+            <button key={v} onClick={() => setType(v)} style={{
+              flex: 1, border: "none", cursor: "pointer", borderRadius: 11, padding: "10px 0", fontWeight: 800, fontSize: 14,
+              background: type === v ? C.bleu : "#EEF2F8", color: type === v ? "#fff" : C.gris,
+            }}>{lab}</button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1 }}><Inp type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+          <Btn variant="ghost" onClick={() => setGererCreneaux(true)}><Timer size={16} /> Créneaux</Btn>
+        </div>
+        <div style={{ display: "flex", gap: 14, fontSize: 11.5, fontWeight: 700, color: C.gris }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: "#E2F4E9", border: "1px solid #BFE3CD", display: "inline-block" }} /> Validé</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: "#FBEAD9", border: "1px solid #EBD3AE", display: "inline-block" }} /> En attente</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: "#fff", border: `1px solid ${C.grisClair}`, display: "inline-block" }} /> Libre</span>
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflow: "auto", padding: 12 }}>
+        <div style={{ overflowX: "auto", border: `1px solid ${C.grisClair}`, borderRadius: 12, background: "#fff" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 130 + colonnes.length * 96 }}>
+            <thead>
+              <tr>
+                <th style={{ position: "sticky", left: 0, background: C.bleu, color: "#fff", fontSize: 12, fontWeight: 800, padding: "10px 8px", textAlign: "left", minWidth: 66, zIndex: 1 }}>Horaire</th>
+                {colonnes.map((col) => (
+                  <th key={col} style={{ background: C.bleu, color: "#fff", fontSize: 12, fontWeight: 800, padding: "10px 8px", minWidth: 96, borderLeft: "1px solid rgba(255,255,255,0.15)" }}>{typeLabel} {col}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {creneaux.map((cr, ri) => (
+                <tr key={cr} style={{ background: ri % 2 ? "#F7F9FC" : "#fff" }}>
+                  <td onClick={() => { setEditCreneau(cr); setNvHeure(cr.replace("h", ":")); }} style={{ position: "sticky", left: 0, background: ri % 2 ? "#EEF2F8" : "#fff", fontWeight: 800, fontSize: 12.5, padding: "10px 8px", borderTop: `1px solid ${C.grisClair}`, zIndex: 1, cursor: "pointer", color: C.bleu }}>{cr}</td>
+                  {colonnes.map((col) => {
+                    const c = data[cle(cr, col)];
+                    const co = couleur(c);
+                    return (
+                      <td key={col} onClick={() => setEdit({ cr, col })} style={{
+                        padding: 5, borderTop: `1px solid ${C.grisClair}`, borderLeft: `1px solid ${C.grisClair}`, cursor: "pointer", verticalAlign: "middle",
+                      }}>
+                        <div style={{ background: co.bg, border: `1px solid ${co.bd}`, borderRadius: 8, minHeight: 34, padding: "5px 7px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 1 }}>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: c ? C.encre : C.grisClair, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c ? c.equipe : "+"}</span>
+                          {c && c.activite && <span style={{ fontSize: 9, fontWeight: 700, color: c.activite === "match" ? C.bleu : "#7A8290" }}>{c.activite === "match" ? "Match" : "Entraînement"}</span>}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ fontSize: 11.5, color: C.gris, marginTop: 10, lineHeight: 1.5 }}>Touche une case pour réserver un {typeLabel.toLowerCase()}. Fais défiler le tableau sur le côté pour voir toutes les colonnes.</div>
+      </div>
+
+      {edit && (() => {
+        const actuel = data[cle(edit.cr, edit.col)];
+        return (
+          <EditCasePlanning
+            typeLabel={typeLabel} colonne={edit.col} creneau={edit.cr} actuel={actuel} cats={cats} peutValider={peutValider} avecActivite={type === "terrains"}
+            onClose={() => setEdit(null)}
+            onSave={(equipe, activite) => { ecrire(edit.cr, edit.col, { equipe, activite: type === "terrains" ? activite : undefined, statut: peutValider ? "valide" : "attente", demandeur: moi }); setEdit(null); }}
+            onValider={() => { ecrire(edit.cr, edit.col, { ...actuel, statut: "valide" }); setEdit(null); }}
+            onDelete={() => { ecrire(edit.cr, edit.col, null); setEdit(null); }}
+          />
+        );
+      })()}
+
+      {gererCreneaux && (
+        <Modal title="Gérer les créneaux" onClose={() => setGererCreneaux(false)}>
+          <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12 }}>Ajoute les horaires dont tu as besoin, par exemple 17h15 ou 17h45. Ils s'appliquent aux plannings terrains et vestiaires.</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            <div style={{ flex: 1 }}><Inp type="time" value={nvCreneau} onChange={(e) => setNvCreneau(e.target.value)} /></div>
+            <Btn variant="accent" disabled={!nvCreneau} onClick={() => { ajouterCreneau(nvCreneau); setNvCreneau(""); }}><Plus size={16} /> Ajouter</Btn>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {creneaux.map((cr) => (
+              <div key={cr} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 999, padding: "6px 11px" }}>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>{cr}</span>
+                <X size={14} color={C.gris} style={{ cursor: "pointer" }} onClick={() => supprimerCreneau(cr)} />
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
+
+      {editCreneau && (
+        <Modal title="Modifier le créneau" onClose={() => setEditCreneau(null)}
+          footer={<><Btn variant="accent" full onClick={() => { modifierCreneau(editCreneau, nvHeure); setEditCreneau(null); }}><Save size={16} /> Enregistrer</Btn><Btn variant="danger" onClick={() => { supprimerCreneau(editCreneau); setEditCreneau(null); }}><Trash2 size={16} /></Btn></>}>
+          <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12 }}>Ajuste l'heure de ce créneau. Les réservations déjà posées suivront le nouvel horaire.</div>
+          <Field label="Heure du créneau"><Inp type="time" value={nvHeure} onChange={(e) => setNvHeure(e.target.value)} /></Field>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+
+function EditAcces({ educateur, onClose, onSave, onDelete }) {
+  const [f, setF] = useState({ nom: "", email: "", role: "educateur", categories: [], ...educateur });
+  const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
+  const sel = f.categories || [];
+  const toggleCat = (id) => set("categories", sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]);
+  const toggleSecteur = (catsG, toutes) => set("categories", toutes ? sel.filter((x) => !catsG.includes(x)) : [...new Set([...sel, ...catsG])]);
+
+  return (
+    <Modal title={educateur.id ? "Modifier l'accès" : "Nouvel éducateur"} onClose={onClose}
+      footer={<><Btn variant="accent" full disabled={!f.nom.trim()} onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{educateur.id && onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}</>}>
+      <Field label="Nom et prénom"><Inp value={f.nom} onChange={(e) => set("nom", e.target.value)} placeholder="Nom et prénom" /></Field>
+      <Field label="Adresse email"><Inp type="email" value={f.email} onChange={(e) => set("email", e.target.value)} placeholder="prenom.nom@club.fr" /></Field>
+      <Field label="Rôle">
+        <div style={{ display: "flex", gap: 8 }}>
+          {[["educateur", "Éducateur"], ["admin", "Administrateur"]].map(([v, lab]) => (
+            <button key={v} onClick={() => set("role", v)} style={{
+              flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "10px 0", fontWeight: 800, fontSize: 13.5,
+              background: f.role === v ? C.bleu : "#EEF2F8", color: f.role === v ? "#fff" : C.gris,
+            }}>{lab}</button>
+          ))}
+        </div>
+      </Field>
+
+      {f.role === "admin" ? (
+        <div style={{ background: "#EEF2F8", borderRadius: 11, padding: 12, fontSize: 13, color: C.encre }}>L'administrateur a accès à tous les secteurs et gère les droits des autres.</div>
+      ) : (
+        <>
+          <div style={{ fontWeight: 800, color: C.bleu, margin: "6px 0 8px" }}>Secteurs et catégories autorisés</div>
+          {GROUPES.map((g) => {
+            const catsG = CATEGORIES.filter((c) => c.groupe === g).map((c) => c.id);
+            if (catsG.length === 0) return null;
+            const toutes = catsG.every((c) => sel.includes(c));
+            return (
+              <div key={g} style={{ marginBottom: 12, border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: 11 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: C.encre, textTransform: "uppercase", letterSpacing: 0.4 }}>{g}</span>
+                  <button onClick={() => toggleSecteur(catsG, toutes)} style={{ border: "none", cursor: "pointer", borderRadius: 8, padding: "5px 11px", fontSize: 12, fontWeight: 800, background: toutes ? C.bleu : "#EEF2F8", color: toutes ? "#fff" : C.bleu }}>{toutes ? "Tout retirer" : "Tout le secteur"}</button>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                  {catsG.map((id) => {
+                    const on = sel.includes(id);
+                    return (
+                      <button key={id} onClick={() => toggleCat(id)} style={{
+                        border: `1px solid ${on ? C.bleu : C.grisClair}`, cursor: "pointer", borderRadius: 999, padding: "6px 12px",
+                        fontSize: 12.5, fontWeight: 700, background: on ? C.bleu : "#fff", color: on ? "#fff" : C.gris,
+                      }}>{id}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
+    </Modal>
+  );
+}
+
+function AccesSecteurs({ db, mutate, estAdmin, onClose }) {
+  const [edit, setEdit] = useState(null);
+  const liste = db.acces || [];
+
+  if (!estAdmin) {
+    return (
+      <PleinEcran>
+        <div style={{ maxWidth: 340 }}>
+          <div style={{ color: "#fff", fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Accès réservé</div>
+          <div style={{ color: "rgba(255,255,255,0.85)", fontSize: 13.5, lineHeight: 1.5 }}>Cette page est réservée à l'administrateur du club.</div>
+          <Btn variant="accent" onClick={onClose} style={{ marginTop: 16 }}>Retour</Btn>
+        </div>
+      </PleinEcran>
+    );
+  }
+
+  function enregistrer(e) {
+    mutate((d) => {
+      d.acces = d.acces || [];
+      if (e.id) { const i = d.acces.findIndex((x) => x.id === e.id); d.acces[i] = e; }
+      else d.acces.push({ ...e, id: uid() });
+      return d;
+    });
+    setEdit(null);
+  }
+  function supprimer(id) {
+    mutate((d) => { d.acces = (d.acces || []).filter((x) => x.id !== id); return d; });
+    setEdit(null);
+  }
+  const resumeAcces = (e) => {
+    if (e.role === "admin") return "Accès à tout le club";
+    const secteurs = GROUPES.filter((g) => {
+      const catsG = CATEGORIES.filter((c) => c.groupe === g).map((c) => c.id);
+      return catsG.length && catsG.every((c) => (e.categories || []).includes(c));
+    });
+    if (secteurs.length) return "Secteurs : " + secteurs.join(", ");
+    if ((e.categories || []).length) return (e.categories || []).join(", ");
+    return "Aucun accès";
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+      <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "16px 16px 14px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
+        <div style={{ fontWeight: 800, fontSize: 16 }}>Droits d'accès</div>
+      </header>
+
+      <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+        <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 14 }}>Attribue à chaque éducateur les secteurs auxquels il a accès. Un administrateur voit tout le club et peut gérer ces droits.</div>
+        <Btn variant="accent" full style={{ marginBottom: 16 }} onClick={() => setEdit({ role: "educateur", categories: [] })}><Plus size={16} /> Ajouter un éducateur</Btn>
+
+        {liste.length === 0 ? (
+          <Empty icon={<Users size={24} color={C.gris} />} text="Aucun éducateur enregistré" sub="Ajoute les éducateurs et définis leurs accès" />
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {liste.map((e) => (
+              <Card key={e.id} onClick={() => setEdit(e)}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <strong style={{ fontSize: 15 }}>{e.nom}</strong>
+                  <Pastille bg={e.role === "admin" ? C.jaune : C.grisClair} color={e.role === "admin" ? C.bleuNuit : C.gris}>{e.role === "admin" ? "Administrateur" : "Éducateur"}</Pastille>
+                </div>
+                {e.email ? <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 4 }}>{e.email}</div> : null}
+                <div style={{ fontSize: 13, color: C.encre }}>{resumeAcces(e)}</div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {edit && <EditAcces educateur={edit} onClose={() => setEdit(null)} onSave={enregistrer} onDelete={edit.id ? () => supprimer(edit.id) : null} />}
+    </div>
+  );
+}
+
+
+function exporterProgrammePDF(jsPDF, matchs, label) {
+  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+  const W = 842, H = 595, M = 28;
+  const navy = [14, 30, 51], bleu = [26, 53, 83], orr = [198, 162, 76], encre = [22, 32, 46], gris = [122, 130, 142], trait = [228, 232, 238], fond = [244, 246, 248];
+  const sc = (a) => doc.setTextColor(a[0], a[1], a[2]);
+  const sf = (a) => doc.setFillColor(a[0], a[1], a[2]);
+  const sd = (a) => doc.setDrawColor(a[0], a[1], a[2]);
+
+  sf(navy); doc.rect(0, 0, W, 4, "F");
+  sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("FC SOCHAUX-MONTBÉLIARD", M, 30);
+  sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.text(`Programme de la semaine du ${label}`, M, 44);
+  sd(orr); doc.setLineWidth(1); doc.line(M, 52, W - M, 52); doc.setLineWidth(0.5);
+
+  const cols = [
+    ["Équipe", 58], ["Date", 74], ["Adversaire", 118], ["Terrain", 104], ["Heure", 38],
+    ["Rendez-vous", 106], ["Dirigeants", 92], ["Intendance", 98], ["Transport", 98],
+  ];
+  const total = cols.reduce((s, c) => s + c[1], 0);
+  const scale = (W - 2 * M) / total;
+  const larg = cols.map((c) => c[1] * scale);
+
+  let y = 64;
+  const enTete = () => {
+    sf(bleu); doc.rect(M, y, W - 2 * M, 20, "F");
+    sc([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+    let x = M;
+    cols.forEach((c, i) => { doc.text(c[0], x + 5, y + 13); x += larg[i]; });
+    y += 20;
+  };
+  enTete();
+
+  doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+  matchs.forEach((row, ri) => {
+    const cells = row.map((val, i) => doc.splitTextToSize(String(val || ""), larg[i] - 8));
+    const hLignes = Math.max(1, ...cells.map((l) => l.length));
+    const rowH = hLignes * 10 + 6;
+    if (y + rowH > H - 24) { doc.addPage(); y = 34; enTete(); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); }
+    sf(ri % 2 ? fond : [255, 255, 255]); doc.rect(M, y, W - 2 * M, rowH, "F");
+    sd(trait); doc.rect(M, y, W - 2 * M, rowH, "S");
+    let x = M;
+    cells.forEach((lignes, i) => {
+      sc(i === 0 ? bleu : encre);
+      doc.setFont("helvetica", i === 0 ? "bold" : "normal");
+      lignes.forEach((l, li) => doc.text(l, x + 5, y + 12 + li * 10));
+      x += larg[i];
+    });
+    y += rowH;
+  });
+
+  sd(orr); doc.setLineWidth(0.8); doc.line(M, H - 20, W - M, H - 20); doc.setLineWidth(0.5);
+  sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+  doc.text(`Édité le ${new Date().toLocaleDateString("fr-FR")}`, M, H - 10);
+  doc.text("FC SOCHAUX-MONTBÉLIARD", W - M, H - 10, { align: "right" });
+
+  doc.save(`Programme_semaine_${label.replace(/[^0-9A-Za-z]/g, "_")}.pdf`);
+}
+
+function ProgrammeSemaine({ db, onClose }) {
+  const [offset, setOffset] = useState(0);
+  const [msg, setMsg] = useState(null);
+
+  const { lundi, dim, label } = useMemo(() => {
+    const d = new Date();
+    const isodow = (d.getDay() + 6) % 7;
+    const lu = new Date(d); lu.setDate(d.getDate() - isodow + offset * 7);
+    const di = new Date(lu); di.setDate(lu.getDate() + 6);
+    const f = (x) => `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
+    return { lundi: f(lu), dim: f(di), label: `${jjmm(f(lu))} au ${jjmm(f(di))}` };
+  }, [offset]);
+
+  const ordreSecteur = { "PRO": 0, "Formation": 1, "Pré-formation": 2, "École de foot": 3, "Loisirs": 4, "Féminines": 5 };
+  const secteurDe = (cat) => { const ci = CATEGORIES.find((x) => x.id === cat); return ci ? ci.groupe : ""; };
+  const rangSecteur = (cat) => { const r = ordreSecteur[secteurDe(cat)]; return r == null ? 9 : r; };
+  const ageDe = (cat) => { const m = /U(\d+)/.exec(cat || ""); if (m) return +m[1]; if (["PRO", "N3", "Ligue 2"].includes(cat) || (cat || "").includes("SENIORS")) return 99; return 50; };
+  const lieuDe = (m) => m.lieuMatch || (m.lieu === "Domicile" ? ((m.reservation && m.reservation.terrain) || "Domicile") : "Extérieur");
+  const rdvDe = (m) => [m.rdv, m.lieuRdv].filter(Boolean).join(" ");
+  const dirDe = (m) => { const e = m.encadrement || {}; return [e.dirigeant, e.delegue].filter(Boolean).join(", "); };
+  const transDe = (m) => { const t = m.transport || {}; if (!t.mode) return ""; if (t.mode === "Minibus club" && t.minibus && t.minibus.length) return `Minibus ${t.minibus.join("/")}`; if (t.mode === "Bus en location" && t.loueur) return `Bus ${t.loueur}`; return t.mode; };
+
+  const matchs = (db.matches || [])
+    .filter((m) => m.date && m.date >= lundi && m.date <= dim)
+    .sort((a, b) => rangSecteur(a.cat) - rangSecteur(b.cat) || ageDe(b.cat) - ageDe(a.cat) || (a.cat || "").localeCompare(b.cat || "") || (a.date || "").localeCompare(b.date || ""));
+
+  const rows = matchs.map((m) => [m.cat, fmtDate(m.date), m.adversaire || "", lieuDe(m), m.heure || "", rdvDe(m), dirDe(m), m.intendance || "", transDe(m)]);
+  const colsLabels = ["Équipe", "Date", "Adversaire", "Terrain", "Heure", "Rendez-vous", "Dirigeants", "Intendance", "Transport"];
+
+  async function telecharger() {
+    setMsg("Préparation du document...");
+    try { const jsPDF = await chargerJsPDF(); exporterProgrammePDF(jsPDF, rows, label); setMsg(null); }
+    catch (e) { setMsg("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+      <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "16px 16px 14px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
+        <div style={{ fontWeight: 800, fontSize: 16 }}>Programme de la semaine</div>
+      </header>
+
+      <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.grisClair}`, background: "#fff", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <Btn variant="ghost" size="sm" onClick={() => setOffset(offset - 1)}><ChevronLeft size={15} /> Précédent</Btn>
+          <span style={{ fontSize: 13, fontWeight: 800, color: C.encre }}>{label}</span>
+          <Btn variant="ghost" size="sm" onClick={() => setOffset(offset + 1)}>Suivant <ChevronLeft size={15} style={{ transform: "rotate(180deg)" }} /></Btn>
+        </div>
+        <Btn variant="accent" full disabled={rows.length === 0} onClick={telecharger}><FileDown size={16} /> Imprimer le programme (PDF)</Btn>
+        {msg && <div style={{ fontSize: 12.5, color: C.encre, background: C.fond, borderRadius: 10, padding: 10 }}>{msg}</div>}
+      </div>
+
+      <div style={{ flex: 1, overflow: "auto", padding: 12 }}>
+        {rows.length === 0 ? (
+          <Empty icon={<CalendarDays size={26} color={C.gris} />} text="Aucun match cette semaine" sub="Change de semaine ou ajoute des matchs au calendrier" />
+        ) : (
+          <div style={{ overflowX: "auto", border: `1px solid ${C.grisClair}`, borderRadius: 12, background: "#fff" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 900 }}>
+              <thead>
+                <tr>{colsLabels.map((l) => <th key={l} style={{ background: C.bleu, color: "#fff", fontSize: 11.5, fontWeight: 800, padding: "9px 8px", textAlign: "left", borderLeft: "1px solid rgba(255,255,255,0.15)", whiteSpace: "nowrap" }}>{l}</th>)}</tr>
+              </thead>
+              <tbody>
+                {rows.map((r, ri) => (
+                  <tr key={ri} style={{ background: ri % 2 ? "#F7F9FC" : "#fff" }}>
+                    {r.map((v, ci) => (
+                      <td key={ci} style={{ padding: "9px 8px", borderTop: `1px solid ${C.grisClair}`, borderLeft: `1px solid ${C.grisClair}`, fontSize: 12.5, fontWeight: ci === 0 ? 800 : 500, color: ci === 0 ? C.bleu : C.encre, verticalAlign: "top" }}>{v}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div style={{ fontSize: 11.5, color: C.gris, marginTop: 10, lineHeight: 1.5 }}>Le programme reprend tous les matchs de la semaine, toutes catégories. Fais défiler sur le côté pour voir toutes les colonnes.</div>
+      </div>
+    </div>
+  );
+}
+
+
+function DocumentsAdmin({ players, cat, onClose }) {
+  const lignes = players.map((p) => {
+    const sc = statutMedical(p);
+    const licProb = p.licenceStatut !== "Valide";
+    const urgence = Math.max(sc.urgence, licProb ? 1 : 0);
+    return { p, sc, licProb, urgence };
+  }).sort((a, b) => b.urgence - a.urgence || (a.p.nom || "").localeCompare(b.p.nom || ""));
+  const aSurveiller = lignes.filter((l) => l.urgence > 0).length;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+      <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "16px 16px 14px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
+        <div style={{ fontWeight: 800, fontSize: 16 }}>Documents administratifs · {cat}</div>
+      </header>
+
+      <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+        <div style={{ background: aSurveiller === 0 ? "#E2F4E9" : "#FBEAD9", color: aSurveiller === 0 ? C.vert : "#B87A2B", borderRadius: 12, padding: "12px 14px", fontWeight: 800, fontSize: 14, marginBottom: 16 }}>
+          {aSurveiller === 0 ? "Tous les documents sont à jour" : `${aSurveiller} joueur${aSurveiller > 1 ? "s" : ""} à surveiller`}
+        </div>
+
+        {players.length === 0 ? (
+          <Empty icon={<ClipboardList size={24} color={C.gris} />} text="Aucun joueur dans cette catégorie" />
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {lignes.map(({ p, sc }) => {
+              const licBg = p.licenceStatut === "Valide" ? "#E2F4E9" : p.licenceStatut ? "#FBEAD9" : C.grisClair;
+              const licCol = p.licenceStatut === "Valide" ? C.vert : p.licenceStatut ? "#B87A2B" : C.gris;
+              const cerBg = sc.urgence >= 2 ? "#FBE3E3" : sc.urgence === 1 ? "#FBEAD9" : sc.urgence === 0 ? "#E2F4E9" : C.grisClair;
+              return (
+                <Card key={p.id}>
+                  <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 8 }}>{p.prenom} {p.nom}</div>
+                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                    <Pastille bg={licBg} color={licCol}>Licence : {p.licenceStatut || "non renseignée"}</Pastille>
+                    <Pastille bg={cerBg} color={sc.couleur}>Contrôle médical : {sc.label}</Pastille>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ fontSize: 11.5, color: C.gris, marginTop: 12, lineHeight: 1.5 }}>Le contrôle médical est à refaire chaque saison, questionnaire de santé ou certificat si exigé. Modifie ces informations depuis la fiche du joueur.</div>
+      </div>
+    </div>
+  );
+}
+
+
+function BilanEquipe({ db, players, cat, onClose, onTournois }) {
+  const saisons = useMemo(() => {
+    const s = new Set([saisonCourante()]);
+    (db.matches || []).forEach((m) => { if (m.cat === cat) { const sa = saisonDe(m.date); if (sa) s.add(sa); } });
+    return [...s].sort().reverse();
+  }, [db, cat]);
+  const [saison, setSaison] = useState(saisons[0]);
+
+  const joues = (db.matches || []).filter((m) => m.cat === cat && saisonDe(m.date) === saison && m.scorePour != null && m.scoreContre != null && m.scorePour !== "" && m.scoreContre !== "");
+  let v = 0, n = 0, d = 0, bp = 0, bc = 0;
+  joues.forEach((m) => {
+    const sp = +m.scorePour, sc = +m.scoreContre;
+    bp += sp; bc += sc;
+    if (sp > sc) v++; else if (sp === sc) n++; else d++;
+  });
+  const nbMatchs = joues.length;
+
+  const statsJ = players.map((p) => ({ p, s: statsJoueur(p, db, saison) }));
+  const buteurs = statsJ.filter((x) => x.s.buts > 0).sort((a, b) => b.s.buts - a.s.buts).slice(0, 8);
+  const passeurs = statsJ.filter((x) => x.s.passes > 0).sort((a, b) => b.s.passes - a.s.passes).slice(0, 8);
+  const notes = statsJ.filter((x) => x.s.moy != null).sort((a, b) => b.s.moy - a.s.moy).slice(0, 5);
+
+  const Tuile = ({ val, lab, col }) => (
+    <div style={{ background: "#fff", borderRadius: 12, padding: "12px 6px", textAlign: "center", border: `1px solid ${C.grisClair}`, flex: 1 }}>
+      <div style={{ fontSize: 22, fontWeight: 900, color: col || C.bleu }}>{val}</div>
+      <div style={{ fontSize: 10.5, color: C.gris, marginTop: 2 }}>{lab}</div>
+    </div>
+  );
+
+  const Classement = ({ titre, data, cle, unite }) => (
+    <>
+      <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "16px 0 8px" }}>{titre}</div>
+      {data.length === 0 ? (
+        <div style={{ fontSize: 13, color: C.gris, padding: "4px 2px" }}>Aucune donnée pour cette saison.</div>
+      ) : (
+        <Card>
+          {data.map((x, i) => (
+            <div key={x.p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: i ? `1px solid ${C.grisClair}` : "none" }}>
+              <span style={{ width: 22, height: 22, borderRadius: 999, background: i === 0 ? C.jaune : "#EEF2F8", color: i === 0 ? C.bleuNuit : C.gris, fontSize: 12, fontWeight: 800, display: "grid", placeItems: "center", flex: "0 0 auto" }}>{i + 1}</span>
+              <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{x.p.prenom} {x.p.nom}</span>
+              <span style={{ fontSize: 15, fontWeight: 900, color: C.bleu }}>{cle === "moy" ? x.s.moy.toFixed(1) : x.s[cle]}<span style={{ fontSize: 11, color: C.gris, fontWeight: 700 }}> {unite}</span></span>
+            </div>
+          ))}
+        </Card>
+      )}
+    </>
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+      <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "16px 16px 14px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
+        <div style={{ fontWeight: 800, fontSize: 16 }}>Bilan de saison · {cat}</div>
+      </header>
+
+      <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+        <Field label="Saison">
+          <Sel value={saison} onChange={(e) => setSaison(e.target.value)}>
+            {saisons.map((s) => <option key={s} value={s}>{s}</option>)}
+          </Sel>
+        </Field>
+        <Btn variant="ghost" full style={{ margin: "2px 0 14px" }} onClick={onTournois}><Award size={16} /> Ajouter ou gérer les tournois</Btn>
+
+        {nbMatchs === 0 ? (
+          <Empty icon={<Trophy size={26} color={C.gris} />} text="Aucun match joué cette saison" sub="Les résultats apparaîtront une fois les scores saisis" />
+        ) : (
+          <>
+            <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "6px 0 8px" }}>Résultats</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <Tuile val={nbMatchs} lab="Matchs" />
+              <Tuile val={v} lab="Victoires" col={C.vert} />
+              <Tuile val={n} lab="Nuls" col="#B87A2B" />
+              <Tuile val={d} lab="Défaites" col={C.rouge} />
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+              <Tuile val={bp} lab="Buts marqués" />
+              <Tuile val={bc} lab="Buts encaissés" />
+              <Tuile val={(bp - bc > 0 ? "+" : "") + (bp - bc)} lab="Différence" col={bp - bc >= 0 ? C.vert : C.rouge} />
+            </div>
+
+            <Classement titre="Meilleurs buteurs" data={buteurs} cle="buts" unite="buts" />
+            <Classement titre="Meilleurs passeurs" data={passeurs} cle="passes" unite="passes" />
+            <Classement titre="Meilleures notes moyennes" data={notes} cle="moy" unite="/ 7" />
+          </>
+        )}
+
+        {(() => {
+          const tournois = (db.tournois || []).filter((t) => t.cat === cat && saisonDe(t.date) === saison).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+          if (tournois.length === 0) return null;
+          return (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "16px 0 8px" }}>Tournois</div>
+              <Card>
+                {tournois.map((t, i) => (
+                  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: i ? `1px solid ${C.grisClair}` : "none" }}>
+                    <div style={{ width: 30, height: 30, borderRadius: 9, background: couleurRang(t.place), color: "#fff", display: "grid", placeItems: "center", flex: "0 0 auto", fontWeight: 900, fontSize: 12 }}>{t.place ? ordinalRang(t.place) : <Trophy size={15} />}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>{t.nom}</div>
+                      <div style={{ fontSize: 12, color: C.gris }}>{t.date ? new Date(t.date + "T00:00:00").toLocaleDateString("fr-FR") : ""}</div>
+                    </div>
+                    {t.place ? <div style={{ fontSize: 14, fontWeight: 900, color: C.bleu }}>{ordinalRang(t.place)}{t.nbEquipes ? <span style={{ fontSize: 11, color: C.gris, fontWeight: 700 }}> / {t.nbEquipes}</span> : null}</div> : null}
+                  </div>
+                ))}
+              </Card>
+            </>
+          );
+        })()}
+      </div>
+    </div>
+  );
+}
+
+
+function ordinalRang(n) {
+  const p = parseInt(n, 10);
+  if (!p) return "";
+  return p === 1 ? "1er" : `${p}e`;
+}
+function couleurRang(place) {
+  const p = parseInt(place, 10);
+  if (p === 1) return "#C6A24C";
+  if (p === 2) return "#9AA3AD";
+  if (p === 3) return "#B08D57";
+  return "#8A93A0";
+}
+
+function EditTournoi({ tournoi, onClose, onSave, onDelete }) {
+  const [f, setF] = useState({ nom: "", date: "", lieu: "", place: "", nbEquipes: "", commentaire: "", ...tournoi });
+  const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
+  return (
+    <Modal title={tournoi.id ? "Modifier le tournoi" : "Nouveau tournoi"} onClose={onClose}
+      footer={<><Btn variant="accent" full disabled={!f.nom.trim()} onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{tournoi.id && onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}</>}>
+      <Field label="Nom du tournoi"><Inp value={f.nom} onChange={(e) => set("nom", e.target.value)} placeholder="Tournoi de printemps, Challenge..." /></Field>
+      <Field label="Date"><Inp type="date" value={f.date} onChange={(e) => set("date", e.target.value)} /></Field>
+      <Field label="Lieu (optionnel)"><Inp value={f.lieu} onChange={(e) => set("lieu", e.target.value)} placeholder="Ville ou stade" /></Field>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1 }}><Field label="Classement"><Inp type="number" value={f.place} onChange={(e) => set("place", e.target.value)} placeholder="3" /></Field></div>
+        <div style={{ flex: 1 }}><Field label="Sur combien d'équipes"><Inp type="number" value={f.nbEquipes} onChange={(e) => set("nbEquipes", e.target.value)} placeholder="12" /></Field></div>
+      </div>
+      <Field label="Commentaire (optionnel)"><Inp value={f.commentaire} onChange={(e) => set("commentaire", e.target.value)} placeholder="Bel état d'esprit, belle finale..." /></Field>
+    </Modal>
+  );
+}
+
+function Tournois({ db, mutate, cat, onClose }) {
+  const [edit, setEdit] = useState(null);
+  const saisons = useMemo(() => {
+    const s = new Set([saisonCourante()]);
+    (db.tournois || []).forEach((t) => { if (t.cat === cat) { const sa = saisonDe(t.date); if (sa) s.add(sa); } });
+    return [...s].sort().reverse();
+  }, [db, cat]);
+  const [saison, setSaison] = useState(saisons[0]);
+
+  const liste = (db.tournois || []).filter((t) => t.cat === cat && saisonDe(t.date) === saison).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+
+  function enregistrer(t) {
+    mutate((d) => {
+      d.tournois = d.tournois || [];
+      if (t.id) { const i = d.tournois.findIndex((x) => x.id === t.id); d.tournois[i] = t; }
+      else d.tournois.push({ ...t, id: uid(), cat });
+      return d;
+    });
+    setEdit(null);
+  }
+  function supprimer(id) { mutate((d) => { d.tournois = (d.tournois || []).filter((x) => x.id !== id); return d; }); setEdit(null); }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+      <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "16px 16px 14px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
+        <div style={{ fontWeight: 800, fontSize: 16 }}>Tournois · {cat}</div>
+      </header>
+
+      <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+        <Field label="Saison">
+          <Sel value={saison} onChange={(e) => setSaison(e.target.value)}>
+            {saisons.map((s) => <option key={s} value={s}>{s}</option>)}
+          </Sel>
+        </Field>
+        <Btn variant="accent" full style={{ margin: "4px 0 16px" }} onClick={() => setEdit({ date: saison ? `${saison.slice(0, 4) * 1 + 1}-05-15` : "" })}><Plus size={16} /> Ajouter un tournoi</Btn>
+
+        {liste.length === 0 ? (
+          <Empty icon={<Trophy size={26} color={C.gris} />} text="Aucun tournoi cette saison" sub="Ajoute les tournois joués et leur classement" />
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {liste.map((t) => (
+              <Card key={t.id} onClick={() => setEdit(t)}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 12, background: couleurRang(t.place), color: "#fff", display: "grid", placeItems: "center", flex: "0 0 auto", fontWeight: 900, fontSize: 15 }}>
+                    {t.place ? ordinalRang(t.place) : <Trophy size={20} />}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 15 }}>{t.nom}</div>
+                    <div style={{ fontSize: 12.5, color: C.gris, marginTop: 2 }}>{t.date ? new Date(t.date + "T00:00:00").toLocaleDateString("fr-FR") : ""}{t.lieu ? ` · ${t.lieu}` : ""}</div>
+                  </div>
+                  {t.place ? (
+                    <div style={{ textAlign: "right", flex: "0 0 auto" }}>
+                      <div style={{ fontSize: 16, fontWeight: 900, color: C.bleu }}>{ordinalRang(t.place)}</div>
+                      {t.nbEquipes ? <div style={{ fontSize: 11.5, color: C.gris }}>sur {t.nbEquipes}</div> : null}
+                    </div>
+                  ) : null}
+                </div>
+                {t.commentaire ? <div style={{ fontSize: 13, color: C.encre, marginTop: 8, background: C.fond, borderRadius: 9, padding: "8px 10px" }}>{t.commentaire}</div> : null}
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {edit && <EditTournoi tournoi={edit} onClose={() => setEdit(null)} onSave={enregistrer} onDelete={edit.id ? () => supprimer(edit.id) : null} />}
+    </div>
+  );
+}
+
+
+const QUALITES = ["Éducateur", "Comité", "Président", "Autre"];
+const RAPPELS = ["Aucun", "1 heure avant", "2 heures avant", "La veille", "2 jours avant"];
+
+function EditReunion({ reunion, educateurs, onClose, onSave, onDelete }) {
+  const [f, setF] = useState({ objet: "", date: "", heure: "", lieu: "", ordreJour: "", rappel: "La veille", participants: [], ...reunion });
+  const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
+  const [nom, setNom] = useState("");
+  const [qualite, setQualite] = useState("Éducateur");
+  const ajouter = () => {
+    if (!nom.trim()) return;
+    set("participants", [...(f.participants || []), { id: uid(), nom: nom.trim(), qualite, reponse: "attente", motif: "" }]);
+    setNom("");
+  };
+  const retirer = (id) => set("participants", (f.participants || []).filter((p) => p.id !== id));
+  const educsDispo = (educateurs || []).filter((e) => e.nom && !(f.participants || []).some((p) => p.nom === e.nom));
+  const ajouterEduc = (ed) => { const cats = (ed.categories || []); const q = cats.length ? `Éducateur (${cats.join(", ")})` : "Éducateur"; set("participants", [...(f.participants || []), { id: uid(), nom: ed.nom, qualite: q, reponse: "attente", motif: "" }]); };
+
+  return (
+    <Modal title={reunion.id ? "Modifier la réunion" : "Programmer une réunion"} onClose={onClose}
+      footer={<><Btn variant="accent" full disabled={!f.objet.trim() || !f.date} onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{reunion.id && onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}</>}>
+      <Field label="Objet de la réunion"><Inp value={f.objet} onChange={(e) => set("objet", e.target.value)} placeholder="Réunion de préparation, bilan..." /></Field>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1 }}><Field label="Date"><Inp type="date" value={f.date} onChange={(e) => set("date", e.target.value)} /></Field></div>
+        <div style={{ flex: 1 }}><Field label="Heure"><Inp type="time" value={f.heure} onChange={(e) => set("heure", e.target.value)} /></Field></div>
+      </div>
+      <Field label="Lieu"><Inp value={f.lieu} onChange={(e) => set("lieu", e.target.value)} placeholder="Club house, salle de réunion..." /></Field>
+      <Field label="Ordre du jour (optionnel)"><textarea value={f.ordreJour || ""} onChange={(e) => set("ordreJour", e.target.value)} rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} placeholder="Points à aborder" /></Field>
+      <Field label="Rappel"><Sel value={f.rappel} onChange={(e) => set("rappel", e.target.value)}>{RAPPELS.map((r) => <option key={r}>{r}</option>)}</Sel></Field>
+
+      <div style={{ fontWeight: 800, color: C.bleu, margin: "8px 0" }}>Personnes conviées</div>
+      {educsDispo.length > 0 && (
+        <Field label="Éducateurs du club">
+          <Sel value="" onChange={(e) => { const ed = (educateurs || []).find((x) => x.id === e.target.value); if (ed) ajouterEduc(ed); }}>
+            <option value="">Choisir un éducateur à convier</option>
+            {educsDispo.map((ed) => <option key={ed.id} value={ed.id}>{ed.nom}{ed.role === "admin" ? " (administrateur)" : (ed.categories && ed.categories.length ? ` (${ed.categories.join(", ")})` : "")}</option>)}
+          </Sel>
+        </Field>
+      )}
+      <div style={{ fontSize: 12.5, color: C.gris, margin: "2px 0 8px" }}>Ou ajoute une autre personne : président, membre du comité...</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <div style={{ flex: 1 }}><Inp value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nom et prénom" /></div>
+        <div style={{ width: 120 }}><Sel value={qualite} onChange={(e) => setQualite(e.target.value)}>{QUALITES.map((q) => <option key={q}>{q}</option>)}</Sel></div>
+      </div>
+      <Btn variant="ghost" full style={{ marginBottom: 12 }} disabled={!nom.trim()} onClick={ajouter}><Plus size={16} /> Ajouter la personne</Btn>
+      {(f.participants || []).length > 0 && (
+        <div style={{ display: "grid", gap: 7 }}>
+          {(f.participants || []).map((p) => (
+            <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, background: C.fond, borderRadius: 9, padding: "8px 10px" }}>
+              <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600 }}>{p.nom} <span style={{ color: C.gris, fontWeight: 500 }}>· {p.qualite}</span></span>
+              <X size={15} color={C.gris} style={{ cursor: "pointer" }} onClick={() => retirer(p.id)} />
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function ModalReponse({ participant, onClose, onSave }) {
+  const [reponse, setReponse] = useState(participant.reponse === "attente" ? "present" : participant.reponse);
+  const [motif, setMotif] = useState(participant.motif || "");
+  return (
+    <Modal title={participant.nom} onClose={onClose}
+      footer={<Btn variant="accent" full onClick={() => onSave(reponse, reponse === "absent" ? motif.trim() : "")}><Check size={16} /> Valider la réponse</Btn>}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        {[["present", "Je serai présent"], ["absent", "Je serai absent"]].map(([v, lab]) => (
+          <button key={v} onClick={() => setReponse(v)} style={{
+            flex: 1, border: "none", cursor: "pointer", borderRadius: 11, padding: "12px 6px", fontWeight: 800, fontSize: 13.5,
+            background: reponse === v ? (v === "present" ? C.vert : C.rouge) : "#EEF2F8", color: reponse === v ? "#fff" : C.gris,
+          }}>{lab}</button>
+        ))}
+      </div>
+      {reponse === "absent" && (
+        <Field label="Motif du refus (facultatif)"><Inp value={motif} onChange={(e) => setMotif(e.target.value)} placeholder="Indisponible, congés... ou laisse vide" /></Field>
+      )}
+    </Modal>
+  );
+}
+
+function Reunions({ db, mutate, onClose }) {
+  const [edit, setEdit] = useState(null);
+  const [selId, setSelId] = useState(null);
+  const [rep, setRep] = useState(null);
+
+  const d0 = new Date();
+  const todayStr = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
+  const toutes = (db.reunions || []).slice().sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.heure || "").localeCompare(b.heure || ""));
+  const aVenir = toutes.filter((r) => (r.date || "") >= todayStr);
+  const passees = toutes.filter((r) => (r.date || "") < todayStr).reverse();
+  const sel = (db.reunions || []).find((r) => r.id === selId);
+
+  function enregistrer(r) {
+    mutate((d) => {
+      d.reunions = d.reunions || [];
+      if (r.id) { const i = d.reunions.findIndex((x) => x.id === r.id); d.reunions[i] = r; }
+      else d.reunions.push({ ...r, id: uid() });
+      return d;
+    });
+    setEdit(null);
+  }
+  function supprimer(id) { mutate((d) => { d.reunions = (d.reunions || []).filter((x) => x.id !== id); return d; }); setEdit(null); setSelId(null); }
+  function repondre(reunionId, participantId, reponse, motif) {
+    mutate((d) => {
+      const r = (d.reunions || []).find((x) => x.id === reunionId);
+      if (r) { const p = (r.participants || []).find((x) => x.id === participantId); if (p) { p.reponse = reponse; p.motif = motif; } }
+      return d;
+    });
+    setRep(null);
+  }
+
+  const compteReponses = (r) => {
+    const ps = r.participants || [];
+    return { present: ps.filter((p) => p.reponse === "present").length, absent: ps.filter((p) => p.reponse === "absent").length, attente: ps.filter((p) => p.reponse === "attente").length };
+  };
+  const dateLongue = (r) => (r.date ? new Date(r.date + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) : "") + (r.heure ? ` · ${r.heure}` : "");
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+      <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "16px 16px 14px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={() => (sel ? setSelId(null) : onClose())} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
+        <div style={{ fontWeight: 800, fontSize: 16 }}>{sel ? "Détail de la réunion" : "Réunions"}</div>
+      </header>
+
+      {!sel ? (
+        <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+          <Btn variant="accent" full style={{ marginBottom: 16 }} onClick={() => setEdit({})}><Plus size={16} /> Programmer une réunion</Btn>
+          {toutes.length === 0 ? (
+            <Empty icon={<CalendarDays size={26} color={C.gris} />} text="Aucune réunion programmée" sub="Programme une réunion et convie les personnes concernées" />
+          ) : (
+            <>
+              {aVenir.length > 0 && <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "0 0 8px" }}>À venir</div>}
+              <div style={{ display: "grid", gap: 10, marginBottom: aVenir.length ? 18 : 0 }}>
+                {aVenir.map((r) => {
+                  const c = compteReponses(r);
+                  return (
+                    <Card key={r.id} onClick={() => setSelId(r.id)}>
+                      <div style={{ fontWeight: 800, fontSize: 15 }}>{r.objet}</div>
+                      <div style={{ fontSize: 12.5, color: C.gris, textTransform: "capitalize", marginTop: 2 }}>{dateLongue(r)}</div>
+                      {r.lieu ? <div style={{ fontSize: 12.5, color: C.gris }}>{r.lieu}</div> : null}
+                      <div style={{ display: "flex", gap: 7, marginTop: 8, flexWrap: "wrap" }}>
+                        <Pastille bg="#E2F4E9" color={C.vert}>{c.present} présents</Pastille>
+                        <Pastille bg="#FBE3E3" color={C.rouge}>{c.absent} absents</Pastille>
+                        <Pastille bg={C.grisClair} color={C.gris}>{c.attente} en attente</Pastille>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+              {passees.length > 0 && <div style={{ fontSize: 12, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.4, margin: "0 0 8px" }}>Passées</div>}
+              <div style={{ display: "grid", gap: 10 }}>
+                {passees.map((r) => (
+                  <Card key={r.id} onClick={() => setSelId(r.id)} style={{ opacity: 0.75 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{r.objet}</div>
+                    <div style={{ fontSize: 12.5, color: C.gris, textTransform: "capitalize", marginTop: 2 }}>{dateLongue(r)}</div>
+                  </Card>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+          <div style={{ fontWeight: 900, fontSize: 18, color: C.bleu }}>{sel.objet}</div>
+          <div style={{ fontSize: 13.5, color: C.encre, textTransform: "capitalize", marginTop: 4 }}>{dateLongue(sel)}</div>
+          {sel.lieu ? <div style={{ fontSize: 13.5, color: C.gris, marginTop: 2 }}>{sel.lieu}</div> : null}
+          {sel.rappel && sel.rappel !== "Aucun" ? <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 8, background: "#FFF3DA", color: "#B87A2B", borderRadius: 9, padding: "5px 10px", fontSize: 12.5, fontWeight: 700 }}><Timer size={14} /> Rappel : {sel.rappel.toLowerCase()}</div> : null}
+          {sel.ordreJour ? (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 5 }}>Ordre du jour</div>
+              <div style={{ fontSize: 13.5, color: C.encre, whiteSpace: "pre-wrap", background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: 12 }}>{sel.ordreJour}</div>
+            </div>
+          ) : null}
+
+          <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "16px 0 8px" }}>Personnes conviées</div>
+          <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 8 }}>Touche une personne pour indiquer sa réponse.</div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {(sel.participants || []).map((p) => {
+              const col = p.reponse === "present" ? C.vert : p.reponse === "absent" ? C.rouge : C.gris;
+              const bg = p.reponse === "present" ? "#E2F4E9" : p.reponse === "absent" ? "#FBE3E3" : C.grisClair;
+              const label = p.reponse === "present" ? "Présent" : p.reponse === "absent" ? "Absent" : "En attente";
+              return (
+                <Card key={p.id} onClick={() => setRep(p)}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{p.nom}</div>
+                      <div style={{ fontSize: 12, color: C.gris }}>{p.qualite}{p.reponse === "absent" && p.motif ? ` · ${p.motif}` : ""}</div>
+                    </div>
+                    <Pastille bg={bg} color={col}>{label}</Pastille>
+                  </div>
+                </Card>
+              );
+            })}
+            {(sel.participants || []).length === 0 && <div style={{ fontSize: 13, color: C.gris }}>Aucune personne conviée pour le moment.</div>}
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+            <Btn variant="ghost" full onClick={() => setEdit(sel)}><Edit3 size={16} /> Modifier</Btn>
+          </div>
+        </div>
+      )}
+
+      {edit && <EditReunion reunion={edit} educateurs={db.acces || []} onClose={() => setEdit(null)} onSave={enregistrer} onDelete={edit.id ? () => supprimer(edit.id) : null} />}
+      {rep && sel && <ModalReponse participant={rep} onClose={() => setRep(null)} onSave={(reponse, motif) => repondre(sel.id, rep.id, reponse, motif)} />}
+    </div>
+  );
+}
+
+
+const COULEURS_EV = { match: "#1A3553", entrainement: "#2E7D52", reunion: "#B87A2B", tournoi: "#8E5AA8" };
+const LABELS_EV = { match: "Matchs", entrainement: "Entraînements", reunion: "Réunions", tournoi: "Tournois" };
+const MOIS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+const fmtISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+function Calendrier({ db, mutate, peutValider, onClose }) {
+  const d0 = new Date();
+  const todayStr = fmtISO(d0);
+  const [vue, setVue] = useState("mois");
+  const [ref, setRef] = useState(() => {
+    const ds = [];
+    (db.matches || []).forEach((m) => m.date && ds.push(m.date));
+    (db.trainings || []).forEach((t) => t.date && ds.push(t.date));
+    (db.reunions || []).forEach((r) => r.date && ds.push(r.date));
+    (db.tournois || []).forEach((t) => t.date && ds.push(t.date));
+    const moisAuj = todayStr.slice(0, 7);
+    if (ds.some((d) => d.slice(0, 7) === moisAuj)) return new Date(todayStr + "T00:00:00");
+    const futurs = ds.filter((d) => d >= todayStr).sort();
+    if (futurs.length) return new Date(futurs[0] + "T00:00:00");
+    const passes = ds.filter((d) => d < todayStr).sort();
+    if (passes.length) return new Date(passes[passes.length - 1] + "T00:00:00");
+    return new Date(todayStr + "T00:00:00");
+  });
+  const [filtres, setFiltres] = useState({ match: true, entrainement: true, reunion: true, tournoi: true });
+
+  const evenements = useMemo(() => {
+    const evs = [];
+    (db.matches || []).forEach((m) => { if (m.date) evs.push({ date: m.date, type: "match", cat: m.cat, heure: m.heure || "", titre: `${m.cat} · ${m.lieu === "Domicile" ? "reçoit " : "à "}${m.adversaire || "adversaire"}`, ref: m, kind: "match" }); });
+    (db.trainings || []).forEach((t) => { if (t.date) evs.push({ date: t.date, type: "entrainement", cat: t.cat, heure: t.heure || "", titre: `Entraînement ${t.cat}${t.theme ? " · " + t.theme : ""}`, ref: t, kind: "entrainement" }); });
+    (db.reunions || []).forEach((r) => { if (r.date) evs.push({ date: r.date, type: "reunion", heure: r.heure || "", titre: r.objet || "Réunion", lieu: r.lieu, ref: r, kind: "reunion" }); });
+    (db.tournois || []).forEach((to) => { if (to.date) evs.push({ date: to.date, type: "tournoi", cat: to.cat, heure: "", titre: `Tournoi · ${to.nom}`, lieu: to.lieu, ref: to, kind: "tournoi" }); });
+    return evs;
+  }, [db]);
+
+  const evVisibles = evenements.filter((e) => filtres[e.type]);
+  const toggle = (t) => setFiltres((o) => ({ ...o, [t]: !o[t] }));
+  const evDe = (dstr) => evVisibles.filter((e) => e.date === dstr).sort((a, b) => (a.heure || "99").localeCompare(b.heure || "99"));
+  const [edit, setEdit] = useState(null);
+  const saveEvt = (coll, obj) => { mutate((d) => { d[coll] = d[coll] || []; const i = d[coll].findIndex((x) => x.id === obj.id); if (i >= 0) d[coll][i] = obj; else d[coll].push(obj); return d; }); setEdit(null); };
+  const delEvt = (coll, id) => { mutate((d) => { d[coll] = (d[coll] || []).filter((x) => x.id !== id); return d; }); setEdit(null); };
+
+  const naviguer = (sens) => { const d = new Date(ref); if (vue === "mois") d.setMonth(d.getMonth() + sens); else if (vue === "semaine") d.setDate(d.getDate() + 7 * sens); else d.setDate(d.getDate() + sens); setRef(d); };
+
+  const lundiDe = (d) => { const x = new Date(d); x.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return x; };
+  const capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  let titrePeriode = "";
+  if (vue === "mois") titrePeriode = `${capital(MOIS_FR[ref.getMonth()])} ${ref.getFullYear()}`;
+  else if (vue === "semaine") { const lu = lundiDe(ref); const di = new Date(lu); di.setDate(lu.getDate() + 6); titrePeriode = `${lu.getDate()} ${MOIS_FR[lu.getMonth()].slice(0, 4)}. au ${di.getDate()} ${MOIS_FR[di.getMonth()].slice(0, 4)}.`; }
+  else titrePeriode = capital(new Date(fmtISO(ref) + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }));
+
+  const CarteEv = ({ e }) => (
+    <Card onClick={peutValider ? () => setEdit({ kind: e.kind, obj: e.ref }) : undefined}>
+      <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+        <div style={{ width: 5, alignSelf: "stretch", minHeight: 34, borderRadius: 999, background: COULEURS_EV[e.type], flex: "0 0 auto" }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>{e.titre}</div>
+          <div style={{ fontSize: 12, color: C.gris, marginTop: 2 }}>{LABELS_EV[e.type].replace(/s$/, "")}{e.heure ? ` · ${e.heure}` : ""}{e.lieu ? ` · ${e.lieu}` : ""}</div>
+        </div>
+        {peutValider && <Edit3 size={16} color={C.gris} style={{ flex: "0 0 auto" }} />}
+      </div>
+    </Card>
+  );
+
+  // Vue MOIS
+  const premier = new Date(ref.getFullYear(), ref.getMonth(), 1);
+  const decalage = (premier.getDay() + 6) % 7;
+  const nbJours = new Date(ref.getFullYear(), ref.getMonth() + 1, 0).getDate();
+  const cases = [];
+  for (let i = 0; i < decalage; i++) cases.push(null);
+  for (let j = 1; j <= nbJours; j++) cases.push(`${ref.getFullYear()}-${pad(ref.getMonth() + 1)}-${pad(j)}`);
+  const refStr = fmtISO(ref);
+
+  // Vue SEMAINE
+  const lu = lundiDe(ref);
+  const joursSem = [0, 1, 2, 3, 4, 5, 6].map((i) => { const d = new Date(lu); d.setDate(lu.getDate() + i); return fmtISO(d); });
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+      <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "16px 16px 14px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
+        <div style={{ fontWeight: 800, fontSize: 16 }}>Calendrier du club</div>
+      </header>
+
+      <div style={{ padding: "12px 14px", background: "#fff", borderBottom: `1px solid ${C.grisClair}`, display: "flex", flexDirection: "column", gap: 10 }}>
+        <Sel value={vue} onChange={(e) => setVue(e.target.value)}>
+          <option value="mois">Vue par mois</option>
+          <option value="semaine">Vue par semaine</option>
+          <option value="jour">Vue par jour</option>
+        </Sel>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+          {Object.keys(LABELS_EV).map((t) => (
+            <button key={t} onClick={() => toggle(t)} style={{
+              border: "none", cursor: "pointer", borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 700,
+              display: "inline-flex", alignItems: "center", gap: 6,
+              background: filtres[t] ? COULEURS_EV[t] : "#EEF2F8", color: filtres[t] ? "#fff" : C.gris,
+            }}><span style={{ width: 8, height: 8, borderRadius: 999, background: filtres[t] ? "#fff" : COULEURS_EV[t] }} /> {LABELS_EV[t]}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflow: "auto", padding: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 8 }}>
+          <button onClick={() => naviguer(-1)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", borderRadius: 10, width: 36, height: 36, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={18} color={C.bleu} /></button>
+          <div style={{ fontWeight: 800, fontSize: 15.5, color: C.encre, textAlign: "center", flex: 1 }}>{titrePeriode}</div>
+          <button onClick={() => naviguer(1)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", borderRadius: 10, width: 36, height: 36, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={18} color={C.bleu} style={{ transform: "rotate(180deg)" }} /></button>
+        </div>
+
+        {vue === "mois" && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 4 }}>
+              {["L", "M", "M", "J", "V", "S", "D"].map((j, i) => <div key={i} style={{ textAlign: "center", fontSize: 11, fontWeight: 800, color: C.gris, padding: "2px 0" }}>{j}</div>)}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+              {cases.map((dstr, i) => {
+                if (!dstr) return <div key={i} />;
+                const evs = evVisibles.filter((e) => e.date === dstr);
+                const types = [...new Set(evs.map((e) => e.type))];
+                const estSel = dstr === refStr, estAuj = dstr === todayStr;
+                return (
+                  <button key={i} onClick={() => setRef(new Date(dstr + "T00:00:00"))} style={{
+                    border: estSel ? `2px solid ${C.bleu}` : `1px solid ${C.grisClair}`, background: estAuj ? "#EEF2F8" : "#fff",
+                    borderRadius: 10, minHeight: 46, padding: "4px 2px", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                  }}>
+                    <span style={{ fontSize: 12.5, fontWeight: estAuj ? 900 : 600, color: estAuj ? C.bleu : C.encre }}>{+dstr.slice(-2)}</span>
+                    <span style={{ display: "flex", gap: 2, flexWrap: "wrap", justifyContent: "center" }}>
+                      {types.slice(0, 4).map((t) => <span key={t} style={{ width: 6, height: 6, borderRadius: 999, background: COULEURS_EV[t] }} />)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8, textTransform: "capitalize" }}>{new Date(refStr + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}</div>
+              {evDe(refStr).length === 0 ? <div style={{ fontSize: 13.5, color: C.gris }}>Aucun événement ce jour.</div> : <div style={{ display: "grid", gap: 9 }}>{evDe(refStr).map((e, i) => <CarteEv key={i} e={e} />)}</div>}
+            </div>
+          </>
+        )}
+
+        {vue === "semaine" && (
+          <div style={{ display: "grid", gap: 14 }}>
+            {joursSem.map((dstr) => {
+              const evs = evDe(dstr);
+              const estAuj = dstr === todayStr;
+              return (
+                <div key={dstr}>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: estAuj ? C.bleu : C.encre, textTransform: "capitalize", marginBottom: 7 }}>{new Date(dstr + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}</div>
+                  {evs.length === 0 ? <div style={{ fontSize: 12.5, color: C.grisClair, paddingLeft: 2 }}>Rien de prévu</div> : <div style={{ display: "grid", gap: 8 }}>{evs.map((e, i) => <CarteEv key={i} e={e} />)}</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {vue === "jour" && (
+          <div>
+            {evDe(refStr).length === 0 ? <Empty icon={<CalendarDays size={26} color={C.gris} />} text="Aucun événement ce jour" sub="Change de jour avec les flèches" /> : <div style={{ display: "grid", gap: 9 }}>{evDe(refStr).map((e, i) => <CarteEv key={i} e={e} />)}</div>}
+          </div>
+        )}
+      </div>
+
+      {edit && edit.kind === "match" && <EditMatch match={edit.obj} onClose={() => setEdit(null)} onSave={(m) => saveEvt("matches", m)} />}
+      {edit && edit.kind === "entrainement" && <EditSeance seance={edit.obj} players={(db.players || []).filter((p) => p.cat === edit.obj.cat)} onClose={() => setEdit(null)} onSave={(s) => saveEvt("trainings", s)} />}
+      {edit && edit.kind === "reunion" && <EditReunion reunion={edit.obj} educateurs={db.acces || []} onClose={() => setEdit(null)} onSave={(r) => saveEvt("reunions", r)} onDelete={() => delEvt("reunions", edit.obj.id)} />}
+      {edit && edit.kind === "tournoi" && <EditTournoi tournoi={edit.obj} onClose={() => setEdit(null)} onSave={(t) => saveEvt("tournois", t)} onDelete={() => delEvt("tournois", edit.obj.id)} />}
+    </div>
+  );
+}
+
 function Detection({ cat, db, mutate }) {
   const [edit, setEdit] = useState(null);
   const liste = db.scouting.filter((s) => s.cat === cat).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -3474,7 +4981,7 @@ function Detection({ cat, db, mutate }) {
       )}
 
       {edit && <EditDetection fiche={edit} onClose={() => setEdit(null)}
-        onSave={(s) => { mutate((d) => { s.id ? (d.scouting[d.scouting.findIndex((x) => x.id === s.id)] = s) : d.scouting.push({ ...s, id: uid(), date: new Date().toISOString().slice(0, 10) }); return d; }); setEdit(null); }}
+        onSave={(s) => { mutate((d) => { s.id ? (d.scouting[d.scouting.findIndex((x) => x.id === s.id)] = s) : d.scouting.push({ ...s, id: uid(), date: hoyISO() }); return d; }); setEdit(null); }}
         onDelete={edit.id ? () => { mutate((d) => { d.scouting = d.scouting.filter((x) => x.id !== edit.id); return d; }); setEdit(null); } : null} />}
     </div>
   );
