@@ -1274,13 +1274,7 @@ export default function App() {
   }, [demo]);
 
   useEffect(() => {
-    if (demo || !session) return;
-    let annule = false;
-    (async () => {
-      try { const rd = await loadCat("__REUNIONS__"); if (!annule) setReunionsDb({ reunions: rd.reunions || [], acces: rd.acces || [] }); }
-      catch (e) { if (!annule) setReunionsDb({ reunions: [], acces: [] }); }
-    })();
-    return () => { annule = true; };
+    return;
   }, [session, demo]);
 
   function mutate(fn) {
@@ -1319,9 +1313,9 @@ export default function App() {
 
   const catInfo = CATEGORIES.find((c) => c.id === cat);
   const players = db.players.filter((p) => p.cat === cat);
-  const reunionsSource = demo ? ((db && db.reunions) || []) : ((reunionsDb && reunionsDb.reunions) || []);
-  const mutateReu = demo ? mutate : mutateReunions;
-  const accesSource = demo ? ((db && db.acces) || []) : ((reunionsDb && reunionsDb.acces) || []);
+  const reunionsSource = (db && db.reunions) || [];
+  const mutateReu = mutate;
+  const accesSource = (db && db.acces) || [];
   const cats = demo ? CATEGORIES.map((c) => c.id) : profil.cats;
   const sousTitre = demo ? "" : (profil && profil.role === "direction" ? " · DIRECTION" : "");
   const peutValider = demo || (profil && (profil.role === "responsable" || profil.role === "direction"));
