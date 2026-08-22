@@ -787,6 +787,17 @@ async function saveCat(cat, blob, userId) {
   const { error } = await sb.from("categorie_data").upsert({ categorie: cat, data: blob, maj_le: new Date().toISOString(), maj_par: userId });
   if (error) throw error;
 }
+async function loadReunions() {
+  const sb = await getSupabase();
+  const { data, error } = await sb.from("club_reunions").select("data").eq("id", 1).maybeSingle();
+  if (error) throw error;
+  return (data && data.data && Array.isArray(data.data.reunions)) ? data.data.reunions : [];
+}
+async function saveReunions(reunions) {
+  const sb = await getSupabase();
+  const { error } = await sb.from("club_reunions").upsert({ id: 1, data: { reunions } });
+  if (error) throw error;
+}
 
 const DEMO_KEY = "fcsm-demo-db";
 async function loadLocal() {
@@ -1203,6 +1214,8 @@ export default function App() {
   const [cat, setCat] = useState(null);
   const [tab, setTab] = useState("accueil");
   const [db, setDb] = useState(null);
+  const [reunionsClub, setReunionsClub] = useState(null);
+  const [reunionsErr, setReunionsErr] = useState(null);
   const [showScores, setShowScores] = useState(false);
   const [showDemandes, setShowDemandes] = useState(false);
   const [showClassement, setShowClassement] = useState(false);
@@ -1272,6 +1285,14 @@ export default function App() {
     return () => { annule = true; };
   }, [demo]);
 
+  useEffect(() => {
+    if (demo || !session) return;
+    let annule = false;
+    loadReunions().then((r) => { if (!annule) { setReunionsClub(r); setReunionsErr(null); } })
+      .catch((e) => { if (!annule) { setReunionsClub([]); setReunionsErr(e.message || String(e)); } });
+    return () => { annule = true; };
+  }, [session, demo]);
+
   function mutate(fn) {
     setDb((prev) => {
       const next = fn(structuredClone(prev));
@@ -1279,6 +1300,16 @@ export default function App() {
       else { cacheRef.current[cat] = next; if (session && cat) saveCat(cat, next, session.user.id).catch((e) => console.error("Sauvegarde:", e)); }
       return next;
     });
+  }
+
+  async function mutateReunions(fn) {
+    if (!session) return;
+    let base;
+    try { base = await loadReunions(); } catch (e) { base = reunionsClub || []; }
+    const next = fn(structuredClone({ reunions: base }));
+    setReunionsClub(next.reunions || []);
+    try { await saveReunions(next.reunions || []); setReunionsErr(null); }
+    catch (e) { setReunionsErr(e.message || String(e)); }
   }
 
   async function deconnexion() {
@@ -1298,8 +1329,8 @@ export default function App() {
 
   const catInfo = CATEGORIES.find((c) => c.id === cat);
   const players = db.players.filter((p) => p.cat === cat);
-  const reunionsSource = (db && db.reunions) || [];
-  const mutateReu = mutate;
+  const reunionsSource = demo ? ((db && db.reunions) || []) : (reunionsClub || []);
+  const mutateReu = demo ? mutate : mutateReunions;
   const accesSource = (db && db.acces) || [];
   const cats = demo ? CATEGORIES.map((c) => c.id) : profil.cats;
   const sousTitre = demo ? "" : (profil && profil.role === "direction" ? " · DIRECTION" : "");
@@ -1437,7 +1468,7 @@ export default function App() {
       {showDocs && <DocumentsAdmin players={players} cat={cat} onClose={() => setShowDocs(false)} />}
       {showBilan && <BilanEquipe db={db} players={players} cat={cat} onClose={() => setShowBilan(false)} onTournois={() => setShowTournois(true)} />}
       {showTournois && <Tournois db={db} mutate={mutate} cat={cat} onClose={() => setShowTournois(false)} />}
-      {showReunions && <Reunions db={{ reunions: reunionsSource, acces: accesSource }} mutate={mutateReu} onClose={() => setShowReunions(false)} />}
+      {showReunions && <Reunions db={{ reunions: reunionsSource, acces: accesSource }} mutate={mutateReu} erreur={demo ? null : reunionsErr} onClose={() => setShowReunions(false)} />}
       {showCalendrier && <Calendrier db={{ ...db, reunions: reunionsSource }} mutate={mutate} mutateReunions={mutateReu} peutValider={peutValider} onClose={() => setShowCalendrier(false)} />}
     </div>
   );
@@ -4690,7 +4721,7 @@ function ModalReponse({ participant, onClose, onSave }) {
   );
 }
 
-function Reunions({ db, mutate, onClose }) {
+function Reunions({ db, mutate, erreur, onClose }) {
   const [edit, setEdit] = useState(null);
   const [selId, setSelId] = useState(null);
   const [rep, setRep] = useState(null);
@@ -4737,6 +4768,7 @@ function Reunions({ db, mutate, onClose }) {
       {!sel ? (
         <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
           <Btn variant="accent" full style={{ marginBottom: 16 }} onClick={() => setEdit({})}><Plus size={16} /> Programmer une réunion</Btn>
+          {erreur ? <div style={{ background: "#FBE3E3", border: `1px solid ${C.rouge}`, color: C.rouge, borderRadius: 10, padding: 10, fontSize: 12.5, marginBottom: 12 }}>Souci de connexion aux réunions communes : {erreur}</div> : null}
           {toutes.length === 0 ? (
             <Empty icon={<CalendarDays size={26} color={C.gris} />} text="Aucune réunion programmée" sub="Programme une réunion et convie les personnes concernées" />
           ) : (
