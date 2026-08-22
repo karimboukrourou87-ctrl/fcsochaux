@@ -4054,8 +4054,10 @@ function Planning({ db, mutate, cats, profil, peutValider, onClose }) {
 }
 
 
+const FONCTIONS = ["Éducateur", "Dirigeant", "Responsable", "Manager général", "Directeur du centre"];
+const ORDRE_FONCTIONS = ["Directeur du centre", "Manager général", "Responsable", "Dirigeant", "Éducateur"];
 function EditAcces({ educateur, onClose, onSave, onDelete }) {
-  const [f, setF] = useState({ nom: "", email: "", role: "educateur", categories: [], ...educateur });
+  const [f, setF] = useState({ nom: "", email: "", role: "educateur", fonction: "Éducateur", categories: [], ...educateur });
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
   const sel = f.categories || [];
   const toggleCat = (id) => set("categories", sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]);
@@ -4066,6 +4068,11 @@ function EditAcces({ educateur, onClose, onSave, onDelete }) {
       footer={<><Btn variant="accent" full disabled={!f.nom.trim()} onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{educateur.id && onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}</>}>
       <Field label="Nom et prénom"><Inp value={f.nom} onChange={(e) => set("nom", e.target.value)} placeholder="Nom et prénom" /></Field>
       <Field label="Adresse email"><Inp type="email" value={f.email} onChange={(e) => set("email", e.target.value)} placeholder="prenom.nom@club.fr" /></Field>
+      <Field label="Fonction dans le club">
+        <Sel value={f.fonction || "Éducateur"} onChange={(e) => set("fonction", e.target.value)}>
+          {FONCTIONS.map((fn) => <option key={fn}>{fn}</option>)}
+        </Sel>
+      </Field>
       <Field label="Rôle">
         <div style={{ display: "flex", gap: 8 }}>
           {[["educateur", "Éducateur"], ["admin", "Administrateur"]].map(([v, lab]) => (
@@ -4602,7 +4609,7 @@ function EditReunion({ reunion, educateurs, onClose, onSave, onDelete }) {
   };
   const retirer = (id) => set("participants", (f.participants || []).filter((p) => p.id !== id));
   const educsDispo = (educateurs || []).filter((e) => e.nom && !(f.participants || []).some((p) => p.nom === e.nom));
-  const ajouterEduc = (ed) => { const cats = (ed.categories || []); const q = cats.length ? `Éducateur (${cats.join(", ")})` : "Éducateur"; set("participants", [...(f.participants || []), { id: uid(), nom: ed.nom, qualite: q, reponse: "attente", motif: "" }]); };
+  const ajouterEduc = (ed) => { const cats = (ed.categories || []); const fn = ed.fonction || "Éducateur"; const q = (fn === "Éducateur" && cats.length) ? `Éducateur (${cats.join(", ")})` : fn; set("participants", [...(f.participants || []), { id: uid(), nom: ed.nom, qualite: q, reponse: "attente", motif: "" }]); };
 
   return (
     <Modal title={reunion.id ? "Modifier la réunion" : "Programmer une réunion"} onClose={onClose}
@@ -4618,10 +4625,14 @@ function EditReunion({ reunion, educateurs, onClose, onSave, onDelete }) {
 
       <div style={{ fontWeight: 800, color: C.bleu, margin: "8px 0" }}>Personnes conviées</div>
       {educsDispo.length > 0 && (
-        <Field label="Éducateurs du club">
+        <Field label="Membres du club">
           <Sel value="" onChange={(e) => { const ed = (educateurs || []).find((x) => x.id === e.target.value); if (ed) ajouterEduc(ed); }}>
-            <option value="">Choisir un éducateur à convier</option>
-            {educsDispo.map((ed) => <option key={ed.id} value={ed.id}>{ed.nom}{ed.role === "admin" ? " (administrateur)" : (ed.categories && ed.categories.length ? ` (${ed.categories.join(", ")})` : "")}</option>)}
+            <option value="">Choisir une personne à convier</option>
+            {ORDRE_FONCTIONS.map((fn) => {
+              const membres = educsDispo.filter((ed) => (ed.fonction || "Éducateur") === fn);
+              if (!membres.length) return null;
+              return <optgroup key={fn} label={fn}>{membres.map((ed) => <option key={ed.id} value={ed.id}>{ed.nom}{fn === "Éducateur" && ed.categories && ed.categories.length ? ` (${ed.categories.join(", ")})` : ""}</option>)}</optgroup>;
+            })}
           </Sel>
         </Field>
       )}
@@ -4650,17 +4661,17 @@ function ModalReponse({ participant, onClose, onSave }) {
   const [motif, setMotif] = useState(participant.motif || "");
   return (
     <Modal title={participant.nom} onClose={onClose}
-      footer={<Btn variant="accent" full onClick={() => onSave(reponse, reponse === "absent" ? motif.trim() : "")}><Check size={16} /> Valider la réponse</Btn>}>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        {[["present", "Je serai présent"], ["absent", "Je serai absent"]].map(([v, lab]) => (
+      footer={<Btn variant="accent" full onClick={() => onSave(reponse, (reponse === "absent" || reponse === "excuse") ? motif.trim() : "")}><Check size={16} /> Valider la réponse</Btn>}>
+      <div style={{ display: "flex", gap: 7, marginBottom: 12 }}>
+        {[["present", "Présent"], ["excuse", "Excusé"], ["absent", "Absent"]].map(([v, lab]) => (
           <button key={v} onClick={() => setReponse(v)} style={{
-            flex: 1, border: "none", cursor: "pointer", borderRadius: 11, padding: "12px 6px", fontWeight: 800, fontSize: 13.5,
-            background: reponse === v ? (v === "present" ? C.vert : C.rouge) : "#EEF2F8", color: reponse === v ? "#fff" : C.gris,
+            flex: 1, border: "none", cursor: "pointer", borderRadius: 11, padding: "12px 4px", fontWeight: 800, fontSize: 13,
+            background: reponse === v ? (v === "present" ? C.vert : v === "excuse" ? "#B87A2B" : C.rouge) : "#EEF2F8", color: reponse === v ? "#fff" : C.gris,
           }}>{lab}</button>
         ))}
       </div>
-      {reponse === "absent" && (
-        <Field label="Motif du refus (facultatif)"><Inp value={motif} onChange={(e) => setMotif(e.target.value)} placeholder="Indisponible, congés... ou laisse vide" /></Field>
+      {(reponse === "absent" || reponse === "excuse") && (
+        <Field label="Motif (facultatif)"><Inp value={motif} onChange={(e) => setMotif(e.target.value)} placeholder="Indisponible, congés... ou laisse vide" /></Field>
       )}
     </Modal>
   );
@@ -4699,7 +4710,7 @@ function Reunions({ db, mutate, onClose }) {
 
   const compteReponses = (r) => {
     const ps = r.participants || [];
-    return { present: ps.filter((p) => p.reponse === "present").length, absent: ps.filter((p) => p.reponse === "absent").length, attente: ps.filter((p) => p.reponse === "attente").length };
+    return { present: ps.filter((p) => p.reponse === "present").length, excuse: ps.filter((p) => p.reponse === "excuse").length, absent: ps.filter((p) => p.reponse === "absent").length, attente: ps.filter((p) => p.reponse === "attente").length };
   };
   const dateLongue = (r) => (r.date ? new Date(r.date + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) : "") + (r.heure ? ` · ${r.heure}` : "");
 
@@ -4728,6 +4739,7 @@ function Reunions({ db, mutate, onClose }) {
                       {r.lieu ? <div style={{ fontSize: 12.5, color: C.gris }}>{r.lieu}</div> : null}
                       <div style={{ display: "flex", gap: 7, marginTop: 8, flexWrap: "wrap" }}>
                         <Pastille bg="#E2F4E9" color={C.vert}>{c.present} présents</Pastille>
+                        <Pastille bg="#FBEAD9" color="#B87A2B">{c.excuse} excusés</Pastille>
                         <Pastille bg="#FBE3E3" color={C.rouge}>{c.absent} absents</Pastille>
                         <Pastille bg={C.grisClair} color={C.gris}>{c.attente} en attente</Pastille>
                       </div>
@@ -4764,15 +4776,15 @@ function Reunions({ db, mutate, onClose }) {
           <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 8 }}>Touche une personne pour indiquer sa réponse.</div>
           <div style={{ display: "grid", gap: 8 }}>
             {(sel.participants || []).map((p) => {
-              const col = p.reponse === "present" ? C.vert : p.reponse === "absent" ? C.rouge : C.gris;
-              const bg = p.reponse === "present" ? "#E2F4E9" : p.reponse === "absent" ? "#FBE3E3" : C.grisClair;
-              const label = p.reponse === "present" ? "Présent" : p.reponse === "absent" ? "Absent" : "En attente";
+              const col = p.reponse === "present" ? C.vert : p.reponse === "absent" ? C.rouge : p.reponse === "excuse" ? "#B87A2B" : C.gris;
+              const bg = p.reponse === "present" ? "#E2F4E9" : p.reponse === "absent" ? "#FBE3E3" : p.reponse === "excuse" ? "#FBEAD9" : C.grisClair;
+              const label = p.reponse === "present" ? "Présent" : p.reponse === "absent" ? "Absent" : p.reponse === "excuse" ? "Excusé" : "En attente";
               return (
                 <Card key={p.id} onClick={() => setRep(p)}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 14 }}>{p.nom}</div>
-                      <div style={{ fontSize: 12, color: C.gris }}>{p.qualite}{p.reponse === "absent" && p.motif ? ` · ${p.motif}` : ""}</div>
+                      <div style={{ fontSize: 12, color: C.gris }}>{p.qualite}{(p.reponse === "absent" || p.reponse === "excuse") && p.motif ? ` · ${p.motif}` : ""}</div>
                     </div>
                     <Pastille bg={bg} color={col}>{label}</Pastille>
                   </div>
