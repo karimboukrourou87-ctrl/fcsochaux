@@ -287,6 +287,7 @@ function Classement({ cat, db, mutate, onClose }) {
   const url = ((db.config && db.config.classement) || {})[cat] || "";
   const [editer, setEditer] = useState(!url);
   const [val, setVal] = useState(url);
+  const [direct, setDirect] = useState((((db.config && db.config.classementDirect) || {})[cat]) || false);
   let niveau, siteSource;
   if (cat === "Ligue 2") { niveau = "Ligue 2 BKT (LFP)"; siteSource = "le site de la LFP (ligue2.fr)"; }
   else if (cat === "N3") { niveau = "National 3 (Ligue Bourgogne-Franche-Comté)"; siteSource = "le site de la Ligue (bfc.fff.fr)"; }
@@ -304,6 +305,8 @@ function Classement({ cat, db, mutate, onClose }) {
       d.config = d.config || {};
       d.config.classement = d.config.classement || {};
       if (u) d.config.classement[cat] = u; else delete d.config.classement[cat];
+      d.config.classementDirect = d.config.classementDirect || {};
+      if (u && direct) d.config.classementDirect[cat] = true; else delete d.config.classementDirect[cat];
       return d;
     });
     setEditer(false);
@@ -324,7 +327,16 @@ function Classement({ cat, db, mutate, onClose }) {
           <Field label="Lien du classement (widget FFF)">
             <Inp value={val} onChange={(e) => setVal(e.target.value)} placeholder="https://www.fff.fr/score-en-direct/..." />
           </Field>
+          <label style={{ display: "flex", alignItems: "center", gap: 9, margin: "2px 0 12px", fontSize: 13, color: C.encre, cursor: "pointer" }}>
+            <input type="checkbox" checked={direct} onChange={(e) => setDirect(e.target.checked)} style={{ width: 17, height: 17 }} />
+            Ouvrir directement dans le navigateur (utile si le tableau ne s'affiche pas ici)
+          </label>
           {url && <Btn variant="ghost" size="sm" onClick={() => setEditer(false)}>Annuler</Btn>}
+        </>
+      ) : direct ? (
+        <>
+          <div style={{ fontSize: 13, color: C.encre, background: "#F4F7FB", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 12, marginBottom: 12, lineHeight: 1.5 }}>Le classement de cette catégorie s'ouvre directement dans le navigateur. Il vient de s'ouvrir dans un onglet. Touche le bouton ci-dessous pour le rouvrir.</div>
+          <Btn variant="accent" full onClick={() => window.open(url, "_blank", "noopener")}><ExternalLink size={16} /> Ouvrir le classement</Btn>
         </>
       ) : (
         <>
@@ -1380,7 +1392,7 @@ export default function App() {
       </header>
 
       <main style={{ maxWidth: 760, margin: "0 auto", padding: 16 }}>
-        {tab === "accueil" && <Accueil db={db} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => setShowClassement(true)} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={() => setShowSauvegarde(true)} onPlanning={() => setShowPlanning(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onBilan={() => setShowBilan(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} />}
+        {tab === "accueil" && <Accueil db={db} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) window.open(u, "_blank", "noopener"); setShowClassement(true); }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={() => setShowSauvegarde(true)} onPlanning={() => setShowPlanning(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onBilan={() => setShowBilan(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "compo" && <Compo players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} />}
