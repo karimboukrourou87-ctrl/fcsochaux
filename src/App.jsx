@@ -129,7 +129,8 @@ function FormTransport({ onSubmit, onClose }) {
       )}
       {mode === "Bus en location" && (
         <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Loueur</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 2 }}>Loueur</div>
+            <div style={{ fontSize: 11.5, color: "#B87A2B", fontWeight: 600, marginBottom: 6, lineHeight: 1.4 }}>ADJ en priorité (contrat du club). Choisir Hertz seulement si ADJ n'est pas disponible.</div>
           <div style={{ display: "flex", gap: 8 }}>
             {LOUEURS.map((l) => {
               const on = loueur === l;
@@ -290,7 +291,7 @@ function Classement({ cat, db, mutate, onClose }) {
   const [direct, setDirect] = useState((((db.config && db.config.classementDirect) || {})[cat]) || false);
   let niveau, siteSource;
   if (cat === "Ligue 2") { niveau = "Ligue 2 BKT (LFP)"; siteSource = "le site de la LFP (ligue2.fr)"; }
-  else if (cat === "N3") { niveau = "National 3 (Ligue Bourgogne-Franche-Comté)"; siteSource = "le site de la Ligue (bfc.fff.fr)"; }
+  else if (cat === "N2") { niveau = "National 2 (FFF)"; siteSource = "le site de la FFF (fff.fr)"; }
   else if (cat === "U17 NAT" || cat === "U19 NAT") { niveau = "Championnat National (FFF)"; siteSource = "le site de la FFF (fff.fr)"; }
   else if (cat === "U19F NAT") { niveau = "Championnat National U19 Féminin (FFF)"; siteSource = "le site de la FFF (fff.fr)"; }
   else if (cat === "SENIORS F") { niveau = "Championnat Séniors Féminines (FFF / Ligue)"; siteSource = "le site de la FFF ou de la Ligue (bfc.fff.fr)"; }
@@ -590,7 +591,7 @@ const CATEGORIES = [
   { id: "6e/5e", type: 8, college: "Collège Hautes Vignes", groupe: "École de foot" },
   { id: "4e/3e", type: 8, college: "Collège Hautes Vignes", groupe: "Pré-formation" },
   { id: "U17 NAT", type: 11, groupe: "Formation" }, { id: "U19 NAT", type: 11, groupe: "Formation" },
-  { id: "N3", type: 11, groupe: "Formation" }, { id: "Ligue 2", type: 11, groupe: "PRO" },
+  { id: "N2", type: 11, groupe: "Formation" }, { id: "Ligue 2", type: 11, groupe: "PRO" },
   { id: "Foot loisirs", type: 11, groupe: "Loisirs" },
   { id: "U7F", type: 4, groupe: "Féminines" }, { id: "U8F", type: 5, groupe: "Féminines" }, { id: "U9F", type: 8, groupe: "Féminines" }, { id: "U10F", type: 8, groupe: "Féminines" },
   { id: "U11F", type: 8, groupe: "Féminines" }, { id: "U13F", type: 8, groupe: "Féminines" }, { id: "U15F", type: 11, groupe: "Féminines" },
@@ -601,8 +602,8 @@ const CATEGORIES = [
 const VOISINS_SPECIAUX = {
   "U17 NAT": ["U15"],
   "U19 NAT": ["U17 NAT"],
-  "N3": ["U19 NAT"],
-  "Ligue 2": ["N3"],
+  "N2": ["U19 NAT"],
+  "Ligue 2": ["N2"],
   "U18F": ["U15F"],
   "U19F NAT": ["U18F"],
   "SENIORS F": ["U19F NAT"],
@@ -669,6 +670,34 @@ const FORMATIONS = {
       { l: "DG", x: 35, y: 71 }, { l: "DD", x: 65, y: 71 },
       { l: "MG", x: 15, y: 45 }, { l: "MIG", x: 39, y: 43 }, { l: "MID", x: 61, y: 43 }, { l: "MD", x: 85, y: 45 },
       { l: "AT", x: 50, y: 15 },
+    ],
+  },
+  9: {
+    "3-3-2": [
+      { l: "G", x: 50, y: 91 },
+      { l: "DG", x: 24, y: 74 }, { l: "DC", x: 50, y: 77 }, { l: "DD", x: 76, y: 74 },
+      { l: "MG", x: 26, y: 52 }, { l: "MC", x: 50, y: 42 }, { l: "MD", x: 74, y: 52 },
+      { l: "AG", x: 36, y: 20 }, { l: "AD", x: 64, y: 20 },
+    ],
+    "4-3-1": [
+      { l: "G", x: 50, y: 91 },
+      { l: "DG", x: 16, y: 74 }, { l: "DCG", x: 39, y: 77 }, { l: "DCD", x: 61, y: 77 }, { l: "DD", x: 84, y: 74 },
+      { l: "MG", x: 26, y: 52 }, { l: "MC", x: 50, y: 42 }, { l: "MD", x: 74, y: 52 },
+      { l: "AT", x: 50, y: 18 },
+    ],
+  },
+  10: {
+    "1-4-3-2": [
+      { l: "G", x: 50, y: 92 },
+      { l: "DG", x: 16, y: 73 }, { l: "DCG", x: 39, y: 76 }, { l: "DCD", x: 61, y: 76 }, { l: "DD", x: 84, y: 73 },
+      { l: "MG", x: 28, y: 52 }, { l: "MC", x: 50, y: 37 }, { l: "MD", x: 72, y: 52 },
+      { l: "AG", x: 35, y: 18 }, { l: "AD", x: 65, y: 18 },
+    ],
+    "1-4-2-3": [
+      { l: "G", x: 50, y: 92 },
+      { l: "DG", x: 16, y: 73 }, { l: "DCG", x: 39, y: 76 }, { l: "DCD", x: 61, y: 76 }, { l: "DD", x: 84, y: 73 },
+      { l: "MC", x: 38, y: 52 }, { l: "MC", x: 62, y: 52 },
+      { l: "AG", x: 28, y: 37 }, { l: "AC", x: 50, y: 22 }, { l: "AD", x: 72, y: 37 },
     ],
   },
   11: {
@@ -803,14 +832,14 @@ const DEMO_KEY = "fcsm-demo-db";
 async function loadLocal() {
   try {
     if (typeof window !== "undefined" && window.storage) {
-      const r = await window.storage.get(DEMO_KEY, true);
+      const r = await window.storage.get(DEMO_KEY, false);
       if (r && r.value) return { ...EMPTY_DB, ...JSON.parse(r.value) };
     }
   } catch (e) { /* premier lancement */ }
   return { ...EMPTY_DB };
 }
 async function saveLocal(db) {
-  try { if (typeof window !== "undefined" && window.storage) await window.storage.set(DEMO_KEY, JSON.stringify(db), true); }
+  try { if (typeof window !== "undefined" && window.storage) await window.storage.set(DEMO_KEY, JSON.stringify(db), false); }
   catch (e) { /* indisponible */ }
 }
 
@@ -1216,6 +1245,7 @@ export default function App() {
   const [db, setDb] = useState(null);
   const [reunionsClub, setReunionsClub] = useState(null);
   const [reunionsErr, setReunionsErr] = useState(null);
+  const [saveStatus, setSaveStatus] = useState(null);
   const [showScores, setShowScores] = useState(false);
   const [showDemandes, setShowDemandes] = useState(false);
   const [showClassement, setShowClassement] = useState(false);
@@ -1226,6 +1256,7 @@ export default function App() {
   const [showAcces, setShowAcces] = useState(false);
   const [showProgramme, setShowProgramme] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
+  const [showSuivi, setShowSuivi] = useState(false);
   const [showBilan, setShowBilan] = useState(false);
   const [showTournois, setShowTournois] = useState(false);
   const [showReunions, setShowReunions] = useState(false);
@@ -1293,23 +1324,34 @@ export default function App() {
     return () => { annule = true; };
   }, [session, demo]);
 
+  useEffect(() => {
+    if (saveStatus === "ok") { const t = setTimeout(() => setSaveStatus(null), 2000); return () => clearTimeout(t); }
+  }, [saveStatus]);
+
   function mutate(fn) {
     setDb((prev) => {
       const next = fn(structuredClone(prev));
       if (demo) { saveLocal(next); }
-      else { cacheRef.current[cat] = next; if (session && cat) saveCat(cat, next, session.user.id).catch((e) => console.error("Sauvegarde:", e)); }
+      else {
+        cacheRef.current[cat] = next;
+        if (session && cat) {
+          setSaveStatus("saving");
+          saveCat(cat, next, session.user.id).then(() => setSaveStatus("ok")).catch((e) => { console.error("Sauvegarde:", e); setSaveStatus("error"); });
+        }
+      }
       return next;
     });
   }
 
   async function mutateReunions(fn) {
     if (!session) return;
+    setSaveStatus("saving");
     let base;
     try { base = await loadReunions(); } catch (e) { base = reunionsClub || []; }
     const next = fn(structuredClone({ reunions: base }));
     setReunionsClub(next.reunions || []);
-    try { await saveReunions(next.reunions || []); setReunionsErr(null); }
-    catch (e) { setReunionsErr(e.message || String(e)); }
+    try { await saveReunions(next.reunions || []); setReunionsErr(null); setSaveStatus("ok"); }
+    catch (e) { setReunionsErr(e.message || String(e)); setSaveStatus("error"); }
   }
 
   async function deconnexion() {
@@ -1426,7 +1468,7 @@ export default function App() {
       </header>
 
       <main style={{ maxWidth: 760, margin: "0 auto", padding: 16 }}>
-        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) window.open(u, "_blank", "noopener"); setShowClassement(true); }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={() => setShowSauvegarde(true)} onPlanning={() => setShowPlanning(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onBilan={() => setShowBilan(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
+        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) window.open(u, "_blank", "noopener"); setShowClassement(true); }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={() => setShowSauvegarde(true)} onPlanning={() => setShowPlanning(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onBilan={() => setShowBilan(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "compo" && <Compo players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} />}
@@ -1456,6 +1498,15 @@ export default function App() {
         </div>
       </nav>
 
+      {saveStatus && !demo && (
+        <div style={{ position: "fixed", bottom: 88, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 45, padding: "0 16px", pointerEvents: "none" }}>
+          <div style={{ pointerEvents: "auto", maxWidth: 400, background: saveStatus === "error" ? C.rouge : saveStatus === "ok" ? C.vert : C.bleu, color: "#fff", borderRadius: 12, padding: "10px 16px", fontSize: 13, fontWeight: 700, boxShadow: "0 4px 14px rgba(0,0,0,0.22)", display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ flex: 1 }}>{saveStatus === "saving" ? "Enregistrement en cours..." : saveStatus === "ok" ? "Enregistré" : "Échec de l'enregistrement. Vérifie ta connexion et réessaie."}</span>
+            {saveStatus === "error" && <span onClick={() => setSaveStatus(null)} style={{ cursor: "pointer", textDecoration: "underline", flex: "0 0 auto" }}>OK</span>}
+          </div>
+        </div>
+      )}
+
       {showScores && <ScoresWeekend onClose={() => setShowScores(false)} localDb={demo ? db : null} />}
       {showDemandes && <Demandes demo={demo} db={db} mutate={mutate} cat={cat} session={session} onClose={() => setShowDemandes(false)} />}
       {showClassement && <Classement cat={cat} db={db} mutate={mutate} onClose={() => setShowClassement(false)} />}
@@ -1466,6 +1517,7 @@ export default function App() {
       {showAcces && <AccesSecteurs db={{ acces: accesSource }} mutate={mutateReu} estAdmin={estAdmin} onClose={() => setShowAcces(false)} />}
       {showProgramme && <ProgrammeSemaine db={db} onClose={() => setShowProgramme(false)} />}
       {showDocs && <DocumentsAdmin players={players} cat={cat} onClose={() => setShowDocs(false)} />}
+      {showSuivi && <SuiviMedical db={db} mutate={mutate} cat={cat} onClose={() => setShowSuivi(false)} />}
       {showBilan && <BilanEquipe db={db} players={players} cat={cat} onClose={() => setShowBilan(false)} onTournois={() => setShowTournois(true)} />}
       {showTournois && <Tournois db={db} mutate={mutate} cat={cat} onClose={() => setShowTournois(false)} />}
       {showReunions && <Reunions db={{ reunions: reunionsSource, acces: accesSource }} mutate={mutateReu} erreur={demo ? null : reunionsErr} onClose={() => setShowReunions(false)} />}
@@ -1662,7 +1714,7 @@ function ScoresWeekend({ onClose, localDb }) {
 /* ============================================================
    Accueil
    ============================================================ */
-function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onAcces, onProgramme, onDocuments, onBilan, onReunions, onCalendrier, monEmail }) {
+function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onAcces, onProgramme, onDocuments, onSuivi, onBilan, onReunions, onCalendrier, monEmail }) {
   const players = db.players.filter((p) => p.cat === cat);
   const d0 = new Date();
   const todayStr = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
@@ -1676,6 +1728,13 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
   }).length;
 
   const alerteDocs = players.filter((p) => p.licenceStatut !== "Valide" || statutMedical(p).urgence > 0).length;
+  const mutHors = players.filter((p) => typeMutation(p) === "hors").length;
+  const limMutHors = limiteHorsPeriode(cat);
+  const alerteMutation = mutHors > limMutHors ? mutHors : 0;
+  const suspendus = players.filter((p) => estSuspendu(p)).length;
+  const aRisqueSusp = players.filter((p) => risqueSuspension(p, db, cat).alerte).length;
+  const dans7 = addDays(todayStr, 7);
+  const retourProche = (db.injuries || []).filter((i) => !i.fini && i.dateRetour && i.dateRetour <= dans7 && players.some((p) => p.id === i.joueurId)).length;
   const alerteReunions = (db.reunions || []).filter((r) => (r.date || "") >= todayStr && (r.participants || []).some((p) => (p.email || "").toLowerCase() === (monEmail || "").toLowerCase() && p.email)).length;
 
   const cartes = [
@@ -1686,6 +1745,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
     { titre: "Organisation des matchs", sous: "Terrain, vestiaires, transport et encadrement", icon: MapPin, action: onOrganisation, badge: nbOrga },
     { titre: "Programme de la semaine", sous: "Récapitulatif des matchs à imprimer", icon: ClipboardList, action: onProgramme },
     { titre: "Documents administratifs", sous: "Licences et contrôle médical à surveiller", icon: ShieldAlert, action: onDocuments, badge: alerteDocs },
+    { titre: "Suivi médical", sous: "Blessés pris en charge par l'équipe médicale du club", icon: Activity, action: onSuivi },
     { titre: "Bilan de saison de l'équipe", sous: "Résultats, buteurs et passeurs de la saison", icon: Trophy, action: onBilan },
     { titre: "Réunions", sous: "Programmer les réunions et recueillir les présences", icon: Users, action: onReunions, badge: alerteReunions },
     { titre: "Calendrier du club", sous: "Tous les événements, toutes catégories réunies", icon: CalendarDays, action: onCalendrier },
@@ -1721,7 +1781,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
         </Card>
       )}
 
-      {(alerteReunions > 0 || alerteDocs > 0) && (
+      {(alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0 || aRisqueSusp > 0 || blesses > 0) && (
         <div style={{ background: "#FFF3DA", border: "1px solid #EBD3AE", borderRadius: 14, padding: "12px 14px", marginBottom: 18 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: "#B87A2B", fontSize: 13.5, marginBottom: 6 }}><Bell size={16} /> À ne pas oublier</div>
           {alerteReunions > 0 && (
@@ -1733,6 +1793,36 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
           {alerteDocs > 0 && (
             <div onClick={onDocuments} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: alerteReunions > 0 ? "1px solid #EBD3AE" : "none" }}>
               <ShieldAlert size={15} color={C.rouge} /> <span style={{ flex: 1 }}>{alerteDocs} joueur{alerteDocs > 1 ? "s" : ""} à régulariser (licence ou contrôle médical)</span>
+              <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
+            </div>
+          )}
+          {alerteMutation > 0 && (
+            <div onClick={onDocuments} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: (alerteReunions > 0 || alerteDocs > 0) ? "1px solid #EBD3AE" : "none" }}>
+              <ArrowRightLeft size={15} color={C.rouge} /> <span style={{ flex: 1 }}>{alerteMutation} mutation{alerteMutation > 1 ? "s" : ""} hors période au-delà de la limite ({limMutHors})</span>
+              <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
+            </div>
+          )}
+          {suspendus > 0 && (
+            <div onClick={() => setTab("effectif")} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: (alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0) ? "1px solid #EBD3AE" : "none" }}>
+              <ShieldAlert size={15} color={C.rouge} /> <span style={{ flex: 1 }}>{suspendus} joueur{suspendus > 1 ? "s" : ""} suspendu{suspendus > 1 ? "s" : ""}, bloqué{suspendus > 1 ? "s" : ""} en compo</span>
+              <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
+            </div>
+          )}
+          {aRisqueSusp > 0 && (
+            <div onClick={() => setTab("effectif")} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: (alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0) ? "1px solid #EBD3AE" : "none" }}>
+              <Bell size={15} color="#B87A2B" /> <span style={{ flex: 1 }}>{aRisqueSusp} joueur{aRisqueSusp > 1 ? "s" : ""} à vérifier (cartons, risque de suspension)</span>
+              <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
+            </div>
+          )}
+          {blesses > 0 && (
+            <div onClick={() => setTab("entrainements")} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: (alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0 || aRisqueSusp > 0) ? "1px solid #EBD3AE" : "none" }}>
+              <HeartPulse size={15} color={C.rouge} /> <span style={{ flex: 1 }}>{blesses} joueur{blesses > 1 ? "s" : ""} blessé{blesses > 1 ? "s" : ""} en cours de soin</span>
+              <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
+            </div>
+          )}
+          {retourProche > 0 && (
+            <div onClick={() => setTab("entrainements")} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: "1px solid #EBD3AE" }}>
+              <Activity size={15} color={C.vert} /> <span style={{ flex: 1 }}>{retourProche} joueur{retourProche > 1 ? "s" : ""} dont le retour de blessure est prévu bientôt</span>
               <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
             </div>
           )}
@@ -1816,6 +1906,66 @@ function statutMedical(p) {
   return { label: `À faire (${saison})`, couleur: "#B87A2B", urgence: 1 };
 }
 
+/* Mutations : le cachet est valable un an a compter de la date de validation */
+function mutationActive(p) {
+  if (!p || !p.mutation || p.mutation === "club") return false;
+  if (!p.mutationDate) return true;
+  const d = new Date(p.mutationDate + "T00:00:00");
+  if (isNaN(d)) return true;
+  const unAn = new Date(d); unAn.setFullYear(unAn.getFullYear() + 1);
+  return new Date() < unAn;
+}
+/* Nombre de mutes hors periode alignables sur une feuille de match */
+function limiteHorsPeriode(cat) {
+  const ci = CATEGORIES.find((c) => c.id === cat);
+  const senior = ci && (ci.groupe === "PRO" || ci.groupe === "Loisirs" || cat === "N2" || cat === "Ligue 2" || cat === "SENIORS F");
+  const national = /NAT/.test(cat || "");
+  return (senior || national) ? 2 : 1;
+}
+/* Nombre total de mutes de base sur une feuille de match (indicatif, hors ajustement arbitrage) */
+function limiteMutesTotal(cat) {
+  const ci = CATEGORIES.find((c) => c.id === cat);
+  const type = ci ? ci.type : 11;
+  const senior = ci && (ci.groupe === "PRO" || ci.groupe === "Loisirs" || cat === "N2" || cat === "Ligue 2" || cat === "SENIORS F");
+  const national = /NAT/.test(cat || "");
+  if (senior || national) return type === 11 ? 6 : 4;
+  return 4;
+}
+/* Comptage des mutations actives d'un effectif */
+function compteMutations(players) {
+  let normale = 0, hors = 0, expirees = 0, sansdate = 0;
+  (players || []).forEach((p) => {
+    const t = typeMutation(p);
+    if (t === "club") return;
+    if (t === "expiree") { expirees++; return; }
+    if (t === "hors") hors++;
+    else if (t === "normale") normale++;
+    else if (t === "sansdate") sansdate++;
+  });
+  return { normale, hors, expirees, sansdate, total: normale + hors + sansdate };
+}
+/* Type reel d'une mutation, calcule selon la date de validation.
+   Periode normale : du 1er juin au 15 juillet. Sinon hors periode. */
+function typeMutation(p) {
+  if (!p || !p.mutation || p.mutation === "club") return "club";
+  if (!mutationActive(p)) return "expiree";
+  if (!p.mutationDate) return "sansdate";
+  const d = new Date(p.mutationDate + "T00:00:00");
+  if (isNaN(d)) return "sansdate";
+  const mois = d.getMonth() + 1, jour = d.getDate();
+  const periodeNormale = (mois === 6) || (mois === 7 && jour <= 15);
+  return periodeNormale ? "normale" : "hors";
+}
+/* Libelle d'affichage du statut de mutation d'un joueur */
+function libelleMutation(p) {
+  const t = typeMutation(p);
+  if (t === "club") return { label: "Licence club", couleur: C.gris, bg: C.grisClair };
+  if (t === "expiree") return { label: "Mutation expirée", couleur: C.gris, bg: C.grisClair };
+  if (t === "sansdate") return { label: "Mutation, date à renseigner", couleur: "#B87A2B", bg: "#FBEAD9" };
+  if (t === "hors") return { label: "Mutation hors période", couleur: "#B87A2B", bg: "#FBEAD9" };
+  return { label: "Mutation période normale", couleur: C.bleu, bg: "#E7EEF6" };
+}
+
 /* Instantane d'un joueur pour une saison, a ranger dans son parcours */
 function instantaneSaison(p, db, saison) {
   const st = statsJoueur(p, db, saison);
@@ -1853,6 +2003,30 @@ function assiduiteJoueur(p, db, saison) {
     if (st === "retard") retards++;
   });
   return { matchs, presences, absences, retards, jaunes, rouges };
+}
+
+/* Suspensions : seuil de cartons jaunes selon la competition */
+function seuilSuspension(cat) { return cat === "Ligue 2" ? 5 : 3; }
+/* Cartons non encore pris en compte pour une suspension */
+function cartonsActifsJoueur(p, db) {
+  const a = assiduiteJoueur(p, db, saisonCourante());
+  const ref = (p && p.discRef) || { jaunes: 0, rouges: 0 };
+  return { jaunes: Math.max(0, a.jaunes - (ref.jaunes || 0)), rouges: Math.max(0, a.rouges - (ref.rouges || 0)) };
+}
+function estSuspendu(p) {
+  if (!p) return false;
+  if ((+p.suspension || 0) > 0) return true;
+  if (p.suspensionFin && p.suspensionFin > hoyISO()) return true;
+  return false;
+}
+/* Risque de suspension a verifier, selon les cartons cumules */
+function risqueSuspension(p, db, cat) {
+  if (estSuspendu(p)) return { alerte: false };
+  const c = cartonsActifsJoueur(p, db);
+  const seuil = seuilSuspension(cat);
+  if (c.rouges > 0) return { alerte: true, raison: "carton rouge à traiter" };
+  if (c.jaunes >= seuil) return { alerte: true, raison: `${c.jaunes} cartons jaunes cumulés (seuil ${seuil})` };
+  return { alerte: false };
 }
 
 function Effectif({ players, cat, catInfo, db, mutate }) {
@@ -2192,6 +2366,12 @@ function FicheJoueur({ p, db, mutate, onClose, onEdit, onDelete }) {
               <span style={{ fontSize: 13.5, color: C.gris }}>Contrôle médical de la saison</span>
               <Pastille bg={cerBg} color={sc.couleur}>{sc.label}</Pastille>
             </div>
+            {(() => { const lm = libelleMutation(p); return (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "4px 0", borderTop: `1px solid ${C.grisClair}` }}>
+                <span style={{ fontSize: 13.5, color: C.gris }}>Mutation{p.mutationDate ? ` · validée le ${new Date(p.mutationDate + "T00:00:00").toLocaleDateString("fr-FR")}` : ""}</span>
+                <Pastille bg={lm.bg} color={lm.couleur}>{lm.label}</Pastille>
+              </div>
+            ); })()}
           </Card>
         );
       })()}
@@ -2232,6 +2412,37 @@ function FicheJoueur({ p, db, mutate, onClose, onEdit, onDelete }) {
               </div>
             ))}
           </div>
+          {(() => {
+            const risque = risqueSuspension(p, db, p.cat);
+            const susp = +p.suspension || 0;
+            const setSusp = (delta) => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.suspension = Math.max(0, (+pl.suspension || 0) + delta); return d; });
+            const marquerVus = () => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); const a = assiduiteJoueur(pl, d, saisonCourante()); pl.discRef = { jaunes: a.jaunes, rouges: a.rouges }; return d; });
+            const setDateFin = (v) => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.suspensionFin = v || ""; return d; });
+            const bloque = estSuspendu(p);
+            const dispoTxt = p.suspensionFin ? `disponible le ${new Date(p.suspensionFin + "T00:00:00").toLocaleDateString("fr-FR")}` : "";
+            return (
+              <div style={{ marginBottom: 16 }}>
+                {risque.alerte && (
+                  <div style={{ background: "#FBE3E3", border: `1px solid ${C.rouge}`, color: C.rouge, borderRadius: 10, padding: 10, fontSize: 12.5, marginBottom: 10, lineHeight: 1.5 }}>
+                    Risque de suspension : {risque.raison}. Vérifie auprès de la commission, puis règle le nombre de matchs ci-dessous.
+                  </div>
+                )}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "#fff", borderRadius: 12, padding: "11px 12px", border: `1px solid ${bloque ? C.rouge : C.grisClair}` }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 14 }}>Suspension</div>
+                    <div style={{ fontSize: 12, color: bloque ? C.rouge : C.gris }}>{bloque ? ("Bloqué en compo" + (susp > 0 ? `, ${susp} match${susp > 1 ? "s" : ""} à purger` : "") + (dispoTxt ? `, ${dispoTxt}` : "")) : "Aucune suspension"}</div>
+                  </div>
+                  <Compteur label="" val={susp} onMinus={() => setSusp(-1)} onPlus={() => setSusp(1)} />
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <Field label="Disponible le (fin de suspension)"><Inp type="date" value={p.suspensionFin || ""} onChange={(e) => setDateFin(e.target.value)} /></Field>
+                </div>
+                {risque.alerte && (
+                  <Btn variant="ghost" size="sm" style={{ marginTop: 8 }} onClick={marquerVus}>Cartons pris en compte (réinitialiser l'alerte)</Btn>
+                )}
+              </div>
+            );
+          })()}
         </>
       )}
 
@@ -2395,7 +2606,7 @@ function EditJoueur({ joueur, cat, onClose, onSave }) {
   const [f, setF] = useState({
     prenom: "", nom: "", dob: "", taille: "", poids: "", poste: "", pied: "Droit",
     numero: "", licence: "", club: "FCSM", photo: "", jonglages: { fort: "", faible: "", tete: "" },
-    parentNom: "", parentTel: "", parentEmail: "", ...joueur,
+    parentNom: "", parentTel: "", parentEmail: "", mutation: "", mutationDate: "", ...joueur,
   });
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
   const setJo = (k, v) => setF((o) => ({ ...o, jonglages: { ...(o.jonglages || {}), [k]: v } }));
@@ -2454,6 +2665,16 @@ function EditJoueur({ joueur, cat, onClose, onSave }) {
             <option>À renouveler</option>
           </Sel>
         </Field>
+        <Field label="Type de licence">
+          <Sel value={f.mutation && f.mutation !== "club" ? "mutation" : ""} onChange={(e) => set("mutation", e.target.value)}>
+            <option value="">Licence club (même club)</option>
+            <option value="mutation">Mutation (vient d'un autre club)</option>
+          </Sel>
+        </Field>
+        <Field label="Date de validation de la licence">
+          <Inp type="date" value={f.mutationDate || ""} onChange={(e) => set("mutationDate", e.target.value)} />
+          {f.mutation && f.mutation !== "club" ? (() => { const lm = libelleMutation(f); return <div style={{ fontSize: 12, color: lm.couleur, fontWeight: 700, marginTop: 5 }}>{f.mutationDate ? `Classé : ${lm.label.toLowerCase()}` : "Renseigne la date pour classer la mutation"}</div>; })() : null}
+        </Field>
         <Field label="Contrôle médical de la saison">
           <Sel value={f.medicalSaison === saisonCourante() ? (f.medicalStatut || "") : ""} onChange={(e) => { const v = e.target.value; set("medicalStatut", v); set("medicalSaison", v ? saisonCourante() : ""); }}>
             <option value="">À faire</option>
@@ -2485,7 +2706,7 @@ function EditJoueur({ joueur, cat, onClose, onSave }) {
 /* ============================================================
    Composition d'équipe
    ============================================================ */
-const FORMATS_MULTI = { U13: [8, 11], "Foot loisirs": [11, 8] };
+const FORMATS_MULTI = { U13: [8, 10, 11], "Foot loisirs": [11, 9, 8] };
 function Compo({ players, cat, catInfo, db, mutate }) {
   const matchsCat = (db.matches || []).filter((m) => m.cat === cat).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const aujourdhui = hoyISO();
@@ -2506,7 +2727,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
   const [pickRempl, setPickRempl] = useState(false);
 
   // Convoqués : 12 maxi en foot à 8, 16 maxi en foot à 11, sinon titulaires plus 4 (foot à 4 et à 5)
-  const maxConvoques = typeFoot === 8 ? 12 : typeFoot === 11 ? 16 : formation.length + 8;
+  const maxConvoques = typeFoot === 8 ? 12 : typeFoot === 11 ? 16 : typeFoot === 10 ? 14 : typeFoot === 9 ? 13 : formation.length + 8;
   const maxRempl = maxConvoques - formation.length;
 
   function changerFormat(fmt) {
@@ -2716,18 +2937,18 @@ function Compo({ players, cat, catInfo, db, mutate }) {
               {players.map((p) => {
                 const placeAilleurs = used.includes(p.id) && lineup.slots?.[pick] !== p.id;
                 const estRempl = remplacants.includes(p.id);
+                const susp = estSuspendu(p);
                 return (
-                  <button key={p.id} onClick={() => assign(pick, p.id)} style={{
+                  <button key={p.id} onClick={() => { if (susp) return; assign(pick, p.id); }} disabled={susp} style={{
                     display: "flex", alignItems: "center", gap: 11, padding: 11, borderRadius: 12,
-                    border: `1px solid ${C.grisClair}`, background: "#fff", cursor: "pointer", textAlign: "left",
+                    border: `1px solid ${susp ? "#F3C9C9" : C.grisClair}`, background: susp ? "#FDF2F2" : "#fff", cursor: susp ? "not-allowed" : "pointer", textAlign: "left", opacity: susp ? 0.75 : 1,
                   }}>
                     <Avatar p={p} size={38} radius={10} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 800 }}>{p.prenom} {p.nom}</div>
-                      <div style={{ fontSize: 12, color: C.gris }}>{p.poste || "Poste libre"}</div>
+                      <div style={{ fontSize: 12, color: susp ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(p.suspensionFin)}` : "")) : (p.poste || "Poste libre")}</div>
                     </div>
-                    {placeAilleurs && <Pastille bg={C.grisClair} color={C.gris}>déjà placé</Pastille>}
-                    {estRempl && <Pastille bg="#FFF3DA" color={C.jauneFonce}>banc</Pastille>}
+                    {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : placeAilleurs ? <Pastille bg={C.grisClair} color={C.gris}>déjà placé</Pastille> : estRempl ? <Pastille bg="#FFF3DA" color={C.jauneFonce}>banc</Pastille> : null}
                   </button>
                 );
               })}
@@ -2743,18 +2964,22 @@ function Compo({ players, cat, catInfo, db, mutate }) {
             <Empty icon={<Users size={24} color={C.gris} />} text="Aucun joueur disponible" sub="Tous les joueurs sont déjà titulaires ou sur le banc" />
           ) : (
             <div style={{ display: "grid", gap: 8 }}>
-              {benchDispo.map((p) => (
-                <button key={p.id} onClick={() => ajouterRemplacant(p.id)} style={{
+              {benchDispo.map((p) => {
+                const susp = estSuspendu(p);
+                return (
+                <button key={p.id} onClick={() => { if (susp) return; ajouterRemplacant(p.id); }} disabled={susp} style={{
                   display: "flex", alignItems: "center", gap: 11, padding: 11, borderRadius: 12,
-                  border: `1px solid ${C.grisClair}`, background: "#fff", cursor: "pointer", textAlign: "left",
+                  border: `1px solid ${susp ? "#F3C9C9" : C.grisClair}`, background: susp ? "#FDF2F2" : "#fff", cursor: susp ? "not-allowed" : "pointer", textAlign: "left", opacity: susp ? 0.75 : 1,
                 }}>
                   <Avatar p={p} size={38} radius={10} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 800 }}>{p.prenom} {p.nom}</div>
-                    <div style={{ fontSize: 12, color: C.gris }}>{p.poste || "Poste libre"}</div>
+                    <div style={{ fontSize: 12, color: susp ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(p.suspensionFin)}` : "")) : (p.poste || "Poste libre")}</div>
                   </div>
+                  {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : null}
                 </button>
-              ))}
+                );
+              })}
             </div>
           )}
         </Modal>
@@ -3166,7 +3391,8 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
         )}
         {t.mode === "Bus en location" && (
           <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Loueur</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 2 }}>Loueur</div>
+            <div style={{ fontSize: 11.5, color: "#B87A2B", fontWeight: 600, marginBottom: 6, lineHeight: 1.4 }}>ADJ en priorité (contrat du club). Choisir Hertz seulement si ADJ n'est pas disponible.</div>
             <div style={{ display: "flex", gap: 8 }}>
               {LOUEURS.map((l) => {
                 const on = t.loueur === l;
@@ -3417,14 +3643,18 @@ function Compteur({ label, val, onMinus, onPlus }) {
 }
 
 function NoterJoueur({ match, player, db, mutate, onClose }) {
-  const existing = db.matches.find((x) => x.id === match.id).notes?.[player.id] || {};
+  const m0 = db.matches.find((x) => x.id === match.id);
+  const existing = (m0.notes && m0.notes[player.id]) || {};
   const [n, setN] = useState({ note: existing.note || "", commentaire: existing.commentaire || "", ...AXES.reduce((o, a) => ({ ...o, [a.k]: existing[a.k] || "" }), {}) });
+  const [minutes, setMinutes] = useState((m0.tempsJeu && m0.tempsJeu[player.id] != null) ? m0.tempsJeu[player.id] : "");
 
   function save() {
     mutate((d) => {
       const m = d.matches.find((x) => x.id === match.id);
       m.notes = m.notes || {};
       m.notes[player.id] = { ...n };
+      m.tempsJeu = m.tempsJeu || {};
+      if (minutes === "" || +minutes === 0) delete m.tempsJeu[player.id]; else m.tempsJeu[player.id] = +minutes;
       return d;
     });
     onClose();
@@ -3444,6 +3674,9 @@ function NoterJoueur({ match, player, db, mutate, onClose }) {
   return (
     <Modal title={`Noter ${player.prenom} ${player.nom}`} onClose={onClose}
       footer={<Btn variant="accent" full onClick={save}><Save size={16} /> Valider la note</Btn>}>
+      <Field label="Minutes jouées">
+        <Inp type="number" min="0" inputMode="numeric" value={minutes} onChange={(e) => setMinutes(e.target.value)} placeholder="Temps de jeu en minutes" />
+      </Field>
       <Field label="Note globale (1 à 7)">{echelle(n.note, (v) => setN((p) => ({ ...p, note: v })))}</Field>
       <div style={{ height: 6 }} />
       {AXES.map((a) => (
@@ -3634,15 +3867,24 @@ function Entrainements({ players, cat, db, mutate }) {
             <div style={{ display: "grid", gap: 10 }}>
               {blessures.map((b) => {
                 const p = db.players.find((x) => x.id === b.joueurId);
+                const clubType = priseEnChargeMedicale(b.cat);
+                const estClub = b.priseEnCharge ? b.priseEnCharge === "club" : clubType !== "parents";
+                const patho = b.pathologie && b.pathologie !== "Autre" ? b.pathologie : (b.zone || "Blessure");
                 return (
                   <Card key={b.id} onClick={() => setBlessure(b)} style={{ borderColor: b.fini ? C.grisClair : "#F3C9C9" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <strong>{p ? `${p.prenom} ${p.nom}` : "Joueur supprimé"}</strong>
-                      <Pastille bg={b.fini ? "#E2F4E9" : "#FBE3E3"} color={b.fini ? C.vert : C.rouge}>{b.fini ? "Rétabli" : "En cours"}</Pastille>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        {b.phase ? <Pastille bg="#E7EEF6" color={C.bleu}>{b.phase}</Pastille> : null}
+                        <Pastille bg={b.fini ? "#E2F4E9" : "#FBE3E3"} color={b.fini ? C.vert : C.rouge}>{b.fini ? "Rétabli" : "En cours"}</Pastille>
+                      </div>
                     </div>
-                    <div style={{ fontSize: 13, color: C.gris, marginTop: 5 }}>
-                      {b.zone || "Blessure"} · début {b.debut ? new Date(b.debut + "T00:00:00").toLocaleDateString("fr-FR") : "?"} · arrêt estimé {b.duree || "?"}
+                    <div style={{ fontSize: 13.5, color: C.encre, marginTop: 5, fontWeight: 700 }}>{patho}{b.cote ? ` (${texteCote(b.cote)})` : ""}{b.circonstance ? `, ${texteCirconstance(b.circonstance)}` : ""}</div>
+                    <div style={{ fontSize: 12.5, color: C.gris, marginTop: 2 }}>
+                      {b.debut ? `blessé le ${new Date(b.debut + "T00:00:00").toLocaleDateString("fr-FR")}` : ""}{b.datePriseEnCharge ? ` · pris en charge le ${new Date(b.datePriseEnCharge + "T00:00:00").toLocaleDateString("fr-FR")}` : ""}{b.dateRetour ? ` · retour prévu ${new Date(b.dateRetour + "T00:00:00").toLocaleDateString("fr-FR")}` : (b.duree ? ` · arrêt estimé ${b.duree}` : "")}{b.kine ? ` · kiné ${b.kine}` : ""}
                     </div>
+                    <div style={{ fontSize: 11.5, color: estClub ? C.bleu : "#B87A2B", marginTop: 4, fontWeight: 700 }}>{estClub ? (clubType === "pro" ? "Suivi club, professionnels" : "Suivi club, centre de formation") : "Soins pris en charge par les parents"}</div>
+                    {b.phase === "P4" && b.testRetour ? <div style={{ fontSize: 12, color: b.testRetour === "valide" ? C.vert : C.rouge, marginTop: 3, fontWeight: 700 }}>{b.testRetour === "valide" ? "Test validé, retour sur le terrain" : `Test non validé${b.raisonNonRetour ? " : " + b.raisonNonRetour : ""}`}</div> : null}
                   </Card>
                 );
               })}
@@ -3811,11 +4053,43 @@ function DetailSeance({ seance, players, onClose, onEdit, onDelete }) {
   );
 }
 
-function EditBlessure({ blessure, players, onClose, onSave, onDelete }) {
-  const [f, setF] = useState({ fini: false, ...blessure });
+const PATHOLOGIES = [
+  "Entorse de la cheville",
+  "Lésion des ischio-jambiers",
+  "Lésion du quadriceps",
+  "Lésion du mollet",
+  "Lésion des adducteurs",
+  "Pubalgie",
+  "Tendinite rotulienne",
+  "Tendinite d'Achille",
+  "Entorse du genou",
+  "Rupture des ligaments croisés (LCA)",
+  "Lésion du ménisque",
+  "Syndrome fémoro-patellaire",
+  "Fracture",
+  "Contusion ou choc",
+  "Lombalgie",
+  "Aponévrosite plantaire",
+  "Autre",
+];
+/* Mode de prise en charge medicale selon la categorie */
+function priseEnChargeMedicale(cat) {
+  const ci = CATEGORIES.find((c) => c.id === cat);
+  if (!ci) return "parents";
+  if (ci.groupe === "Féminines") return "parents";
+  if (cat === "Ligue 2") return "pro";
+  if (cat === "U17 NAT" || cat === "U19 NAT" || cat === "N2") return "formation";
+  return "parents";
+}
+function texteCote(c) { return c === "droit" ? "côté droit" : c === "gauche" ? "côté gauche" : c === "deux" ? "des deux côtés" : ""; }
+function texteCirconstance(c) { return c === "entrainement" ? "à l'entraînement" : c === "match" ? "en match" : c === "test" ? "lors d'un test physique" : c === "autre" ? "autre circonstance" : ""; }
+function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete }) {
+  const [f, setF] = useState({ fini: false, pathologie: "", cote: "", circonstance: "", kine: "", dateRetour: "", datePriseEnCharge: "", phase: "", testRetour: "", raisonNonRetour: "", priseEnCharge: (priseEnChargeMedicale(blessure.cat) === "parents" ? "parents" : "club"), ...blessure });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const sousType = priseEnChargeMedicale(f.cat);
+  const interne = f.priseEnCharge === "club";
   return (
-    <Modal title={blessure.id ? "Suivi de blessure" : "Nouvelle blessure"} onClose={onClose}
+    <Modal title={blessure.id ? "Suivi médical" : "Nouvelle blessure"} onClose={onClose}
       footer={<>
         <Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>
         {onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}
@@ -3826,11 +4100,88 @@ function EditBlessure({ blessure, players, onClose, onSave, onDelete }) {
           {players.map((p) => <option key={p.id} value={p.id}>{p.prenom} {p.nom}</option>)}
         </Sel>
       </Field>
-      <Field label="Zone / nature"><Inp value={f.zone || ""} onChange={(e) => set("zone", e.target.value)} placeholder="Cheville, ischio, genou..." /></Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Field label="Date de début"><Inp type="date" value={f.debut || ""} onChange={(e) => set("debut", e.target.value)} /></Field>
-        <Field label="Durée d'arrêt estimée"><Inp value={f.duree || ""} onChange={(e) => set("duree", e.target.value)} placeholder="3 semaines..." /></Field>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Prise en charge</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+        {[["parents", "Par les parents"], ["club", "Par le club (équipe médicale)"]].map(([v, lab]) => {
+          const on = f.priseEnCharge === v;
+          return (
+            <button key={v} onClick={() => set("priseEnCharge", v)} style={{
+              flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "10px 6px", fontWeight: 800, fontSize: 12.5,
+              background: on ? C.bleu : "#EEF2F8", color: on ? "#fff" : C.gris,
+            }}>{lab}</button>
+          );
+        })}
       </div>
+      {interne
+        ? <div style={{ fontSize: 11.5, color: C.bleu, marginBottom: 12, fontWeight: 700 }}>{sousType === "pro" ? "Professionnels du club" : "Centre de formation"}. Ce joueur apparaît dans la rubrique Suivi médical, renseignée par l'équipe médicale.</div>
+        : <div style={{ fontSize: 11.5, color: "#B87A2B", marginBottom: 12 }}>Soins gérés par les parents. Renseigne les retours ci-dessous.</div>}
+      <Field label="Pathologie">
+        <Sel value={f.pathologie || ""} onChange={(e) => set("pathologie", e.target.value)}>
+          <option value="">Choisir une pathologie</option>
+          {PATHOLOGIES.map((p) => <option key={p}>{p}</option>)}
+        </Sel>
+      </Field>
+      {f.pathologie === "Autre" && <Field label="Préciser la pathologie"><Inp value={f.zone || ""} onChange={(e) => set("zone", e.target.value)} placeholder="Nature de la blessure" /></Field>}
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Côté touché</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        {[["droit", "Droit"], ["gauche", "Gauche"], ["deux", "Les deux"]].map(([v, lab]) => {
+          const on = f.cote === v;
+          return (
+            <button key={v} onClick={() => set("cote", on ? "" : v)} style={{
+              flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "10px 6px", fontWeight: 800, fontSize: 13,
+              background: on ? C.bleu : "#EEF2F8", color: on ? "#fff" : C.gris,
+            }}>{lab}</button>
+          );
+        })}
+      </div>
+      <Field label="Survenue lors de">
+        <Sel value={f.circonstance || ""} onChange={(e) => set("circonstance", e.target.value)}>
+          <option value="">Non précisé</option>
+          <option value="entrainement">Un entraînement</option>
+          <option value="match">Un match</option>
+          <option value="test">Un test (vitesse ou VMA)</option>
+          <option value="autre">Autre</option>
+        </Sel>
+      </Field>
+      <Field label="Kiné qui suit le joueur"><Inp value={f.kine || ""} onChange={(e) => set("kine", e.target.value)} placeholder="Nom du kiné" /></Field>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <Field label="Date de la blessure"><Inp type="date" value={f.debut || ""} onChange={(e) => set("debut", e.target.value)} disabled={medical} style={medical ? { background: "#F0F1F3", color: C.gris } : undefined} />{medical ? <span style={{ display: "block", fontSize: 11, color: C.gris, marginTop: 3 }}>Renseignée par le coach, non modifiable ici</span> : null}</Field>
+        <Field label="Date de retour prévue"><Inp type="date" value={f.dateRetour || ""} onChange={(e) => set("dateRetour", e.target.value)} /></Field>
+      </div>
+      {interne && (
+        <>
+          <Field label="Date de prise en charge par l'équipe médicale"><Inp type="date" value={f.datePriseEnCharge || ""} onChange={(e) => set("datePriseEnCharge", e.target.value)} disabled={!medical} style={!medical ? { background: "#F0F1F3", color: C.gris } : undefined} />{!medical ? <span style={{ display: "block", fontSize: 11, color: C.gris, marginTop: 3 }}>Renseignée par l'équipe médicale</span> : null}</Field>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6, marginTop: 2 }}>Évolution de la réathlétisation</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            {["P1", "P2", "P3", "P4"].map((ph) => {
+              const on = f.phase === ph;
+              return (
+                <button key={ph} onClick={() => set("phase", on ? "" : ph)} style={{
+                  flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "11px 0", fontWeight: 900, fontSize: 15,
+                  background: on ? C.bleu : "#EEF2F8", color: on ? "#fff" : C.gris,
+                }}>{ph}</button>
+              );
+            })}
+          </div>
+          {f.phase === "P4" && (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Test de retour sur le terrain</div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                {[["valide", "Validé, retour terrain"], ["non", "Non validé"]].map(([v, lab]) => {
+                  const on = f.testRetour === v;
+                  return (
+                    <button key={v} onClick={() => set("testRetour", on ? "" : v)} style={{
+                      flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "11px 6px", fontWeight: 800, fontSize: 13,
+                      background: on ? (v === "valide" ? C.vert : C.rouge) : "#EEF2F8", color: on ? "#fff" : C.gris,
+                    }}>{lab}</button>
+                  );
+                })}
+              </div>
+              {f.testRetour === "non" && <Field label="Pourquoi le retour n'est pas validé"><textarea value={f.raisonNonRetour || ""} onChange={(e) => set("raisonNonRetour", e.target.value)} rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} placeholder="Douleur persistante, test non concluant..." /></Field>}
+            </>
+          )}
+        </>
+      )}
       <Field label="Suivi / soins"><textarea value={f.suivi || ""} onChange={(e) => set("suivi", e.target.value)} rows={3} placeholder="Protocole, rééducation, reprise progressive..." style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} /></Field>
       <label style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer", marginTop: 4 }}>
         <input type="checkbox" checked={!!f.fini} onChange={(e) => set("fini", e.target.checked)} style={{ width: 19, height: 19 }} />
@@ -4301,7 +4652,7 @@ function ProgrammeSemaine({ db, onClose }) {
   const ordreSecteur = { "PRO": 0, "Formation": 1, "Pré-formation": 2, "École de foot": 3, "Loisirs": 4, "Féminines": 5 };
   const secteurDe = (cat) => { const ci = CATEGORIES.find((x) => x.id === cat); return ci ? ci.groupe : ""; };
   const rangSecteur = (cat) => { const r = ordreSecteur[secteurDe(cat)]; return r == null ? 9 : r; };
-  const ageDe = (cat) => { const m = /U(\d+)/.exec(cat || ""); if (m) return +m[1]; if (["PRO", "N3", "Ligue 2"].includes(cat) || (cat || "").includes("SENIORS")) return 99; return 50; };
+  const ageDe = (cat) => { const m = /U(\d+)/.exec(cat || ""); if (m) return +m[1]; if (["PRO", "N2", "Ligue 2"].includes(cat) || (cat || "").includes("SENIORS")) return 99; return 50; };
   const lieuDe = (m) => m.lieuMatch || (m.lieu === "Domicile" ? ((m.reservation && m.reservation.terrain) || "Domicile") : "Extérieur");
   const rdvDe = (m) => [m.rdv, m.lieuRdv].filter(Boolean).join(" ");
   const dirDe = (m) => { const e = m.encadrement || {}; return [e.dirigeant, e.delegue].filter(Boolean).join(", "); };
@@ -4365,6 +4716,52 @@ function ProgrammeSemaine({ db, onClose }) {
 }
 
 
+function SuiviMedical({ db, mutate, cat, onClose }) {
+  const [edit, setEdit] = useState(null);
+  const players = db.players.filter((p) => p.cat === cat);
+  const sousType = priseEnChargeMedicale(cat);
+  const blessures = (db.injuries || []).filter((i) => i.cat === cat && (i.priseEnCharge ? i.priseEnCharge === "club" : sousType !== "parents")).sort((a, b) => (a.fini === b.fini) ? 0 : a.fini ? 1 : -1);
+  return (
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+      <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "16px 16px 14px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
+        <div style={{ fontWeight: 800, fontSize: 16 }}>Suivi médical · {cat}</div>
+      </header>
+      <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+        <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 14, lineHeight: 1.5 }}>Rubrique de l'équipe médicale : joueurs pris en charge par le club, en réathlétisation ou convalescence. {sousType === "pro" ? "Catégorie professionnelle." : sousType === "formation" ? "Centre de formation." : "Cette catégorie est normalement suivie par les parents ; un joueur n'apparaît ici que si le coach a choisi une prise en charge par le club."}</div>
+        <Btn variant="accent" full style={{ marginBottom: 16 }} onClick={() => setEdit({ cat, priseEnCharge: "club" })}><Plus size={16} /> Ajouter un joueur en suivi</Btn>
+        {blessures.length === 0 ? (
+          <Empty icon={<Activity size={24} color={C.gris} />} text="Aucun joueur en suivi médical" sub="Les blessés pris en charge par le club apparaissent ici" />
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {blessures.map((b) => {
+              const p = db.players.find((x) => x.id === b.joueurId);
+              const patho = b.pathologie && b.pathologie !== "Autre" ? b.pathologie : (b.zone || "Blessure");
+              return (
+                <Card key={b.id} onClick={() => setEdit(b)} style={{ borderColor: b.fini ? C.grisClair : "#F3C9C9" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <strong>{p ? `${p.prenom} ${p.nom}` : "Joueur"}</strong>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      {b.phase ? <Pastille bg="#E7EEF6" color={C.bleu}>{b.phase}</Pastille> : null}
+                      <Pastille bg={b.fini ? "#E2F4E9" : "#FBE3E3"} color={b.fini ? C.vert : C.rouge}>{b.fini ? "Rétabli" : "En cours"}</Pastille>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13.5, color: C.encre, marginTop: 5, fontWeight: 700 }}>{patho}{b.cote ? ` (${texteCote(b.cote)})` : ""}{b.circonstance ? `, ${texteCirconstance(b.circonstance)}` : ""}</div>
+                  <div style={{ fontSize: 12.5, color: C.gris, marginTop: 2 }}>{b.debut ? `blessé le ${new Date(b.debut + "T00:00:00").toLocaleDateString("fr-FR")}` : ""}{b.datePriseEnCharge ? ` · pris en charge le ${new Date(b.datePriseEnCharge + "T00:00:00").toLocaleDateString("fr-FR")}` : ""}{b.dateRetour ? ` · retour prévu ${new Date(b.dateRetour + "T00:00:00").toLocaleDateString("fr-FR")}` : ""}{b.kine ? ` · kiné ${b.kine}` : ""}</div>
+                  {b.phase === "P4" && b.testRetour ? <div style={{ fontSize: 12, color: b.testRetour === "valide" ? C.vert : C.rouge, marginTop: 3, fontWeight: 700 }}>{b.testRetour === "valide" ? "Test validé, retour sur le terrain" : `Test non validé${b.raisonNonRetour ? " : " + b.raisonNonRetour : ""}`}</div> : null}
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      {edit && <EditBlessure blessure={edit} players={players} medical onClose={() => setEdit(null)}
+        onSave={(b) => { mutate((d) => { d.injuries = d.injuries || []; if (b.id) { d.injuries[d.injuries.findIndex((x) => x.id === b.id)] = b; } else { d.injuries.push({ ...b, id: uid() }); } return d; }); setEdit(null); }}
+        onDelete={edit.id ? () => { mutate((d) => { d.injuries = (d.injuries || []).filter((x) => x.id !== edit.id); return d; }); setEdit(null); } : null} />}
+    </div>
+  );
+}
+
 function DocumentsAdmin({ players, cat, onClose }) {
   const lignes = players.map((p) => {
     const sc = statutMedical(p);
@@ -4373,6 +4770,10 @@ function DocumentsAdmin({ players, cat, onClose }) {
     return { p, sc, licProb, urgence };
   }).sort((a, b) => b.urgence - a.urgence || (a.p.nom || "").localeCompare(b.p.nom || ""));
   const aSurveiller = lignes.filter((l) => l.urgence > 0).length;
+  const mut = compteMutations(players);
+  const limH = limiteHorsPeriode(cat);
+  const limT = limiteMutesTotal(cat);
+  const depasseHors = mut.hors > limH;
 
   return (
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
@@ -4385,6 +4786,22 @@ function DocumentsAdmin({ players, cat, onClose }) {
         <div style={{ background: aSurveiller === 0 ? "#E2F4E9" : "#FBEAD9", color: aSurveiller === 0 ? C.vert : "#B87A2B", borderRadius: 12, padding: "12px 14px", fontWeight: 800, fontSize: 14, marginBottom: 16 }}>
           {aSurveiller === 0 ? "Tous les documents sont à jour" : `${aSurveiller} joueur${aSurveiller > 1 ? "s" : ""} à surveiller`}
         </div>
+
+        {depasseHors && (
+          <div style={{ background: "#FBE3E3", border: `1px solid ${C.rouge}`, color: C.rouge, borderRadius: 12, padding: "12px 14px", fontWeight: 700, fontSize: 13.5, marginBottom: 12, lineHeight: 1.5 }}>
+            Attention : {mut.hors} joueurs en mutation hors période, pour une limite de {limH} alignable{limH > 1 ? "s" : ""} sur une feuille de match. À toi de décider qui faire signer.
+          </div>
+        )}
+        <Card style={{ marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 8 }}>Mutations de la catégorie</div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+            <Pastille bg="#E7EEF6" color={C.bleu}>{mut.normale} période normale</Pastille>
+            <Pastille bg={depasseHors ? "#FBE3E3" : "#FBEAD9"} color={depasseHors ? C.rouge : "#B87A2B"}>{mut.hors} hors période (max {limH})</Pastille>
+            {mut.sansdate > 0 ? <Pastille bg="#FBEAD9" color="#B87A2B">{mut.sansdate} sans date</Pastille> : null}
+            {mut.expirees > 0 ? <Pastille bg={C.grisClair} color={C.gris}>{mut.expirees} expirée{mut.expirees > 1 ? "s" : ""}</Pastille> : null}
+          </div>
+          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Total {mut.total} muté{mut.total > 1 ? "s" : ""} actif{mut.total > 1 ? "s" : ""}. Limite de base sur la feuille de match : {limT} mutés dont {limH} hors période. Le total peut être relevé selon le nombre d'arbitres du club.</div>
+        </Card>
 
         {players.length === 0 ? (
           <Empty icon={<ClipboardList size={24} color={C.gris} />} text="Aucun joueur dans cette catégorie" />
