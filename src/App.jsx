@@ -1289,8 +1289,10 @@ export default function App() {
         ]);
         if (annule) return;
         const role = (prof && prof.role) || "educateur";
-        const cats = role === "direction" ? CATEGORIES.map((c) => c.id) : (aff || []).map((a) => a.categorie);
-        setProfil({ role, nom: prof && prof.nom, cats });
+        const affCats = (aff || []).map((a) => a.categorie);
+        const cats = role === "direction" ? CATEGORIES.map((c) => c.id) : affCats;
+        const catsModif = role === "direction" ? (affCats.length ? affCats : CATEGORIES.map((c) => c.id)) : affCats;
+        setProfil({ role, nom: prof && prof.nom, cats, catsModif });
         setCat((prev) => (prev && cats.includes(prev) ? prev : (cats[0] || null)));
       } catch (e) { if (!annule) setProfil({ role: "educateur", cats: [] }); }
     })();
@@ -1325,10 +1327,11 @@ export default function App() {
   }, [session, demo]);
 
   useEffect(() => {
-    if (saveStatus === "ok") { const t = setTimeout(() => setSaveStatus(null), 2000); return () => clearTimeout(t); }
+    if (saveStatus === "ok" || saveStatus === "ro") { const t = setTimeout(() => setSaveStatus(null), 2600); return () => clearTimeout(t); }
   }, [saveStatus]);
 
   function mutate(fn) {
+    if (lectureSeuleCat) { setSaveStatus("ro"); return; }
     setDb((prev) => {
       const next = fn(structuredClone(prev));
       if (demo) { saveLocal(next); }
@@ -1379,6 +1382,7 @@ export default function App() {
   const peutValider = demo || (profil && (profil.role === "responsable" || profil.role === "direction"));
   const estAdmin = demo || (profil && profil.role === "direction");
   const estMedical = !demo && !!(profil && profil.role === "medical");
+  const lectureSeuleCat = !demo && !!(profil && Array.isArray(profil.catsModif) && cat && !profil.catsModif.includes(cat));
   const groupesDispo = GROUPES.filter((g) => CATEGORIES.some((c) => c.groupe === g && cats.includes(c.id)));
   const groupeActif = (groupeSel && groupesDispo.includes(groupeSel)) ? groupeSel
     : (catInfo && groupesDispo.includes(catInfo.groupe) ? catInfo.groupe : groupesDispo[0]);
@@ -1472,6 +1476,11 @@ export default function App() {
       </header>
 
       <main style={{ maxWidth: 760, margin: "0 auto", padding: 16 }}>
+        {lectureSeuleCat && (
+          <div style={{ background: "#EAF0F7", border: `1px solid ${C.bleu}`, color: C.bleu, borderRadius: 12, padding: "10px 14px", fontSize: 13, fontWeight: 700, marginBottom: 14, lineHeight: 1.4 }}>
+            Consultation seule sur cette catégorie. Tu peux tout voir, mais la modification est réservée à son responsable.
+          </div>
+        )}
         {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) window.open(u, "_blank", "noopener"); setShowClassement(true); }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={() => setShowSauvegarde(true)} onPlanning={() => setShowPlanning(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onBilan={() => setShowBilan(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} />}
         {tab === "compo" && <Compo players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
@@ -1505,7 +1514,7 @@ export default function App() {
       {saveStatus && !demo && (
         <div style={{ position: "fixed", bottom: 88, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 45, padding: "0 16px", pointerEvents: "none" }}>
           <div style={{ pointerEvents: "auto", maxWidth: 400, background: saveStatus === "error" ? C.rouge : saveStatus === "ok" ? C.vert : C.bleu, color: "#fff", borderRadius: 12, padding: "10px 16px", fontSize: 13, fontWeight: 700, boxShadow: "0 4px 14px rgba(0,0,0,0.22)", display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ flex: 1 }}>{saveStatus === "saving" ? "Enregistrement en cours..." : saveStatus === "ok" ? "Enregistré" : "Échec de l'enregistrement. Vérifie ta connexion et réessaie."}</span>
+            <span style={{ flex: 1 }}>{saveStatus === "saving" ? "Enregistrement en cours..." : saveStatus === "ok" ? "Enregistré" : saveStatus === "ro" ? "Consultation seule : cette catégorie n'est pas modifiable par toi." : "Échec de l'enregistrement. Vérifie ta connexion et réessaie."}</span>
             {saveStatus === "error" && <span onClick={() => setSaveStatus(null)} style={{ cursor: "pointer", textDecoration: "underline", flex: "0 0 auto" }}>OK</span>}
           </div>
         </div>
