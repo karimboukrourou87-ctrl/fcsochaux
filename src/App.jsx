@@ -1745,7 +1745,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
     { titre: "Organisation des matchs", sous: "Terrain, vestiaires, transport et encadrement", icon: MapPin, action: onOrganisation, badge: nbOrga },
     { titre: "Programme de la semaine", sous: "Récapitulatif des matchs à imprimer", icon: ClipboardList, action: onProgramme },
     { titre: "Documents administratifs", sous: "Licences et contrôle médical à surveiller", icon: ShieldAlert, action: onDocuments, badge: alerteDocs },
-    { titre: "Suivi médical", sous: "Blessés pris en charge par l'équipe médicale du club", icon: Activity, action: onSuivi },
+    { titre: "Suivi médical", sous: "Blessés suivis par l'équipe médicale (U17 aux pros)", icon: Activity, action: priseEnChargeMedicale(cat) !== "parents" ? onSuivi : null },
     { titre: "Bilan de saison de l'équipe", sous: "Résultats, buteurs et passeurs de la saison", icon: Trophy, action: onBilan },
     { titre: "Réunions", sous: "Programmer les réunions et recueillir les présences", icon: Users, action: onReunions, badge: alerteReunions },
     { titre: "Calendrier du club", sous: "Tous les événements, toutes catégories réunies", icon: CalendarDays, action: onCalendrier },
@@ -4066,12 +4066,14 @@ const PATHOLOGIES = [
   "Rupture des ligaments croisés (LCA)",
   "Lésion du ménisque",
   "Syndrome fémoro-patellaire",
+  "Maladie d'Osgood-Schlatter",
   "Fracture",
   "Contusion ou choc",
   "Lombalgie",
   "Aponévrosite plantaire",
   "Autre",
 ];
+const PATHOLOGIES_COACH = [...PATHOLOGIES.slice(0, -1), "Douleurs cervicales", "Douleurs du dos", "Autre"];
 /* Mode de prise en charge medicale selon la categorie */
 function priseEnChargeMedicale(cat) {
   const ci = CATEGORIES.find((c) => c.id === cat);
@@ -4105,9 +4107,9 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
         {[["parents", "Par les parents"], ["club", "Par le club (équipe médicale)"]].map(([v, lab]) => {
           const on = f.priseEnCharge === v;
           return (
-            <button key={v} onClick={() => set("priseEnCharge", v)} style={{
-              flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "10px 6px", fontWeight: 800, fontSize: 12.5,
-              background: on ? C.bleu : "#EEF2F8", color: on ? "#fff" : C.gris,
+            <button key={v} onClick={() => { if (medical) return; set("priseEnCharge", v); }} disabled={medical} style={{
+              flex: 1, border: "none", cursor: medical ? "not-allowed" : "pointer", borderRadius: 10, padding: "10px 6px", fontWeight: 800, fontSize: 12.5,
+              background: on ? C.bleu : "#EEF2F8", color: on ? "#fff" : C.gris, opacity: (medical && !on) ? 0.55 : 1,
             }}>{lab}</button>
           );
         })}
@@ -4115,27 +4117,28 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
       {interne
         ? <div style={{ fontSize: 11.5, color: C.bleu, marginBottom: 12, fontWeight: 700 }}>{sousType === "pro" ? "Professionnels du club" : "Centre de formation"}. Ce joueur apparaît dans la rubrique Suivi médical, renseignée par l'équipe médicale.</div>
         : <div style={{ fontSize: 11.5, color: "#B87A2B", marginBottom: 12 }}>Soins gérés par les parents. Renseigne les retours ci-dessous.</div>}
+      {medical && <div style={{ background: "#EAF0F7", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "9px 12px", fontSize: 12, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Informations renseignées par le coach, non modifiables ici. Complète le suivi médical plus bas.</div>}
       <Field label="Pathologie">
-        <Sel value={f.pathologie || ""} onChange={(e) => set("pathologie", e.target.value)}>
+        <Sel value={f.pathologie || ""} onChange={(e) => set("pathologie", e.target.value)} disabled={medical} style={medical ? { background: "#F0F1F3", color: C.gris } : undefined}>
           <option value="">Choisir une pathologie</option>
-          {PATHOLOGIES.map((p) => <option key={p}>{p}</option>)}
+          {(medical ? PATHOLOGIES : PATHOLOGIES_COACH).map((p) => <option key={p}>{p}</option>)}
         </Sel>
       </Field>
-      {f.pathologie === "Autre" && <Field label="Préciser la pathologie"><Inp value={f.zone || ""} onChange={(e) => set("zone", e.target.value)} placeholder="Nature de la blessure" /></Field>}
+      {f.pathologie === "Autre" && <Field label="Préciser la pathologie"><Inp value={f.zone || ""} onChange={(e) => set("zone", e.target.value)} placeholder="Nature de la blessure" disabled={medical} style={medical ? { background: "#F0F1F3", color: C.gris } : undefined} /></Field>}
       <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Côté touché</div>
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         {[["droit", "Droit"], ["gauche", "Gauche"], ["deux", "Les deux"]].map(([v, lab]) => {
           const on = f.cote === v;
           return (
-            <button key={v} onClick={() => set("cote", on ? "" : v)} style={{
-              flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "10px 6px", fontWeight: 800, fontSize: 13,
-              background: on ? C.bleu : "#EEF2F8", color: on ? "#fff" : C.gris,
+            <button key={v} onClick={() => { if (medical) return; set("cote", on ? "" : v); }} disabled={medical} style={{
+              flex: 1, border: "none", cursor: medical ? "not-allowed" : "pointer", borderRadius: 10, padding: "10px 6px", fontWeight: 800, fontSize: 13,
+              background: on ? C.bleu : "#EEF2F8", color: on ? "#fff" : C.gris, opacity: (medical && !on) ? 0.55 : 1,
             }}>{lab}</button>
           );
         })}
       </div>
       <Field label="Survenue lors de">
-        <Sel value={f.circonstance || ""} onChange={(e) => set("circonstance", e.target.value)}>
+        <Sel value={f.circonstance || ""} onChange={(e) => set("circonstance", e.target.value)} disabled={medical} style={medical ? { background: "#F0F1F3", color: C.gris } : undefined}>
           <option value="">Non précisé</option>
           <option value="entrainement">Un entraînement</option>
           <option value="match">Un match</option>
@@ -4740,7 +4743,7 @@ function SuiviMedical({ db, mutate, cat, onClose }) {
               return (
                 <Card key={b.id} onClick={() => setEdit(b)} style={{ borderColor: b.fini ? C.grisClair : "#F3C9C9" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <strong>{p ? `${p.prenom} ${p.nom}` : "Joueur"}</strong>
+                    <strong>{p ? `${p.prenom} ${p.nom}` : "Joueur"}{b.cat ? <span style={{ fontWeight: 600, color: C.gris, fontSize: 13 }}> · {b.cat}</span> : null}</strong>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       {b.phase ? <Pastille bg="#E7EEF6" color={C.bleu}>{b.phase}</Pastille> : null}
                       <Pastille bg={b.fini ? "#E2F4E9" : "#FBE3E3"} color={b.fini ? C.vert : C.rouge}>{b.fini ? "Rétabli" : "En cours"}</Pastille>
