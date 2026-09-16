@@ -1378,11 +1378,15 @@ export default function App() {
   const sousTitre = demo ? "" : (profil && profil.role === "direction" ? " · DIRECTION" : "");
   const peutValider = demo || (profil && (profil.role === "responsable" || profil.role === "direction"));
   const estAdmin = demo || (profil && profil.role === "direction");
+  const estMedical = !demo && !!(profil && profil.role === "medical");
   const groupesDispo = GROUPES.filter((g) => CATEGORIES.some((c) => c.groupe === g && cats.includes(c.id)));
   const groupeActif = (groupeSel && groupesDispo.includes(groupeSel)) ? groupeSel
     : (catInfo && groupesDispo.includes(catInfo.groupe) ? catInfo.groupe : groupesDispo[0]);
 
-  const TABS = [
+  const TABS = estMedical ? [
+    { id: "accueil", label: "Accueil", icon: Home },
+    { id: "effectif", label: "Effectif", icon: Users },
+  ] : [
     { id: "accueil", label: "Accueil", icon: Home },
     { id: "effectif", label: "Effectif", icon: Users },
     { id: "compo", label: "Compo", icon: ClipboardList },
@@ -1468,8 +1472,8 @@ export default function App() {
       </header>
 
       <main style={{ maxWidth: 760, margin: "0 auto", padding: 16 }}>
-        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) window.open(u, "_blank", "noopener"); setShowClassement(true); }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={() => setShowSauvegarde(true)} onPlanning={() => setShowPlanning(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onBilan={() => setShowBilan(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
-        {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
+        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) window.open(u, "_blank", "noopener"); setShowClassement(true); }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={() => setShowSauvegarde(true)} onPlanning={() => setShowPlanning(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onBilan={() => setShowBilan(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
+        {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} />}
         {tab === "compo" && <Compo players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} />}
         {tab === "entrainements" && <Entrainements players={players} cat={cat} db={db} mutate={mutate} />}
@@ -1714,7 +1718,7 @@ function ScoresWeekend({ onClose, localDb }) {
 /* ============================================================
    Accueil
    ============================================================ */
-function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onAcces, onProgramme, onDocuments, onSuivi, onBilan, onReunions, onCalendrier, monEmail }) {
+function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onAcces, onProgramme, onDocuments, onSuivi, onBilan, onReunions, onCalendrier, estMedical, monEmail }) {
   const players = db.players.filter((p) => p.cat === cat);
   const d0 = new Date();
   const todayStr = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
@@ -1831,7 +1835,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
 
       <div style={{ fontSize: 12.5, fontWeight: 800, color: C.gris, letterSpacing: 1, marginBottom: 10 }}>TABLEAU DE BORD {cat}</div>
       <div style={{ display: "grid", gap: 11 }}>
-        {cartes.filter((c) => c.action).map((c) => {
+        {cartes.filter((c) => c.action && (!estMedical || c.titre === "Suivi médical")).map((c) => {
           const I = c.icon;
           return (
             <div key={c.titre} onClick={c.action} style={{
@@ -2029,7 +2033,7 @@ function risqueSuspension(p, db, cat) {
   return { alerte: false };
 }
 
-function Effectif({ players, cat, catInfo, db, mutate }) {
+function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
   const [q, setQ] = useState("");
   const [edit, setEdit] = useState(null);
   const [fiche, setFiche] = useState(null);
@@ -2066,7 +2070,7 @@ function Effectif({ players, cat, catInfo, db, mutate }) {
           <Search size={17} color={C.gris} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un joueur" style={{ ...inputStyle, paddingLeft: 36 }} />
         </div>
-        <Btn variant="accent" onClick={() => setEdit({ cat })}><Plus size={18} /></Btn>
+        {!lectureSeule && <Btn variant="accent" onClick={() => setEdit({ cat })}><Plus size={18} /></Btn>}
       </div>
 
       <div style={{ display: "flex", gap: 7, marginBottom: 14 }}>
@@ -2107,7 +2111,7 @@ function Effectif({ players, cat, catInfo, db, mutate }) {
         </div>
       )}
 
-      {players.length > 0 && (
+      {players.length > 0 && !lectureSeule && (
         <Btn variant="ghost" full style={{ marginTop: 16 }} onClick={() => setCloture(true)}><CalendarDays size={16} /> Clôturer la saison {saisonCourante()}</Btn>
       )}
 
@@ -2120,7 +2124,7 @@ function Effectif({ players, cat, catInfo, db, mutate }) {
         setEdit(null);
       }} />}
 
-      {ficheJoueur && <FicheJoueur p={ficheJoueur} db={db} mutate={mutate} onClose={() => setFiche(null)} onEdit={() => { setEdit(ficheJoueur); setFiche(null); }} onDelete={() => {
+      {ficheJoueur && <FicheJoueur p={ficheJoueur} db={db} mutate={mutate} lectureSeule={lectureSeule} onClose={() => setFiche(null)} onEdit={() => { setEdit(ficheJoueur); setFiche(null); }} onDelete={() => {
         mutate((d) => { d.players = d.players.filter((x) => x.id !== ficheJoueur.id); return d; });
         setFiche(null);
       }} />}
@@ -2257,7 +2261,7 @@ function EditBilan({ bilan, educateurs, onClose, onSave, onDelete }) {
   );
 }
 
-function FicheJoueur({ p, db, mutate, onClose, onEdit, onDelete }) {
+function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete }) {
   const [confirmer, setConfirmer] = useState(false);
   const [testEdit, setTestEdit] = useState(false);
   const [pdfMsg, setPdfMsg] = useState(null);
@@ -2313,7 +2317,7 @@ function FicheJoueur({ p, db, mutate, onClose, onEdit, onDelete }) {
 
   return (
     <Modal title="Fiche joueur" onClose={onClose}
-      footer={
+      footer={lectureSeule ? null :
         <>
           <Btn variant="ghost" onClick={onEdit} full><Edit3 size={16} /> Modifier</Btn>
           <Btn variant="danger" onClick={() => setConfirmer(true)}><Trash2 size={16} /></Btn>
