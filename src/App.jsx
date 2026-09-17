@@ -1162,10 +1162,11 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison) {
   y += th + 4;
 
   const assi = assiduiteJoueur(p, db, saison);
-  section("Assiduité");
+  const nbSeances = (db.trainings || []).filter((t) => t.cat === p.cat && (!saison || saisonDe(t.date) === saison) && t.presence && Object.keys(t.presence).length > 0).length;
+  section("Assiduité" + (nbSeances ? ` (sur ${nbSeances} séance${nbSeances > 1 ? "s" : ""})` : ""));
   paires([
     ["Matchs joués", assi.matchs],
-    ["Présences", assi.presences],
+    ["Présences", nbSeances ? `${assi.presences} / ${nbSeances} (${Math.round((assi.presences / nbSeances) * 100)}%)` : String(assi.presences)],
     ["Absences", assi.absences],
     ["Retards", assi.retards],
   ]);
@@ -2299,6 +2300,8 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
   const educateurs = (db.encadrement || []).map((e) => e.nom).filter(Boolean);
   const bilansSaison = (p.bilans || []).filter((b) => saisonDe(b.date) === saisonSel).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const assi = assiduiteJoueur(p, db, saisonSel);
+  const nbSeancesSaison = (db.trainings || []).filter((t) => t.cat === p.cat && saisonDe(t.date) === saisonSel && t.presence && Object.keys(t.presence).length > 0).length;
+  const tauxSaison = nbSeancesSaison ? Math.round((assi.presences / nbSeancesSaison) * 100) : null;
   const cartonsActifs = (() => { const ci = CATEGORIES.find((x) => x.id === p.cat); return (ci && ci.type === 11) || p.cat === "U13"; })();
   const tests = (p.tests || []).slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const blessures = db.injuries.filter((i) => i.joueurId === p.id && (!i.debut || saisonDe(i.debut) === saisonSel));
@@ -2405,9 +2408,9 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
           </div>
         ))}
       </div>
-      <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, margin: "0 0 6px" }}>Assiduité</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, margin: "0 0 6px" }}>Assiduité{nbSeancesSaison ? ` · sur ${nbSeancesSaison} séance${nbSeancesSaison > 1 ? "s" : ""} · ${tauxSaison}% de présence` : ""}</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
-        {[["Présences", assi.presences, C.vert], ["Absences", assi.absences, C.rouge], ["Retards", assi.retards, C.jauneFonce]].map(([l, v, col]) => (
+        {[["Présences", nbSeancesSaison ? `${assi.presences} / ${nbSeancesSaison}` : `${assi.presences}`, C.vert], ["Absences", assi.absences, C.rouge], ["Retards", assi.retards, C.jauneFonce]].map(([l, v, col]) => (
           <div key={l} style={{ background: "#fff", borderRadius: 12, padding: "12px 6px", textAlign: "center", border: `1px solid ${C.grisClair}` }}>
             <div style={{ fontSize: 20, fontWeight: 900, color: col }}>{v}</div>
             <div style={{ fontSize: 10.5, color: C.gris, marginTop: 2 }}>{l}</div>
