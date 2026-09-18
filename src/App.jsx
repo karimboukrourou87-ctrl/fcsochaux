@@ -3576,10 +3576,25 @@ function exporterRapportMatchPDF(jsPDF, match, players, db, educateur) {
     slotsDef.forEach((s, i) => {
       const cx = Tx + (s.x / 100) * TW, cy = Ty + (s.y / 100) * TH;
       const jid = slots[i]; const j = players.find((p) => p.id === jid);
-      const gk = s.l === "G";
-      sf(gk ? vert : blanc); doc.circle(cx, cy, 10, "F");
-      sc(gk ? blanc : navy); doc.setFont("helvetica", "bold"); doc.setFontSize(6); doc.text(s.l, cx, cy + 2, { align: "center" });
-      if (j) { sc(blanc); doc.setFont("helvetica", "normal"); doc.setFontSize(6); doc.text(((j.nom || "") + (capit === jid ? " (C)" : "")).slice(0, 14), cx, cy + 17, { align: "center" }); }
+      const gk = s.l === "G"; const r = 11;
+      let photoOk = false;
+      if (j && j.photo) {
+        try {
+          doc.saveGraphicsState();
+          doc.circle(cx, cy, r); doc.clip(); doc.discardPath();
+          let iw = r * 2, ih = r * 2;
+          try { const pr = doc.getImageProperties(j.photo); const ar = pr.width / pr.height; if (ar > 1) iw = r * 2 * ar; else ih = (r * 2) / ar; } catch (e) {}
+          doc.addImage(j.photo, "JPEG", cx - iw / 2, cy - ih / 2, iw, ih);
+          doc.restoreGraphicsState();
+          photoOk = true;
+        } catch (e) { try { doc.restoreGraphicsState(); } catch (e2) {} photoOk = false; }
+      }
+      if (photoOk) { sd(blanc); doc.setLineWidth(1.3); doc.circle(cx, cy, r, "S"); doc.setLineWidth(0.5); }
+      else {
+        sf(gk ? vert : blanc); doc.circle(cx, cy, r, "F");
+        sc(gk ? blanc : navy); doc.setFont("helvetica", "bold"); doc.setFontSize(6); doc.text(s.l, cx, cy + 2, { align: "center" });
+      }
+      if (j) { sc(blanc); doc.setFont("helvetica", "normal"); doc.setFontSize(6); doc.text(((j.nom || "") + (capit === jid ? " (C)" : "")).slice(0, 14), cx, cy + r + 7, { align: "center" }); }
     });
     const Rx = Tx + TW + 20; let ry = Ty + 4;
     sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text("Remplaçants", Rx, ry); ry += 15;
