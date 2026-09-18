@@ -1204,7 +1204,7 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison) {
 
   const assi = assiduiteJoueur(p, db, saison);
   const nbSeances = (db.trainings || []).filter((t) => t.cat === p.cat && (!saison || saisonDe(t.date) === saison) && t.presence && Object.keys(t.presence).length > 0).length;
-  const nbMatchsEq = (db.matches || []).filter((m) => m.cat === p.cat && (!saison || saisonDe(m.date) === saison) && m.scorePour != null && m.scoreContre != null).length;
+  const nbMatchsEq = (db.matches || []).filter((m) => m.cat === p.cat && (!saison || saisonDe(m.date) === saison) && m.scorePour != null && m.scoreContre != null && !(m.type || "").toLowerCase().includes("amical")).length;
   section("Assiduité" + (nbSeances ? ` (sur ${nbSeances} séance${nbSeances > 1 ? "s" : ""})` : ""));
   paires([
     ["Matchs joués", nbMatchsEq >= assi.matchs && nbMatchsEq > 0 ? `${assi.matchs} / ${nbMatchsEq}` : String(assi.matchs)],
@@ -2050,7 +2050,7 @@ function assiduiteJoueur(p, db, saison) {
   (db.matches || []).forEach((m) => {
     if (m.cat !== p.cat) return;
     if (saison && saisonDe(m.date) !== saison) return;
-    if (m.tempsJeu && m.tempsJeu[p.id]) matchs++;
+    if (!(m.type || "").toLowerCase().includes("amical") && m.tempsJeu && m.tempsJeu[p.id]) matchs++;
     if (m.jaunes && m.jaunes[p.id]) jaunes += (+m.jaunes[p.id] || 0);
     if (m.rouges && m.rouges[p.id]) rouges += 1;
   });
@@ -2347,7 +2347,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
   const bilansSaison = (p.bilans || []).filter((b) => saisonDe(b.date) === saisonSel).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const assi = assiduiteJoueur(p, db, saisonSel);
   const nbSeancesSaison = (db.trainings || []).filter((t) => t.cat === p.cat && saisonDe(t.date) === saisonSel && t.presence && Object.keys(t.presence).length > 0).length;
-  const nbMatchsEquipe = (db.matches || []).filter((m) => m.cat === p.cat && saisonDe(m.date) === saisonSel && m.scorePour != null && m.scoreContre != null).length;
+  const nbMatchsEquipe = (db.matches || []).filter((m) => m.cat === p.cat && saisonDe(m.date) === saisonSel && m.scorePour != null && m.scoreContre != null && !(m.type || "").toLowerCase().includes("amical")).length;
   const moyGroupe = (() => {
     const moys = [];
     (db.players || []).filter((x) => x.cat === p.cat).forEach((j) => { const s = statsJoueur(j, db, saisonSel); if (s && s.moy != null) moys.push(s.moy); });
