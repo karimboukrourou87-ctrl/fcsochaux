@@ -2871,6 +2871,16 @@ function Compo({ players, cat, catInfo, db, mutate }) {
     });
   }
 
+  const compoVide = Object.keys(lineup.slots || {}).length === 0;
+  const derniereCompo = (() => {
+    let best = null, bestN = 0;
+    Object.keys(db.lineups || {}).forEach((k) => { if (k === key) return; const lu = db.lineups[k]; const n = (lu && lu.slots) ? Object.keys(lu.slots).length : 0; if (n > bestN) { bestN = n; best = lu; } });
+    return best;
+  })();
+  function reprendreCompo() {
+    if (!derniereCompo) return;
+    mutate((d) => { d.lineups[key] = { formation: derniereCompo.formation, slots: { ...(derniereCompo.slots || {}) }, remplacants: [...(derniereCompo.remplacants || [])], capitaine: derniereCompo.capitaine || null, format: derniereCompo.format }; return d; });
+  }
   const used = Object.values(lineup.slots || {});
   const convoques = used.length + remplacants.length;
   const benchDispo = players.filter((p) => !used.includes(p.id) && !remplacants.includes(p.id));
@@ -2893,6 +2903,12 @@ function Compo({ players, cat, catInfo, db, mutate }) {
               </option>
             ))}
           </select>
+        </div>
+      )}
+      {compoVide && derniereCompo && (
+        <div style={{ background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+          <div style={{ fontSize: 12.5, color: C.encre, marginBottom: 8, lineHeight: 1.4 }}>Ce match n'a pas encore de composition. Tu peux repartir de ta dernière composition plutôt que de tout refaire, puis l'ajuster.</div>
+          <Btn variant="accent" full onClick={reprendreCompo}>Reprendre la dernière composition</Btn>
         </div>
       )}
 
@@ -3324,6 +3340,7 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
   const parRole = (rl) => liste.filter((x) => x.role === rl);
   const ciOrga = CATEGORIES.find((x) => x.id === cur.cat);
   const u17plus = !!(ciOrga && (ciOrga.groupe === "Formation" || ciOrga.groupe === "PRO"));
+  const optAssist = ["Prise en charge par l'équipe adverse", "Joueur du club accompagné d'un dirigeant", "Joueur de l'équipe adverse accompagné d'un dirigeant"];
   const champs = [
     { role: "Éducateur", key: "educateur", src: "Éducateur" },
     { role: "Coach adjoint", key: "coachAdjoint", src: "Éducateur" },
@@ -3333,10 +3350,10 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
     ] : []),
     { role: "Dirigeant", key: "dirigeant", src: "Dirigeant" },
     { role: "Délégué", key: "delegue", src: "Délégué" },
-    { role: "Arbitre central", key: "arbitre", src: "Arbitre" },
-    { role: "Arbitre assistant 1", key: "assistant1", src: "Arbitre" },
-    { role: "Arbitre assistant 2", key: "assistant2", src: "Arbitre" },
-    { role: "Arbitre assistant 3", key: "assistant3", src: "Arbitre" },
+    { role: "Arbitre central", key: "arbitre", src: "Arbitre", options: ["Prise en charge par l'équipe adverse"] },
+    { role: "Arbitre assistant 1", key: "assistant1", src: "Arbitre", options: optAssist },
+    { role: "Arbitre assistant 2", key: "assistant2", src: "Arbitre", options: optAssist },
+    { role: "Arbitre assistant 3", key: "assistant3", src: "Arbitre", options: optAssist },
   ];
 
   function majTransport(patch) {
@@ -3541,14 +3558,16 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
 
       <div style={{ fontWeight: 800, marginBottom: 6, display: "flex", alignItems: "center", gap: 7 }}><ShieldAlert size={17} color={C.bleu} /> Encadrement</div>
       <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Désigne le dirigeant, le délégué et l'arbitre depuis la liste enregistrée.</div>
-      {champs.map(({ role, key, src }) => {
+      {champs.map(({ role, key, src, options }) => {
         const gens = parRole(src || role);
+        const opts = options || [];
         return (
           <Field key={key} label={role}>
             <Sel value={e[key] || ""} onChange={(ev) => majEncadrement({ [key]: ev.target.value })}>
               <option value="">Non désigné</option>
+              {opts.map((o) => <option key={o} value={o}>{o}</option>)}
               {gens.map((g) => <option key={g.id}>{g.nom}</option>)}
-              {e[key] && !gens.some((g) => g.nom === e[key]) ? <option value={e[key]}>{e[key]}</option> : null}
+              {e[key] && !gens.some((g) => g.nom === e[key]) && !opts.includes(e[key]) ? <option value={e[key]}>{e[key]}</option> : null}
             </Sel>
           </Field>
         );
