@@ -3512,7 +3512,10 @@ function exporterRapportMatchPDF(jsPDF, match, players, db, educateur) {
   const dr = dom ? (match.adversaire || "Adversaire") : "SOCHAUX";
   const score = joue ? (dom ? `${cur.scorePour} - ${cur.scoreContre}` : `${cur.scoreContre} - ${cur.scorePour}`) : "Score à venir";
   const nomOf = (id) => { const p = players.find((x) => x.id === id); return p ? `${p.prenom} ${p.nom}` : ""; };
-  const lineup = (db.lineups && db.lineups[match.id]) || null;
+  const luM = (db.lineups && db.lineups[match.id]) || null;
+  const luC = (db.lineups && db.lineups[match.cat]) || null;
+  const nbSlots = (lu) => (lu && lu.slots) ? Object.keys(lu.slots).length : 0;
+  const lineup = nbSlots(luM) >= nbSlots(luC) ? (luM || luC) : (luC || luM);
   const typeFoot = (lineup && lineup.format) || ((CATEGORIES.find((c) => c.id === match.cat) || {}).type) || 8;
   const formations = FORMATIONS[typeFoot] || {};
   const systeme = (lineup && lineup.formation) || Object.keys(formations)[0] || "";
