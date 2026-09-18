@@ -92,11 +92,13 @@ function FormTransport({ onSubmit, onClose }) {
   const [mode, setMode] = useState("Minibus club");
   const [minibus, setMinibus] = useState([]);
   const [loueur, setLoueur] = useState("");
+  const [nbVoitures, setNbVoitures] = useState("");
+  const [parents, setParents] = useState("");
   const [note, setNote] = useState("");
   const toggle = (b) => setMinibus((a) => a.includes(b) ? a.filter((x) => x !== b) : [...a, b]);
   return (
     <Modal title="Nouvelle demande de transport" onClose={onClose}
-      footer={<Btn variant="accent" full disabled={!date} onClick={() => onSubmit({ date, destination, mode, minibus, loueur, note })}><Send size={16} /> Envoyer la demande</Btn>}>
+      footer={<Btn variant="accent" full disabled={!date} onClick={() => onSubmit({ date, destination, mode, minibus, loueur, nbVoitures, parents, note })}><Send size={16} /> Envoyer la demande</Btn>}>
       <Field label="Date du déplacement"><Inp type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
       <Field label="Destination ou adversaire (optionnel)"><Inp value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Lieu ou équipe" /></Field>
       <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Mode de transport</div>
@@ -144,6 +146,12 @@ function FormTransport({ onSubmit, onClose }) {
           </div>
         </div>
       )}
+      {mode === "Voitures des parents" && (
+        <div style={{ marginBottom: 12 }}>
+          <Field label="Nombre de voitures qui accompagnent"><Inp type="number" inputMode="numeric" value={nbVoitures} onChange={(e) => setNbVoitures(e.target.value)} placeholder="Ex : 4" /></Field>
+          <Field label="Noms des parents qui conduisent"><Inp value={parents} onChange={(e) => setParents(e.target.value)} placeholder="Ex : Dupont, Martin, Diallo" /></Field>
+        </div>
+      )}
       <Field label="Précision (optionnel)"><Inp value={note} onChange={(e) => setNote(e.target.value)} placeholder="Horaire de départ, nombre de places..." /></Field>
     </Modal>
   );
@@ -152,6 +160,7 @@ function FormTransport({ onSubmit, onClose }) {
 function resumeTransport(x) {
   if (x.mode === "Minibus club") return `Minibus ${(x.minibus || []).join(", ") || "à préciser"}`;
   if (x.mode === "Bus en location") return `Bus en location ${x.loueur || ""}`.trim();
+  if (x.mode === "Voitures des parents") return `Voitures des parents${x.nbVoitures ? ` (${x.nbVoitures})` : ""}${x.parents ? " : " + x.parents : ""}`;
   return x.mode || "Transport";
 }
 
@@ -738,9 +747,9 @@ const AXES = [
 const TYPES_MATCH = ["Championnat", "Coupe", "Amical", "Plateau", "Tournoi"];
 
 const MINIBUS = ["T2", "T3", "T4", "T5"];
-const MODES_TRANSPORT = ["Minibus club", "Bus en location", "Voitures des parents"];
+const MODES_TRANSPORT = ["Minibus club", "Bus en location", "Bus de voyage des pros", "Voitures des parents"];
 const LOUEURS = ["ADJ", "Hertz"];
-const ROLES_ENCADREMENT = ["Éducateur", "Dirigeant", "Délégué", "Arbitre"];
+const ROLES_ENCADREMENT = ["Éducateur", "Coach des gardiens", "Préparateur physique", "Dirigeant", "Délégué", "Arbitre"];
 
 const TERRAINS = ["Synthétique centre", "Synthétique dôme", "Herbe centre (nouveau synthétique)", "Herbe villa"];
 const VESTIAIRES = ["1", "2", "3", "4", "5", "Villa 1", "Villa 2"];
@@ -3313,11 +3322,21 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
   const domicile = cur.lieu === "Domicile";
   const liste = db.encadrement || [];
   const parRole = (rl) => liste.filter((x) => x.role === rl);
+  const ciOrga = CATEGORIES.find((x) => x.id === cur.cat);
+  const u17plus = !!(ciOrga && (ciOrga.groupe === "Formation" || ciOrga.groupe === "PRO"));
   const champs = [
-    { role: "Éducateur", key: "educateur" },
-    { role: "Dirigeant", key: "dirigeant" },
-    { role: "Délégué", key: "delegue" },
-    { role: "Arbitre", key: "arbitre" },
+    { role: "Éducateur", key: "educateur", src: "Éducateur" },
+    { role: "Coach adjoint", key: "coachAdjoint", src: "Éducateur" },
+    ...(u17plus ? [
+      { role: "Coach des gardiens", key: "coachGardiens", src: "Coach des gardiens" },
+      { role: "Préparateur physique", key: "prepaPhysique", src: "Préparateur physique" },
+    ] : []),
+    { role: "Dirigeant", key: "dirigeant", src: "Dirigeant" },
+    { role: "Délégué", key: "delegue", src: "Délégué" },
+    { role: "Arbitre central", key: "arbitre", src: "Arbitre" },
+    { role: "Arbitre assistant 1", key: "assistant1", src: "Arbitre" },
+    { role: "Arbitre assistant 2", key: "assistant2", src: "Arbitre" },
+    { role: "Arbitre assistant 3", key: "assistant3", src: "Arbitre" },
   ];
 
   function majTransport(patch) {
@@ -3484,6 +3503,12 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
             </div>
           </div>
         )}
+        {t.mode === "Voitures des parents" && (
+          <div style={{ marginBottom: 12 }}>
+            <Field label="Nombre de voitures qui accompagnent"><Inp type="number" inputMode="numeric" value={t.nbVoitures || ""} onChange={(ev) => majTransport({ nbVoitures: ev.target.value })} placeholder="Ex : 4" /></Field>
+            <Field label="Noms des parents qui conduisent"><Inp value={t.parents || ""} onChange={(ev) => majTransport({ parents: ev.target.value })} placeholder="Ex : Dupont, Martin, Diallo" /></Field>
+          </div>
+        )}
         {t.mode && (
           <div style={{ marginTop: 4 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -3516,8 +3541,8 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
 
       <div style={{ fontWeight: 800, marginBottom: 6, display: "flex", alignItems: "center", gap: 7 }}><ShieldAlert size={17} color={C.bleu} /> Encadrement</div>
       <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Désigne le dirigeant, le délégué et l'arbitre depuis la liste enregistrée.</div>
-      {champs.map(({ role, key }) => {
-        const gens = parRole(role);
+      {champs.map(({ role, key, src }) => {
+        const gens = parRole(src || role);
         return (
           <Field key={key} label={role}>
             <Sel value={e[key] || ""} onChange={(ev) => majEncadrement({ [key]: ev.target.value })}>
