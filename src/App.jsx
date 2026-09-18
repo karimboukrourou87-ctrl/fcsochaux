@@ -1136,7 +1136,7 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison) {
   paires([
     ["Pied fort", jo.fort],
     ["Pied faible", jo.faible],
-    ["Tête", jo.tete],
+    ["Jonglage alterné", jo.tete],
   ]);
 
   section("Tests physiques");
@@ -1455,6 +1455,7 @@ export default function App() {
                 ÉCOLE DE FOOT{sousTitre}
               </div>
             </div>
+            <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
             <button onClick={deconnexion} title="Se déconnecter" style={{ background: "rgba(255,255,255,0.12)", border: "none", color: "#fff", borderRadius: 10, padding: "8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700 }}>
               <LogOut size={16} />
             </button>
@@ -2766,7 +2767,7 @@ function EditJoueur({ joueur, cat, onClose, onSave }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
         <Field label="Pied fort"><Inp type="number" inputMode="numeric" value={(f.jonglages || {}).fort} onChange={(e) => setJo("fort", e.target.value)} /></Field>
         <Field label="Pied faible"><Inp type="number" inputMode="numeric" value={(f.jonglages || {}).faible} onChange={(e) => setJo("faible", e.target.value)} /></Field>
-        <Field label="Tête"><Inp type="number" inputMode="numeric" value={(f.jonglages || {}).tete} onChange={(e) => setJo("tete", e.target.value)} /></Field>
+        <Field label="Jonglage alterné"><Inp type="number" inputMode="numeric" value={(f.jonglages || {}).tete} onChange={(e) => setJo("tete", e.target.value)} /></Field>
       </div>
 
       <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13, margin: "8px 0" }}>Parents / responsable</div>
