@@ -584,6 +584,16 @@ const CLUB_LONG = "FC SOCHAUX-MONTBÉLIARD";
    Données de référence
    ============================================================ */
 const GROUPES = ["École de foot", "Pré-formation", "Formation", "PRO", "Loisirs", "Féminines"];
+function secteurLabel(cat) {
+  const ci = CATEGORIES.find((x) => x.id === cat);
+  const g = ci ? ci.groupe : "";
+  if (g === "Pré-formation") return "Préformation";
+  if (g === "Formation") return "Formation";
+  if (g === "PRO") return "Professionnel";
+  if (g === "Loisirs") return "Foot loisirs";
+  if (g === "Féminines") return cat;
+  return "École de foot";
+}
 const CATEGORIES = [
   { id: "U7", type: 4, groupe: "École de foot" }, { id: "U8", type: 5, groupe: "École de foot" }, { id: "U9", type: 8, groupe: "École de foot" },
   { id: "U10", type: 8, groupe: "École de foot" }, { id: "U11", type: 8, groupe: "École de foot" }, { id: "U12", type: 8, groupe: "École de foot" },
@@ -1051,7 +1061,7 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison) {
   sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
   doc.text(CLUB_LONG, M, 42);
   sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
-  doc.text("ÉCOLE DE FOOT   ·   FICHE JOUEUR", M, 55);
+  doc.text(secteurLabel(p.cat).toUpperCase() + "   ·   FICHE JOUEUR", M, 55);
   sd(OR); doc.setLineWidth(1); doc.line(M, 64, W - M, 64); doc.setLineWidth(0.5);
 
   const by = 68, bw = 70, bh = 88, bx = W - M - bw;
@@ -1180,12 +1190,24 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison) {
     doc.text(t[0], x + tw2 / 2, y + 30, { align: "center" });
   });
   y += th + 4;
+  {
+    const moysG = [];
+    (db.players || []).filter((x) => x.cat === p.cat).forEach((j) => { const s = statsJoueur(j, db, saison); if (s && s.moy != null) moysG.push(s.moy); });
+    if (moysG.length) {
+      const mg = moysG.reduce((a, b) => a + b, 0) / moysG.length;
+      sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+      let txt = `Note moyenne du groupe : ${mg.toFixed(1)}/7  (sur ${moysG.length} joueur${moysG.length > 1 ? "s" : ""} noté${moysG.length > 1 ? "s" : ""})`;
+      if (stats.moy != null) txt += stats.moy >= mg ? "  -  ce joueur est au-dessus de la moyenne." : "  -  ce joueur est en dessous de la moyenne.";
+      doc.text(txt, M, y, { maxWidth: W - 2 * M }); y += 14;
+    }
+  }
 
   const assi = assiduiteJoueur(p, db, saison);
   const nbSeances = (db.trainings || []).filter((t) => t.cat === p.cat && (!saison || saisonDe(t.date) === saison) && t.presence && Object.keys(t.presence).length > 0).length;
+  const nbMatchsEq = (db.matches || []).filter((m) => m.cat === p.cat && (!saison || saisonDe(m.date) === saison) && m.scorePour != null && m.scoreContre != null).length;
   section("Assiduité" + (nbSeances ? ` (sur ${nbSeances} séance${nbSeances > 1 ? "s" : ""})` : ""));
   paires([
-    ["Matchs joués", assi.matchs],
+    ["Matchs joués", nbMatchsEq >= assi.matchs && nbMatchsEq > 0 ? `${assi.matchs} / ${nbMatchsEq}` : String(assi.matchs)],
     ["Présences", nbSeances ? `${assi.presences} / ${nbSeances} (${Math.round((assi.presences / nbSeances) * 100)}%)` : String(assi.presences)],
     ["Absences", assi.absences],
     ["Retards", assi.retards],
@@ -2324,6 +2346,12 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
   const bilansSaison = (p.bilans || []).filter((b) => saisonDe(b.date) === saisonSel).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const assi = assiduiteJoueur(p, db, saisonSel);
   const nbSeancesSaison = (db.trainings || []).filter((t) => t.cat === p.cat && saisonDe(t.date) === saisonSel && t.presence && Object.keys(t.presence).length > 0).length;
+  const nbMatchsEquipe = (db.matches || []).filter((m) => m.cat === p.cat && saisonDe(m.date) === saisonSel && m.scorePour != null && m.scoreContre != null).length;
+  const moyGroupe = (() => {
+    const moys = [];
+    (db.players || []).filter((x) => x.cat === p.cat).forEach((j) => { const s = statsJoueur(j, db, saisonSel); if (s && s.moy != null) moys.push(s.moy); });
+    return moys.length ? { moy: moys.reduce((a, b) => a + b, 0) / moys.length, n: moys.length } : null;
+  })();
   const tauxSaison = nbSeancesSaison ? Math.round((assi.presences / nbSeancesSaison) * 100) : null;
   const cartonsActifs = (() => { const ci = CATEGORIES.find((x) => x.id === p.cat); return (ci && ci.type === 11) || p.cat === "U13"; })();
   const tests = (p.tests || []).slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
@@ -2424,13 +2452,23 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
         )}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginBottom: 12 }}>
-        {[["Matchs", assi.matchs], ["Minutes", stats.minutes], ["Buts", stats.buts], ["Passes", stats.passes], ["Note", stats.moy != null ? stats.moy.toFixed(1) : "-"]].map(([l, v]) => (
+        {[["Matchs", nbMatchsEquipe >= assi.matchs && nbMatchsEquipe > 0 ? `${assi.matchs}/${nbMatchsEquipe}` : assi.matchs], ["Minutes", stats.minutes], ["Buts", stats.buts], ["Passes", stats.passes], ["Note", stats.moy != null ? stats.moy.toFixed(1) : "-"]].map(([l, v]) => (
           <div key={l} style={{ background: "#fff", borderRadius: 12, padding: "12px 4px", textAlign: "center", border: `1px solid ${C.grisClair}` }}>
             <div style={{ fontSize: 18, fontWeight: 900, color: C.bleu }}>{v}</div>
             <div style={{ fontSize: 9.5, color: C.gris, marginTop: 2 }}>{l}</div>
           </div>
         ))}
       </div>
+      {moyGroupe && (
+        <div style={{ background: "#EAF0F7", borderRadius: 12, padding: "10px 12px", marginBottom: 12, fontSize: 12.5, lineHeight: 1.5 }}>
+          <span style={{ color: C.gris }}>Note moyenne du groupe : </span>
+          <span style={{ fontWeight: 800, color: C.bleu }}>{moyGroupe.moy.toFixed(1)}</span>
+          <span style={{ color: C.gris }}> · sur {moyGroupe.n} joueur{moyGroupe.n > 1 ? "s" : ""} noté{moyGroupe.n > 1 ? "s" : ""} de la catégorie.</span>
+          {stats.moy != null && (
+            <span style={{ fontWeight: 700, color: stats.moy >= moyGroupe.moy ? C.vert : "#B87A2B" }}> {p.prenom} est {stats.moy >= moyGroupe.moy ? "au-dessus" : "en dessous"} de la moyenne du groupe.</span>
+          )}
+        </div>
+      )}
       <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, margin: "0 0 6px" }}>Assiduité{nbSeancesSaison ? ` · sur ${nbSeancesSaison} séance${nbSeancesSaison > 1 ? "s" : ""} · ${tauxSaison}% de présence` : ""}</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
         {[["Présences", nbSeancesSaison ? `${assi.presences} / ${nbSeancesSaison}` : `${assi.presences}`, C.vert], ["Absences", assi.absences, C.rouge], ["Retards", assi.retards, C.jauneFonce]].map(([l, v, col]) => (
@@ -3515,7 +3553,8 @@ function exporterRapportMatchPDF(jsPDF, match, players, db, educateur) {
   const luM = (db.lineups && db.lineups[match.id]) || null;
   const luC = (db.lineups && db.lineups[match.cat]) || null;
   const nbSlots = (lu) => (lu && lu.slots) ? Object.keys(lu.slots).length : 0;
-  const lineup = nbSlots(luM) >= nbSlots(luC) ? (luM || luC) : (luC || luM);
+  let lineup = nbSlots(luM) ? luM : (nbSlots(luC) ? luC : null);
+  if (!lineup && db.lineups) { let bN = 0; Object.keys(db.lineups).forEach((k) => { const n = nbSlots(db.lineups[k]); if (n > bN) { bN = n; lineup = db.lineups[k]; } }); }
   const typeFoot = (lineup && lineup.format) || ((CATEGORIES.find((c) => c.id === match.cat) || {}).type) || 8;
   const formations = FORMATIONS[typeFoot] || {};
   const systeme = (lineup && lineup.formation) || Object.keys(formations)[0] || "";
@@ -3536,7 +3575,7 @@ function exporterRapportMatchPDF(jsPDF, match, players, db, educateur) {
   if (typeof LOGO_CLUB === "string" && LOGO_CLUB) { try { doc.addImage(LOGO_CLUB, "PNG", W - M - 34, 8, 34, 41); } catch (e) {} }
   sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("FC SOCHAUX-MONTBÉLIARD", M, 30);
   sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
-  doc.text("École de foot - Rapport de match" + (match.cat ? " - " + match.cat : "") + (educateur ? " - Éducateur : " + educateur : ""), M, 44);
+  doc.text(secteurLabel(match.cat) + " - Rapport de match" + (match.cat ? " - " + match.cat : "") + (educateur ? " - Éducateur : " + educateur : ""), M, 44);
   sd(orr); doc.setLineWidth(1); doc.line(M, 52, W - M, 52); doc.setLineWidth(0.5);
   let y = 74;
   sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
