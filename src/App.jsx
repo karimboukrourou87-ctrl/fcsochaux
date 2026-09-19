@@ -1675,13 +1675,14 @@ function traduireErreur(e) {
 
 function Login({ configManquante, onDemo }) {
   const [mode, setMode] = useState("connexion");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => { try { return localStorage.getItem("fcsm-email") || ""; } catch (e) { return ""; } });
   const [mdp, setMdp] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function go() {
     if (!email.trim() || !mdp) { setMsg("Renseigne ton email et ton mot de passe."); return; }
+    try { localStorage.setItem("fcsm-email", email.trim()); } catch (e) {}
     setMsg(""); setBusy(true);
     try {
       const sb = await getSupabase();
@@ -1713,9 +1714,11 @@ function Login({ configManquante, onDemo }) {
           ) : (
             <>
               <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 14 }}>{mode === "connexion" ? "Connexion éducateur" : "Créer un compte"}</div>
-              <Field label="Adresse email"><Inp type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="prenom.nom@club.fr" /></Field>
-              <Field label="Mot de passe"><Inp type="password" value={mdp} onChange={(e) => setMdp(e.target.value)} placeholder="6 caractères minimum" /></Field>
-              <Btn variant="primary" full onClick={go} style={{ marginTop: 6 }}>{busy ? "Patiente..." : (mode === "connexion" ? "Se connecter" : "Créer le compte")}</Btn>
+              <form onSubmit={(e) => { e.preventDefault(); go(); }}>
+                <Field label="Adresse email"><Inp type="email" name="username" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="prenom.nom@club.fr" /></Field>
+                <Field label="Mot de passe"><Inp type="password" name="password" autoComplete={mode === "connexion" ? "current-password" : "new-password"} value={mdp} onChange={(e) => setMdp(e.target.value)} placeholder="6 caractères minimum" /></Field>
+                <Btn variant="primary" full type="submit" style={{ marginTop: 6 }}>{busy ? "Patiente..." : (mode === "connexion" ? "Se connecter" : "Créer le compte")}</Btn>
+              </form>
               {msg && <div style={{ fontSize: 12.5, color: C.encre, marginTop: 12, background: C.fond, padding: 10, borderRadius: 10, lineHeight: 1.5 }}>{msg}</div>}
               <div style={{ textAlign: "center", marginTop: 14, fontSize: 13, color: C.gris }}>
                 {mode === "connexion" ? "Pas encore de compte ? " : "Déjà un compte ? "}
