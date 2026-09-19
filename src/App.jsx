@@ -1362,7 +1362,7 @@ export default function App() {
         const role = (prof && prof.role) || "educateur";
         const affCats = (aff || []).map((a) => a.categorie);
         const cats = role === "direction" ? CATEGORIES.map((c) => c.id) : affCats;
-        const catsModif = role === "direction" ? (affCats.length ? affCats : CATEGORIES.map((c) => c.id)) : affCats;
+        const catsModif = role === "direction" ? CATEGORIES.map((c) => c.id) : affCats;
         setProfil({ role, nom: prof && prof.nom, cats, catsModif });
         setCat((prev) => (prev && cats.includes(prev) ? prev : (cats[0] || null)));
       } catch (e) { if (!annule) setProfil({ role: "educateur", cats: [] }); }
