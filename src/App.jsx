@@ -608,6 +608,14 @@ function maxNumero(cat) {
   const g = ci ? ci.groupe : "";
   return (g === "Formation" || g === "PRO") ? 99 : 16;
 }
+function jonglagesActifs(cat) {
+  const ci = CATEGORIES.find((x) => x.id === cat);
+  if (!ci) return false;
+  if (ci.groupe === "École de foot") return true;
+  const m = /^U(\d+)F$/.exec(cat || "");
+  if (m && +m[1] <= 13) return true;
+  return false;
+}
 const CATEGORIES = [
   { id: "U7", type: 4, groupe: "École de foot" }, { id: "U8", type: 5, groupe: "École de foot" }, { id: "U9", type: 8, groupe: "École de foot" },
   { id: "U10", type: 8, groupe: "École de foot" }, { id: "U11", type: 8, groupe: "École de foot" }, { id: "U12", type: 8, groupe: "École de foot" },
@@ -1145,13 +1153,15 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison) {
     ["Contact (email)", p.parentEmail],
   ]);
 
-  section("Jonglages (max 50)");
-  const jo = p.jonglages || {};
-  paires([
-    ["Pied fort", jo.fort],
-    ["Pied faible", jo.faible],
-    ["Jonglage alterné", jo.tete],
-  ]);
+  if (jonglagesActifs(p.cat)) {
+    section("Jonglages (max 50)");
+    const jo = p.jonglages || {};
+    paires([
+      ["Pied fort", jo.fort],
+      ["Pied faible", jo.faible],
+      ["Jonglage alterné", jo.tete],
+    ]);
+  }
 
   section("Tests physiques");
   const dernier = tests[tests.length - 1] || {};
@@ -2841,12 +2851,14 @@ function EditJoueur({ joueur, cat, onClose, onSave }) {
         <Field label="Club"><Inp value={f.club} onChange={(e) => set("club", e.target.value)} /></Field>
       </div>
 
+      {jonglagesActifs(f.cat) && (<>
       <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13, margin: "8px 0" }}>Jonglages (max 50)</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
         <Field label="Pied fort"><Inp type="number" inputMode="numeric" value={(f.jonglages || {}).fort} onChange={(e) => setJo("fort", e.target.value)} /></Field>
         <Field label="Pied faible"><Inp type="number" inputMode="numeric" value={(f.jonglages || {}).faible} onChange={(e) => setJo("faible", e.target.value)} /></Field>
         <Field label="Jonglage alterné"><Inp type="number" inputMode="numeric" value={(f.jonglages || {}).tete} onChange={(e) => setJo("tete", e.target.value)} /></Field>
       </div>
+      </>)}
 
       <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13, margin: "8px 0" }}>Parents / responsable</div>
       <Field label="Nom du responsable"><Inp value={f.parentNom} onChange={(e) => set("parentNom", e.target.value)} /></Field>
@@ -4462,13 +4474,9 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
           {players.map((p) => <option key={p.id} value={p.id}>{p.prenom} {p.nom}</option>)}
         </Sel>
       </Field>
-      {f.joueurId && (
-        <>
-          <Btn variant="ghost" full onClick={exporterDossier}><FileDown size={16} /> Exporter ce dossier en PDF</Btn>
-          {msgPdf && <div style={{ fontSize: 12, color: msgPdf.includes("indisponible") ? C.rouge : C.gris, margin: "6px 0 2px", textAlign: "center" }}>{msgPdf}</div>}
-          <div style={{ height: 12 }} />
-        </>
-      )}
+      <Btn variant="ghost" full disabled={!f.joueurId} onClick={exporterDossier}><FileDown size={16} /> Exporter ce dossier en PDF</Btn>
+      {msgPdf && <div style={{ fontSize: 12, color: msgPdf.includes("indisponible") ? C.rouge : C.gris, margin: "6px 0 2px", textAlign: "center" }}>{msgPdf}</div>}
+      <div style={{ height: 12 }} />
       <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Prise en charge</div>
       <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
         {[["parents", "Par les parents"], ["club", "Par le club (équipe médicale)"]].map(([v, lab]) => {
