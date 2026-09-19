@@ -1323,6 +1323,8 @@ export default function App() {
   const [demo, setDemo] = useState(false);
   const cacheRef = useRef({});
   const pendingRef = useRef(false);
+  const saveQueueRef = useRef(Promise.resolve());
+  const savingCountRef = useRef(0);
 
   useEffect(() => {
     if (!estConfigure()) { setSession(null); return; }
@@ -1373,9 +1375,13 @@ export default function App() {
   useEffect(() => {
     if (demo || !session || !cat) return;
     const onVis = () => {
-      if (document.visibilityState === "visible" && !pendingRef.current) {
-        loadCat(cat).then((fresh) => { if (fresh) { cacheRef.current[cat] = fresh; setDb(fresh); } }).catch(() => {});
-      }
+      if (document.visibilityState !== "visible") return;
+      // On passe par la file pour ne jamais recharger pendant un enregistrement,
+      // ce qui evite d'ecraser une modification en cours.
+      saveQueueRef.current = saveQueueRef.current.then(async () => {
+        if (savingCountRef.current > 0) return;
+        try { const fresh = await loadCat(cat); if (fresh) { cacheRef.current[cat] = fresh; setDb(fresh); } } catch (e) {}
+      });
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
@@ -1402,25 +1408,58 @@ export default function App() {
 
   function mutate(fn) {
     if (lectureSeuleCat) { setSaveStatus("ro"); return; }
+    // Affichage immédiat sur cet appareil (la modif apparaît tout de suite)
     setDb((prev) => {
       const next = fn(structuredClone(prev));
-      if (demo) { saveLocal(next); }
-      else {
-        cacheRef.current[cat] = next;
-        if (session && cat) {
-          setSaveStatus("saving"); pendingRef.current = true;
-          saveCat(cat, next, session.user.id).then(() => { pendingRef.current = false; setSaveStatus("ok"); }).catch((e) => { console.error("Sauvegarde:", e); setSaveStatus("error"); });
-        }
-      }
+      cacheRef.current[cat] = next;
+      if (demo) saveLocal(next);
       return next;
+    });
+    if (demo || !session || !cat) return;
+    // Enregistrement sécurisé : au moment d'écrire, on relit la version la plus
+    // recente du serveur et on y applique uniquement cette modification. Ainsi,
+    // meme si un autre appareil a enregistre entre-temps, son travail n'est pas ecrase.
+    const capCat = cat, capUser = session.user.id;
+    savingCountRef.current += 1;
+    pendingRef.current = true;
+    setSaveStatus("saving");
+    saveQueueRef.current = saveQueueRef.current.then(async () => {
+      try {
+        let aEcrire;
+        try {
+          const frais = await loadCat(capCat);
+          aEcrire = fn(structuredClone(frais));
+        } catch (e) {
+          // Repli : si la relecture echoue, on garde notre version locale
+          aEcrire = cacheRef.current[capCat];
+        }
+        await saveCat(capCat, aEcrire, capUser);
+        cacheRef.current[capCat] = aEcrire;
+        setSaveStatus("ok");
+      } catch (e) {
+        console.error("Sauvegarde:", e);
+        setSaveStatus("error");
+      } finally {
+        savingCountRef.current = Math.max(0, savingCountRef.current - 1);
+        if (savingCountRef.current === 0) pendingRef.current = false;
+      }
     });
   }
 
   function enregistrerManuel() {
     if (demo) { try { saveLocal(db); } catch (e) {} setSaveStatus("ok"); return; }
     if (!session || !cat || !db) return;
-    setSaveStatus("saving"); pendingRef.current = true;
-    saveCat(cat, db, session.user.id).then(() => { pendingRef.current = false; setSaveStatus("ok"); }).catch((e) => { console.error("Sauvegarde:", e); setSaveStatus("error"); });
+    const capCat = cat;
+    setSaveStatus("saving");
+    // On attend que tous les enregistrements en cours soient termines, puis on
+    // recharge la version consolidee du serveur pour l'afficher a l'ecran.
+    saveQueueRef.current = saveQueueRef.current.then(async () => {
+      try {
+        const frais = await loadCat(capCat);
+        if (frais) { cacheRef.current[capCat] = frais; setDb(frais); }
+        setSaveStatus("ok");
+      } catch (e) { console.error("Sauvegarde:", e); setSaveStatus("error"); }
+    });
   }
   async function mutateReunions(fn) {
     if (!session) return;
