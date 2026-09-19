@@ -245,7 +245,7 @@ function OrganisationMatchs({ db, mutate, cat, peutValider, onClose }) {
   const [roster, setRoster] = useState(false);
   const d0 = new Date();
   const todayStr = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
-  const aVenir = db.matches.filter((m) => m.cat === cat && (!m.date || m.date >= todayStr))
+  const aVenir = db.matches.filter((m) => m.cat === cat && (!m.date || m.date >= todayStr) && !(m.scorePour != null && m.scorePour !== "" && m.scoreContre != null && m.scoreContre !== ""))
     .sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
 
   function statutCourt(m) {
@@ -1522,8 +1522,8 @@ export default function App() {
             <div style={{ width: 4, height: 38, borderRadius: 2, background: C.jaune, flex: "0 0 auto" }} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
-              <div style={{ fontSize: 10.5, color: C.jaune, fontWeight: 700, letterSpacing: 2.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT{sousTitre}
+              <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre}
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -1703,7 +1703,7 @@ function Login({ configManquante, onDemo }) {
       <div style={{ width: "100%", maxWidth: 380 }}>
         <div style={{ textAlign: "center", color: "#fff", marginBottom: 22 }}>
           <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: 1.2 }}>{CLUB_LONG}</div>
-          <div style={{ fontSize: 11, color: C.jaune, fontWeight: 700, letterSpacing: 2.4, marginTop: 4 }}>ÉCOLE DE FOOT</div>
+          <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 4 }}>ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS</div>
         </div>
         <div style={{ background: "#fff", borderRadius: 18, padding: 20, boxShadow: "0 10px 30px rgba(0,0,0,0.25)" }}>
           {configManquante ? (
@@ -1854,10 +1854,11 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
   const players = db.players.filter((p) => p.cat === cat);
   const d0 = new Date();
   const todayStr = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
-  const prochainMatch = db.matches.filter((m) => m.cat === cat && m.date && m.date >= todayStr).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const matchJoue = (m) => m.scorePour != null && m.scorePour !== "" && m.scoreContre != null && m.scoreContre !== "";
+  const prochainMatch = db.matches.filter((m) => m.cat === cat && m.date && m.date >= todayStr && !matchJoue(m)).sort((a, b) => a.date.localeCompare(b.date))[0];
   const blesses = db.injuries.filter((i) => !i.fini && players.some((p) => p.id === i.joueurId)).length;
   const nbOrga = db.matches.filter((m) => {
-    if (m.cat !== cat || !m.date || m.date < todayStr) return false;
+    if (m.cat !== cat || !m.date || m.date < todayStr || matchJoue(m)) return false;
     const t = m.transport || {}, e = m.encadrement || {}, r = m.reservation || {};
     const manque = (m.lieu === "Extérieur" && !t.statut) || !e.arbitre || (m.lieu === "Domicile" && r.statut !== "validee");
     return manque;
@@ -5326,11 +5327,109 @@ function ProgrammeSemaine({ db, onClose }) {
 }
 
 
+function exporterSuiviMedicalPDF(jsPDF, blessures, db, cat) {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const W = 595, H = 842, M = 40;
+  const NAVY = [14, 30, 51], BLEU = [26, 53, 83], OR = [198, 162, 76], ENCRE = [22, 32, 46], GRIS = [122, 130, 142], TRAIT = [228, 232, 238], FOND = [247, 248, 250], ROUGE = [181, 72, 63], VERT = [47, 163, 107];
+  const sc = (c) => doc.setTextColor(c[0], c[1], c[2]);
+  const sd = (c) => doc.setDrawColor(c[0], c[1], c[2]);
+  const sf = (c) => doc.setFillColor(c[0], c[1], c[2]);
+  try { doc.setProperties({ title: "Suivi médical " + cat, author: CLUB_LONG, creator: CLUB_LONG }); } catch (e) {}
+
+  sf(NAVY); doc.rect(0, 0, W, 5, "F");
+  if (typeof LOGO_CLUB === "string" && LOGO_CLUB) { try { doc.addImage(LOGO_CLUB, "PNG", W - M - 34, 14, 34, 41); } catch (e) {} }
+  sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.text(CLUB_LONG, M, 42);
+  sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+  doc.text(secteurLabel(cat).toUpperCase() + "   ·   SUIVI MÉDICAL   ·   " + cat, M, 55);
+  sd(OR); doc.setLineWidth(1); doc.line(M, 64, W - M, 64); doc.setLineWidth(0.5);
+
+  let y = 84;
+  sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+  doc.text("Joueurs pris en charge par le club, en cours de soin ou de réathlétisation.", M, y);
+  y += 20;
+
+  const sautPage = (besoin) => { if (y + besoin > H - 46) { doc.addPage(); y = 56; } };
+
+  if (!blessures.length) {
+    sc(GRIS); doc.setFont("helvetica", "italic"); doc.setFontSize(10);
+    doc.text("Aucun joueur en suivi médical pour cette catégorie.", M, y);
+  }
+
+  blessures.forEach((b) => {
+    const p = (db.players || []).find((x) => x.id === b.joueurId);
+    const nom = p ? `${p.prenom} ${p.nom}` : "Joueur";
+    const patho = (b.pathologie && b.pathologie !== "Autre") ? b.pathologie : (b.zone || "Blessure");
+    const statut = b.fini ? "Rétabli" : "En cours";
+    const sType = priseEnChargeMedicale(b.cat);
+    const enClub = b.priseEnCharge ? b.priseEnCharge === "club" : sType !== "parents";
+    const pecTxt = enClub ? (sType === "pro" ? "Suivi club, professionnels" : "Suivi club, centre de formation") : "Soins pris en charge par les parents";
+    const dfr = (d) => d ? new Date(d + "T00:00:00").toLocaleDateString("fr-FR") : null;
+    const dates = [b.debut ? "blessé le " + dfr(b.debut) : null, b.datePriseEnCharge ? "pris en charge le " + dfr(b.datePriseEnCharge) : null, b.dateRetour ? "retour prévu " + dfr(b.dateRetour) : null, b.kine ? "kiné " + b.kine : null].filter(Boolean).join("   ·   ");
+    const testTxt = b.phase === "P4" && b.testRetour ? (b.testRetour === "valide" ? "Test de retour validé, retour sur le terrain" : "Test de retour non validé" + (b.raisonNonRetour ? " : " + b.raisonNonRetour : "")) : "";
+
+    // hauteur estimée de la carte
+    const suiviLignes = b.suivi ? doc.splitTextToSize(b.suivi.trim(), W - 2 * M - 24) : [];
+    let hCarte = 74;
+    if (dates) hCarte += 14;
+    if (testTxt) hCarte += 14;
+    if (suiviLignes.length) hCarte += 14 + suiviLignes.length * 11;
+    sautPage(hCarte + 12);
+
+    const x = M, w = W - 2 * M, top = y;
+    sf(FOND); doc.roundedRect(x, top, w, hCarte, 8, 8, "F");
+    let yy = top + 20;
+    // nom + statut
+    sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(12);
+    doc.text(nom + (b.cat ? "   (" + b.cat + ")" : ""), x + 14, yy);
+    const badge = statut.toUpperCase();
+    doc.setFontSize(8); doc.setFont("helvetica", "bold");
+    const bw = doc.getTextWidth(badge) + 16;
+    sf(b.fini ? [226, 244, 233] : [251, 227, 227]); doc.roundedRect(x + w - 14 - bw, yy - 11, bw, 16, 8, 8, "F");
+    sc(b.fini ? VERT : ROUGE); doc.text(badge, x + w - 14 - bw + 8, yy);
+    if (b.phase) {
+      const pb = b.phase, pw = doc.getTextWidth(pb) + 14;
+      sf([231, 238, 246]); doc.roundedRect(x + w - 14 - bw - 6 - pw, yy - 11, pw, 16, 8, 8, "F");
+      sc(BLEU); doc.text(pb, x + w - 14 - bw - 6 - pw + 7, yy);
+    }
+    yy += 18;
+    // pathologie
+    sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+    let pl = patho; if (b.cote) pl += " (" + texteCote(b.cote) + ")"; if (b.circonstance) pl += ", " + texteCirconstance(b.circonstance);
+    doc.text(pl, x + 14, yy); yy += 15;
+    // dates
+    if (dates) { sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text(dates, x + 14, yy); yy += 14; }
+    // prise en charge
+    sc(enClub ? BLEU : [184, 122, 43]); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.text(pecTxt, x + 14, yy); yy += 14;
+    // test retour
+    if (testTxt) { sc(b.testRetour === "valide" ? VERT : ROUGE); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(testTxt, x + 14, yy); yy += 14; }
+    // suivi
+    if (suiviLignes.length) {
+      sc(GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.text("SUIVI ET SOINS", x + 14, yy); yy += 11;
+      sc(ENCRE); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+      suiviLignes.forEach((ln) => { doc.text(ln, x + 14, yy); yy += 11; });
+    }
+    y = top + hCarte + 12;
+  });
+
+  sd(OR); doc.setLineWidth(0.8); doc.line(M, H - 28, W - M, H - 28); doc.setLineWidth(0.5);
+  sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+  doc.text("Édité le " + new Date().toLocaleDateString("fr-FR"), M, H - 19);
+  doc.text(CLUB_LONG, W - M, H - 19, { align: "right" });
+
+  doc.save("Suivi_medical_" + (cat || "").replace(/[^0-9A-Za-z]/g, "_") + "_" + new Date().toISOString().slice(0, 10) + ".pdf");
+}
+
 function SuiviMedical({ db, mutate, cat, onClose }) {
   const [edit, setEdit] = useState(null);
+  const [msgPdf, setMsgPdf] = useState(null);
   const players = db.players.filter((p) => p.cat === cat);
   const sousType = priseEnChargeMedicale(cat);
   const blessures = (db.injuries || []).filter((i) => i.cat === cat && (i.priseEnCharge ? i.priseEnCharge === "club" : sousType !== "parents")).sort((a, b) => (a.fini === b.fini) ? 0 : a.fini ? 1 : -1);
+  async function telechargerSuivi() {
+    setMsgPdf("Préparation du PDF...");
+    try { const jsPDF = await chargerJsPDF(); exporterSuiviMedicalPDF(jsPDF, blessures, db, cat); setMsgPdf(null); }
+    catch (e) { setMsgPdf("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
+  }
   return (
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "16px 16px 14px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
@@ -5339,7 +5438,9 @@ function SuiviMedical({ db, mutate, cat, onClose }) {
       </header>
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
         <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 14, lineHeight: 1.5 }}>Rubrique de l'équipe médicale : joueurs pris en charge par le club, en réathlétisation ou convalescence. {sousType === "pro" ? "Catégorie professionnelle." : sousType === "formation" ? "Centre de formation." : "Cette catégorie est normalement suivie par les parents ; un joueur n'apparaît ici que si le coach a choisi une prise en charge par le club."}</div>
-        <Btn variant="accent" full style={{ marginBottom: 16 }} onClick={() => setEdit({ cat, priseEnCharge: "club" })}><Plus size={16} /> Ajouter un joueur en suivi</Btn>
+        <Btn variant="accent" full style={{ marginBottom: 10 }} onClick={() => setEdit({ cat, priseEnCharge: "club" })}><Plus size={16} /> Ajouter un joueur en suivi</Btn>
+        {blessures.length > 0 && <Btn variant="ghost" full style={{ marginBottom: 8 }} onClick={telechargerSuivi}><FileDown size={16} /> Exporter le suivi en PDF</Btn>}
+        {msgPdf && <div style={{ fontSize: 12.5, color: msgPdf.includes("indisponible") ? C.rouge : C.gris, marginBottom: 10, textAlign: "center" }}>{msgPdf}</div>}
         {blessures.length === 0 ? (
           <Empty icon={<Activity size={24} color={C.gris} />} text="Aucun joueur en suivi médical" sub="Les blessés pris en charge par le club apparaissent ici" />
         ) : (
