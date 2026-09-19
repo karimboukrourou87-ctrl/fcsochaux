@@ -422,6 +422,7 @@ function Demandes({ demo, db, mutate, cat, session, onClose }) {
   const [err, setErr] = useState(null);
   const [refus, setRefus] = useState(null);
   const [cause, setCause] = useState("");
+  const [confirmSuppr, setConfirmSuppr] = useState(null);
 
   async function charger() {
     if (demo) return;
@@ -499,6 +500,20 @@ function Demandes({ demo, db, mutate, cat, session, onClose }) {
     setRefus(null); setCause("");
   }
 
+  async function supprimer(dem) {
+    if (demo) {
+      mutate((d) => { d.demandes = (d.demandes || []).filter((x) => x.id !== dem.id); return d; });
+    } else {
+      try {
+        const sb = await getSupabase();
+        const { error } = await sb.from("demandes_joueur").delete().eq("id", dem.id);
+        if (error) throw error;
+        await charger();
+      } catch (e) { setErr("Suppression impossible. Vérifie les droits sur la base ou réessaie."); }
+    }
+    setConfirmSuppr(null);
+  }
+
   function ligneDemande(dem, recue) {
     return (
       <Card key={dem.id} style={{ marginBottom: 0 }}>
@@ -506,7 +521,10 @@ function Demandes({ demo, db, mutate, cat, session, onClose }) {
           <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>
             {recue ? `Demandé par ${dem.demandeurCat}` : `Vers ${dem.joueurCat}`}{dem.date ? ` · ${fmtDate(dem.date)}` : ""}
           </span>
-          <StatutPastille statut={dem.statut} />
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <StatutPastille statut={dem.statut} />
+            <Trash2 size={15} color={C.gris} style={{ cursor: "pointer" }} onClick={() => setConfirmSuppr(dem)} />
+          </div>
         </div>
         <div style={{ fontWeight: 800, fontSize: 15 }}>{dem.joueurNom} <span style={{ color: C.gris, fontWeight: 600, fontSize: 13 }}>({dem.joueurCat})</span></div>
         {dem.motif ? <div style={{ fontSize: 13, color: C.gris, marginTop: 3 }}>Motif : {dem.motif}</div> : null}
@@ -560,6 +578,13 @@ function Demandes({ demo, db, mutate, cat, session, onClose }) {
               width: "100%", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 11, fontSize: 14, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box",
             }} />
           </Field>
+        </Modal>
+      )}
+
+      {confirmSuppr && (
+        <Modal title="Supprimer la demande" onClose={() => setConfirmSuppr(null)}
+          footer={<><Btn variant="ghost" full onClick={() => setConfirmSuppr(null)}>Annuler</Btn><Btn variant="danger" full onClick={() => supprimer(confirmSuppr)}><Trash2 size={16} /> Supprimer</Btn></>}>
+          <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.5 }}>Supprimer définitivement la demande concernant <strong>{confirmSuppr.joueurNom}</strong> ? Cette action est irréversible.</div>
         </Modal>
       )}
     </Modal>
