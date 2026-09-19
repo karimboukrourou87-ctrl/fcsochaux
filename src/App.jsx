@@ -503,15 +503,17 @@ function Demandes({ demo, db, mutate, cat, session, onClose }) {
   async function supprimer(dem) {
     if (demo) {
       mutate((d) => { d.demandes = (d.demandes || []).filter((x) => x.id !== dem.id); return d; });
-    } else {
-      try {
-        const sb = await getSupabase();
-        const { error } = await sb.from("demandes_joueur").delete().eq("id", dem.id);
-        if (error) throw error;
-        await charger();
-      } catch (e) { setErr("Suppression impossible. Vérifie les droits sur la base ou réessaie."); }
+      setConfirmSuppr(null);
+      return;
     }
-    setConfirmSuppr(null);
+    try {
+      const sb = await getSupabase();
+      const { data, error } = await sb.from("demandes_joueur").delete().eq("id", dem.id).select();
+      if (error) throw error;
+      setConfirmSuppr(null);
+      if (!data || data.length === 0) { setErr("Suppression bloquée par les droits de la base. Il faut autoriser la suppression des demandes dans Supabase."); return; }
+      await charger();
+    } catch (e) { setConfirmSuppr(null); setErr("Suppression impossible. Réessaie ou vérifie la connexion."); }
   }
 
   function ligneDemande(dem, recue) {
