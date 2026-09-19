@@ -603,6 +603,11 @@ function secteurLabel(cat) {
   if (g === "Féminines") return cat;
   return "École de foot";
 }
+function maxNumero(cat) {
+  const ci = CATEGORIES.find((x) => x.id === cat);
+  const g = ci ? ci.groupe : "";
+  return (g === "Formation" || g === "PRO") ? 99 : 16;
+}
 const CATEGORIES = [
   { id: "U7", type: 4, groupe: "École de foot" }, { id: "U8", type: 5, groupe: "École de foot" }, { id: "U9", type: 8, groupe: "École de foot" },
   { id: "U10", type: 8, groupe: "École de foot" }, { id: "U11", type: 8, groupe: "École de foot" }, { id: "U12", type: 8, groupe: "École de foot" },
@@ -1317,6 +1322,7 @@ export default function App() {
   const [groupeSel, setGroupeSel] = useState(null);
   const [demo, setDemo] = useState(false);
   const cacheRef = useRef({});
+  const pendingRef = useRef(false);
 
   useEffect(() => {
     if (!estConfigure()) { setSession(null); return; }
@@ -1365,6 +1371,17 @@ export default function App() {
   }, [session, cat, demo]);
 
   useEffect(() => {
+    if (demo || !session || !cat) return;
+    const onVis = () => {
+      if (document.visibilityState === "visible" && !pendingRef.current) {
+        loadCat(cat).then((fresh) => { if (fresh) { cacheRef.current[cat] = fresh; setDb(fresh); } }).catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [session, cat, demo]);
+
+  useEffect(() => {
     if (!demo) return;
     let annule = false;
     loadLocal().then((d) => { if (!annule) { setDb(d); setCat((p) => p || "U7"); } });
@@ -1391,14 +1408,20 @@ export default function App() {
       else {
         cacheRef.current[cat] = next;
         if (session && cat) {
-          setSaveStatus("saving");
-          saveCat(cat, next, session.user.id).then(() => setSaveStatus("ok")).catch((e) => { console.error("Sauvegarde:", e); setSaveStatus("error"); });
+          setSaveStatus("saving"); pendingRef.current = true;
+          saveCat(cat, next, session.user.id).then(() => { pendingRef.current = false; setSaveStatus("ok"); }).catch((e) => { console.error("Sauvegarde:", e); setSaveStatus("error"); });
         }
       }
       return next;
     });
   }
 
+  function enregistrerManuel() {
+    if (demo) { try { saveLocal(db); } catch (e) {} setSaveStatus("ok"); return; }
+    if (!session || !cat || !db) return;
+    setSaveStatus("saving"); pendingRef.current = true;
+    saveCat(cat, db, session.user.id).then(() => { pendingRef.current = false; setSaveStatus("ok"); }).catch((e) => { console.error("Sauvegarde:", e); setSaveStatus("error"); });
+  }
   async function mutateReunions(fn) {
     if (!session) return;
     setSaveStatus("saving");
@@ -1541,6 +1564,9 @@ export default function App() {
         {tab === "matchs" && <Matchs players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} />}
         {tab === "entrainements" && <Entrainements players={players} cat={cat} db={db} mutate={mutate} />}
         {tab === "detection" && <Detection cat={cat} db={db} mutate={mutate} />}
+        <div style={{ display: "flex", justifyContent: "center", padding: "10px 16px 26px" }}>
+          <button onClick={enregistrerManuel} style={{ background: "transparent", border: `1px solid ${C.grisClair}`, color: C.gris, borderRadius: 9, padding: "7px 15px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700 }}><Save size={14} /> Enregistrer</button>
+        </div>
       </main>
 
       <nav style={{
@@ -2740,7 +2766,7 @@ function EditJoueur({ joueur, cat, onClose, onSave }) {
             <option>Droit</option><option>Gauche</option><option>Ambidextre</option>
           </Sel>
         </Field>
-        <Field label="Numéro"><Inp type="number" inputMode="numeric" value={f.numero} onChange={(e) => set("numero", e.target.value)} /></Field>
+        <Field label={`Numéro (1 à ${maxNumero(f.cat)})`}><Inp type="number" inputMode="numeric" min={1} max={maxNumero(f.cat)} value={f.numero} onChange={(e) => set("numero", e.target.value)} /></Field>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <Field label="Numéro de licence"><Inp value={f.licence} onChange={(e) => set("licence", e.target.value)} /></Field>
@@ -2871,6 +2897,11 @@ function Compo({ players, cat, catInfo, db, mutate }) {
     });
   }
 
+  function setNumero(pid, val) {
+    const mx = maxNumero(cat);
+    const n = val === "" ? "" : Math.max(1, Math.min(mx, parseInt(val, 10) || 1));
+    mutate((d) => { const pl = (d.players || []).find((x) => x.id === pid); if (pl) pl.numero = n; return d; });
+  }
   const compoVide = Object.keys(lineup.slots || {}).length === 0;
   const derniereCompo = (() => {
     let best = null, bestN = 0;
@@ -2983,8 +3014,11 @@ function Compo({ players, cat, catInfo, db, mutate }) {
                 {estCap && (
                   <div style={{ position: "absolute", top: -4, right: -4, width: 18, height: 18, borderRadius: "50%", background: C.bleuNuit, color: C.jaune, border: `2px solid ${C.jaune}`, display: "grid", placeItems: "center", fontSize: 9.5, fontWeight: 900 }}>C</div>
                 )}
+                {p && p.numero != null && p.numero !== "" && (
+                  <div style={{ position: "absolute", bottom: -4, right: -4, minWidth: 18, height: 18, padding: "0 3px", borderRadius: 9, background: C.bleuNuit, color: "#fff", border: "2px solid #fff", display: "grid", placeItems: "center", fontSize: 9.5, fontWeight: 900 }}>{p.numero}</div>
+                )}
               </div>
-              <span style={{ fontSize: 10.5, color: "#fff", fontWeight: 700, textShadow: "0 1px 2px rgba(0,0,0,0.55)", maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: 10.5, color: "#fff", fontWeight: 700, textShadow: "0 1px 2px rgba(0,0,0,0.55)", maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: p && p.numero != null && p.numero !== "" ? 7 : 0 }}>
                 {p ? (p.prenom && p.nom ? `${p.prenom[0]}. ${p.nom}` : (p.nom || p.prenom)) : slot.l}
               </span>
             </button>
@@ -3028,7 +3062,10 @@ function Compo({ players, cat, catInfo, db, mutate }) {
               <Btn variant={capitaine === lineup.slots[pick] ? "accent" : "ghost"} full style={{ marginBottom: 10 }} onClick={() => designerCapitaine(lineup.slots[pick])}>
                 <Star size={16} /> {capitaine === lineup.slots[pick] ? "Retirer le brassard" : "Désigner capitaine"}
               </Btn>
-              <Btn variant="danger" full style={{ marginBottom: 12 }} onClick={() => assign(pick, null)}>
+              <Field label={`Numéro de maillot (1 à ${maxNumero(cat)})`}>
+                <Inp type="number" inputMode="numeric" min={1} max={maxNumero(cat)} value={(players.find((x) => x.id === lineup.slots[pick]) || {}).numero ?? ""} onChange={(e) => setNumero(lineup.slots[pick], e.target.value)} placeholder="Numéro" />
+              </Field>
+              <Btn variant="danger" full style={{ marginTop: 10, marginBottom: 12 }} onClick={() => assign(pick, null)}>
                 <X size={16} /> Retirer le joueur de ce poste
               </Btn>
             </>
