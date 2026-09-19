@@ -643,13 +643,20 @@ const VOISINS_SPECIAUX = {
   "4e/3e": ["6e/5e"],
 };
 function voisinsDemandables(cat) {
-  if (VOISINS_SPECIAUX[cat]) return VOISINS_SPECIAUX[cat];
-  const m = /^U(\d+)(F?)$/.exec(cat || "");
-  if (m) {
-    const cible = `U${+m[1] - 2}${m[2]}`;
-    if (CATEGORIES.some((x) => x.id === cible)) return [cible];
+  const ci = CATEGORIES.find((x) => x.id === cat);
+  const cibles = new Set();
+  // Formation et professionnels : surclassement libre entre U17 NAT, U19 NAT, N2 et Ligue 2
+  if (ci && (ci.groupe === "Formation" || ci.groupe === "PRO")) {
+    CATEGORIES.forEach((x) => { if ((x.groupe === "Formation" || x.groupe === "PRO") && x.id !== cat) cibles.add(x.id); });
   }
-  return [];
+  // voisins spéciaux (ex : U17 NAT peut aussi faire monter un U15)
+  if (VOISINS_SPECIAUX[cat]) VOISINS_SPECIAUX[cat].forEach((v) => cibles.add(v));
+  // règle générale par âge pour les jeunes (deux ans en dessous)
+  if (cibles.size === 0) {
+    const m = /^U(\d+)(F?)$/.exec(cat || "");
+    if (m) { const cible = `U${+m[1] - 2}${m[2]}`; if (CATEGORIES.some((x) => x.id === cible)) cibles.add(cible); }
+  }
+  return [...cibles];
 }
 
 const POSTES = [
@@ -1312,6 +1319,7 @@ export default function App() {
   const [db, setDb] = useState(null);
   const [reunionsClub, setReunionsClub] = useState(null);
   const [reunionsErr, setReunionsErr] = useState(null);
+  const [demResume, setDemResume] = useState({ recues: 0, envoyees: 0 });
   const [saveStatus, setSaveStatus] = useState(null);
   const [showScores, setShowScores] = useState(false);
   const [showDemandes, setShowDemandes] = useState(false);
@@ -1411,6 +1419,34 @@ export default function App() {
       .catch((e) => { if (!annule) { setReunionsClub([]); setReunionsErr(e.message || String(e)); } });
     return () => { annule = true; };
   }, [session, demo]);
+
+  useEffect(() => {
+    if (!cat) { setDemResume({ recues: 0, envoyees: 0 }); return; }
+    if (demo) {
+      const list = (db && db.demandes) || [];
+      setDemResume({
+        recues: list.filter((d) => d.joueurCat === cat && d.statut === "en_attente").length,
+        envoyees: list.filter((d) => d.demandeurCat === cat && d.statut === "en_attente").length,
+      });
+      return;
+    }
+    if (!session) { setDemResume({ recues: 0, envoyees: 0 }); return; }
+    let annule = false;
+    (async () => {
+      try {
+        const sb = await getSupabase();
+        const { data, error } = await sb.from("demandes_joueur").select("demandeur_cat,joueur_cat,statut");
+        if (error) throw error;
+        if (annule) return;
+        const list = data || [];
+        setDemResume({
+          recues: list.filter((d) => d.joueur_cat === cat && d.statut === "en_attente").length,
+          envoyees: list.filter((d) => d.demandeur_cat === cat && d.statut === "en_attente").length,
+        });
+      } catch (e) { if (!annule) setDemResume({ recues: 0, envoyees: 0 }); }
+    })();
+    return () => { annule = true; };
+  }, [session, cat, demo, tab, db]);
 
   useEffect(() => {
     if (saveStatus === "ok" || saveStatus === "ro") { const t = setTimeout(() => setSaveStatus(null), 2600); return () => clearTimeout(t); }
@@ -1607,7 +1643,7 @@ export default function App() {
             Consultation seule sur cette catégorie. Tu peux tout voir, mais la modification est réservée à son responsable.
           </div>
         )}
-        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) window.open(u, "_blank", "noopener"); setShowClassement(true); }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={() => setShowSauvegarde(true)} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onBilan={() => setShowBilan(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
+        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) window.open(u, "_blank", "noopener"); setShowClassement(true); }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={() => setShowSauvegarde(true)} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onBilan={() => setShowBilan(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} />}
         {tab === "compo" && <Compo players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} />}
@@ -1860,7 +1896,7 @@ function ScoresWeekend({ onClose, localDb }) {
 /* ============================================================
    Accueil
    ============================================================ */
-function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onBilan, onReunions, onCalendrier, estMedical, monEmail }) {
+function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onBilan, onReunions, onCalendrier, demResume, estMedical, monEmail }) {
   const players = db.players.filter((p) => p.cat === cat);
   const d0 = new Date();
   const todayStr = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
@@ -1883,10 +1919,12 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
   const dans7 = addDays(todayStr, 7);
   const retourProche = (db.injuries || []).filter((i) => !i.fini && i.dateRetour && i.dateRetour <= dans7 && players.some((p) => p.id === i.joueurId)).length;
   const alerteReunions = (db.reunions || []).filter((r) => (r.date || "") >= todayStr && (r.participants || []).some((p) => (p.email || "").toLowerCase() === (monEmail || "").toLowerCase() && p.email)).length;
+  const alerteDemRecues = (demResume && demResume.recues) || 0;
+  const alerteDemEnvoyees = (demResume && demResume.envoyees) || 0;
 
   const cartes = [
     { titre: "Scores du week-end", sous: "Résultats de toutes les catégories", icon: Trophy, action: onScores, accent: true },
-    { titre: "Demandes de joueurs", sous: "Demander un joueur d'une autre catégorie", icon: ArrowRightLeft, action: onDemandes },
+    { titre: "Demandes de joueurs", sous: "Demander un joueur d'une autre catégorie", icon: ArrowRightLeft, action: onDemandes, badge: alerteDemRecues },
     { titre: "Classement du championnat", sous: "District, Ligue, National et Ligue 2 en direct", icon: ListOrdered, action: onClassement },
     { titre: "Demande de transport", sous: "Minibus, bus en location ou voitures, à l'avance", icon: Bus, action: onTransport },
     { titre: "Organisation des matchs", sous: "Terrain, vestiaires, transport et encadrement", icon: MapPin, action: onOrganisation, badge: nbOrga },
@@ -1929,11 +1967,23 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
         </Card>
       )}
 
-      {(alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0 || aRisqueSusp > 0 || blesses > 0) && (
+      {(alerteDemRecues > 0 || alerteDemEnvoyees > 0 || alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0 || aRisqueSusp > 0 || blesses > 0) && (
         <div style={{ background: "#FFF3DA", border: "1px solid #EBD3AE", borderRadius: 14, padding: "12px 14px", marginBottom: 18 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: "#B87A2B", fontSize: 13.5, marginBottom: 6 }}><Bell size={16} /> À ne pas oublier</div>
+          {alerteDemRecues > 0 && (
+            <div onClick={onDemandes} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre }}>
+              <ArrowRightLeft size={15} color={C.rouge} /> <span style={{ flex: 1 }}>{alerteDemRecues} demande{alerteDemRecues > 1 ? "s" : ""} de joueur à traiter</span>
+              <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
+            </div>
+          )}
+          {alerteDemEnvoyees > 0 && (
+            <div onClick={onDemandes} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: alerteDemRecues > 0 ? "1px solid #EBD3AE" : "none" }}>
+              <ArrowRightLeft size={15} color="#B87A2B" /> <span style={{ flex: 1 }}>{alerteDemEnvoyees} demande{alerteDemEnvoyees > 1 ? "s" : ""} de joueur en attente de réponse</span>
+              <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
+            </div>
+          )}
           {alerteReunions > 0 && (
-            <div onClick={onReunions} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre }}>
+            <div onClick={onReunions} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: (alerteDemRecues > 0 || alerteDemEnvoyees > 0) ? "1px solid #EBD3AE" : "none" }}>
               <Users size={15} color={C.bleu} /> <span style={{ flex: 1 }}>{alerteReunions} réunion{alerteReunions > 1 ? "s" : ""} à venir</span>
               <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
             </div>
