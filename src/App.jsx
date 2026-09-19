@@ -4444,6 +4444,12 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const sousType = priseEnChargeMedicale(f.cat);
   const interne = f.priseEnCharge === "club";
+  const [msgPdf, setMsgPdf] = useState(null);
+  async function exporterDossier() {
+    setMsgPdf("Préparation du PDF...");
+    try { const jsPDF = await chargerJsPDF(); exporterSuiviMedicalPDF(jsPDF, [f], { players }, f.cat); setMsgPdf(null); }
+    catch (e) { setMsgPdf("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
+  }
   return (
     <Modal title={blessure.id ? "Suivi médical" : "Nouvelle blessure"} onClose={onClose}
       footer={<>
@@ -4456,6 +4462,13 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
           {players.map((p) => <option key={p.id} value={p.id}>{p.prenom} {p.nom}</option>)}
         </Sel>
       </Field>
+      {f.joueurId && (
+        <>
+          <Btn variant="ghost" full onClick={exporterDossier}><FileDown size={16} /> Exporter ce dossier en PDF</Btn>
+          {msgPdf && <div style={{ fontSize: 12, color: msgPdf.includes("indisponible") ? C.rouge : C.gris, margin: "6px 0 2px", textAlign: "center" }}>{msgPdf}</div>}
+          <div style={{ height: 12 }} />
+        </>
+      )}
       <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Prise en charge</div>
       <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
         {[["parents", "Par les parents"], ["club", "Par le club (équipe médicale)"]].map(([v, lab]) => {
@@ -5421,15 +5434,9 @@ function exporterSuiviMedicalPDF(jsPDF, blessures, db, cat) {
 
 function SuiviMedical({ db, mutate, cat, onClose }) {
   const [edit, setEdit] = useState(null);
-  const [msgPdf, setMsgPdf] = useState(null);
   const players = db.players.filter((p) => p.cat === cat);
   const sousType = priseEnChargeMedicale(cat);
   const blessures = (db.injuries || []).filter((i) => i.cat === cat && (i.priseEnCharge ? i.priseEnCharge === "club" : sousType !== "parents")).sort((a, b) => (a.fini === b.fini) ? 0 : a.fini ? 1 : -1);
-  async function telechargerSuivi() {
-    setMsgPdf("Préparation du PDF...");
-    try { const jsPDF = await chargerJsPDF(); exporterSuiviMedicalPDF(jsPDF, blessures, db, cat); setMsgPdf(null); }
-    catch (e) { setMsgPdf("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
-  }
   return (
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "16px 16px 14px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
@@ -5438,9 +5445,7 @@ function SuiviMedical({ db, mutate, cat, onClose }) {
       </header>
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
         <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 14, lineHeight: 1.5 }}>Rubrique de l'équipe médicale : joueurs pris en charge par le club, en réathlétisation ou convalescence. {sousType === "pro" ? "Catégorie professionnelle." : sousType === "formation" ? "Centre de formation." : "Cette catégorie est normalement suivie par les parents ; un joueur n'apparaît ici que si le coach a choisi une prise en charge par le club."}</div>
-        <Btn variant="accent" full style={{ marginBottom: 10 }} onClick={() => setEdit({ cat, priseEnCharge: "club" })}><Plus size={16} /> Ajouter un joueur en suivi</Btn>
-        {blessures.length > 0 && <Btn variant="ghost" full style={{ marginBottom: 8 }} onClick={telechargerSuivi}><FileDown size={16} /> Exporter le suivi en PDF</Btn>}
-        {msgPdf && <div style={{ fontSize: 12.5, color: msgPdf.includes("indisponible") ? C.rouge : C.gris, marginBottom: 10, textAlign: "center" }}>{msgPdf}</div>}
+        <Btn variant="accent" full style={{ marginBottom: 16 }} onClick={() => setEdit({ cat, priseEnCharge: "club" })}><Plus size={16} /> Ajouter un joueur en suivi</Btn>
         {blessures.length === 0 ? (
           <Empty icon={<Activity size={24} color={C.gris} />} text="Aucun joueur en suivi médical" sub="Les blessés pris en charge par le club apparaissent ici" />
         ) : (
