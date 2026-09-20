@@ -2986,9 +2986,15 @@ function Compo({ players, cat, catInfo, db, mutate }) {
     });
   }
   function setFormation(name) {
+    const slotsLoc = { ...(lineup.slots || {}) };
+    const remplLoc = [...(lineup.remplacants || [])];
+    const capLoc = lineup.capitaine || null;
+    const fmtLoc = lineup.format;
     mutate((d) => {
       const ex = d.lineups[key] || {};
-      d.lineups[key] = { formation: name, slots: ex.slots || {}, remplacants: ex.remplacants || [], capitaine: ex.capitaine || null, format: ex.format };
+      const slots = (ex.slots && Object.keys(ex.slots).length) ? ex.slots : slotsLoc;
+      const rempl = (ex.remplacants && ex.remplacants.length) ? ex.remplacants : remplLoc;
+      d.lineups[key] = { formation: name, slots, remplacants: rempl, capitaine: ex.capitaine || capLoc, format: ex.format || fmtLoc };
       return d;
     });
   }
@@ -3873,7 +3879,12 @@ function exporterRapportMatchPDF(jsPDF, match, players, db, educateur) {
     const b = (cur.buteurs && cur.buteurs[p.id]) || 0, a = (cur.passeurs && cur.passeurs[p.id]) || 0;
     const t = cur.tempsJeu && cur.tempsJeu[p.id]; const note = cur.notes && cur.notes[p.id] && cur.notes[p.id].note;
     const cj = (cur.jaunes && cur.jaunes[p.id]) || 0, crg = !!(cur.rouges && cur.rouges[p.id]), bl = !!(cur.blesses && cur.blesses[p.id]);
-    const disc = [cj ? `${cj} jaune${cj > 1 ? "s" : ""}` : "", crg ? "rouge" : "", bl ? "blessé" : ""].filter(Boolean).join(", ") || "-";
+    const cbl = !!(cur.blancs && cur.blancs[p.id]);
+    const cm = (cur.cartonsMin && cur.cartonsMin[p.id]) || {};
+    const jStr = cj ? `${cj} jaune${cj > 1 ? "s" : ""}${cm.jaune ? ` (${cm.jaune}')` : ""}` : "";
+    const blcStr = cbl ? `blanc${cm.blanc ? ` (${cm.blanc}')` : ""}` : "";
+    const rStr = crg ? `rouge${cm.rouge ? ` (${cm.rouge}')` : ""}` : "";
+    const disc = [jStr, blcStr, rStr, bl ? "blessé" : ""].filter(Boolean).join(", ") || "-";
     sc(encre); doc.setFont("helvetica", "normal"); doc.text(`${p.prenom} ${p.nom}`.slice(0, 32), xJ, y);
     doc.text(String(b), xB, y, { align: "center" }); doc.text(String(a), xP, y, { align: "center" });
     doc.text(t != null && t !== "" ? String(t) : "-", xM, y, { align: "center" }); doc.text(note ? `${note}/7` : "-", xN, y, { align: "center" });
@@ -3936,6 +3947,22 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
       return d;
     });
   }
+  function toggleBlanc(joueurId) {
+    mutate((d) => {
+      const m = d.matches.find((x) => x.id === match.id);
+      m.blancs = m.blancs || {};
+      if (m.blancs[joueurId]) delete m.blancs[joueurId]; else m.blancs[joueurId] = 1;
+      return d;
+    });
+  }
+  function setMinCarton(joueurId, type, val) {
+    mutate((d) => {
+      const m = d.matches.find((x) => x.id === match.id);
+      m.cartonsMin = m.cartonsMin || {};
+      m.cartonsMin[joueurId] = { ...(m.cartonsMin[joueurId] || {}), [type]: val };
+      return d;
+    });
+  }
   function toggleBlesse(joueurId) {
     mutate((d) => {
       const m = d.matches.find((x) => x.id === match.id);
@@ -3966,6 +3993,8 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
     const note = cur.notes?.[p.id]?.note;
     const cj = cur.jaunes?.[p.id] || 0;
     const cr = !!cur.rouges?.[p.id];
+    const cb = !!cur.blancs?.[p.id];
+    const cm = cur.cartonsMin?.[p.id] || {};
     const bl = !!cur.blesses?.[p.id];
     return (
       <Card key={p.id} style={{ padding: 12 }}>
@@ -3997,6 +4026,15 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
             </button>
           )}
           {cartonsActifs && (
+            <button onClick={() => toggleBlanc(p.id)} title="Carton blanc (exclusion temporaire)" style={{
+              display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${cb ? C.bleu : C.grisClair}`, cursor: "pointer",
+              borderRadius: 9, padding: "7px 11px", fontWeight: 800, fontSize: 13, background: cb ? "#EAF0F7" : "#fff", color: C.encre,
+            }}>
+              <span style={{ width: 12, height: 16, borderRadius: 2, background: "#fff", border: "1px solid #C7CEDA", display: "inline-block" }} />
+              Blanc
+            </button>
+          )}
+          {cartonsActifs && (
             <button onClick={() => toggleRouge(p.id)} title="Carton rouge" style={{
               display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${cr ? "#B5483F" : C.grisClair}`, cursor: "pointer",
               borderRadius: 9, padding: "7px 11px", fontWeight: 800, fontSize: 13, background: cr ? "#FBE3E3" : "#fff", color: C.encre,
@@ -4012,6 +4050,29 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
             <HeartPulse size={14} /> Blessé
           </button>
         </div>
+        {(cj > 0 || cb || cr) && (
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+            <span style={{ fontSize: 11.5, color: C.gris, fontWeight: 700 }}>Minute(s)</span>
+            {cj > 0 && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: 11, color: C.gris }}>Jaune</span>
+                <input value={cm.jaune || ""} onChange={(e) => setMinCarton(p.id, "jaune", e.target.value)} placeholder="min" style={{ width: 54, padding: "5px 7px", borderRadius: 8, border: `1px solid ${C.grisClair}`, fontSize: 13, textAlign: "center" }} />
+              </span>
+            )}
+            {cb && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: 11, color: C.gris }}>Blanc</span>
+                <input value={cm.blanc || ""} onChange={(e) => setMinCarton(p.id, "blanc", e.target.value)} placeholder="min" style={{ width: 54, padding: "5px 7px", borderRadius: 8, border: `1px solid ${C.grisClair}`, fontSize: 13, textAlign: "center" }} />
+              </span>
+            )}
+            {cr && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: 11, color: C.gris }}>Rouge</span>
+                <input value={cm.rouge || ""} onChange={(e) => setMinCarton(p.id, "rouge", e.target.value)} placeholder="min" style={{ width: 54, padding: "5px 7px", borderRadius: 8, border: `1px solid ${C.grisClair}`, fontSize: 13, textAlign: "center" }} />
+              </span>
+            )}
+          </div>
+        )}
       </Card>
     );
   };
@@ -4542,7 +4603,7 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
   return (
     <Modal title={blessure.id ? "Suivi médical" : "Nouvelle blessure"} onClose={onClose}
       footer={<>
-        <Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>
+        <Btn variant="accent" full onClick={() => onSave({ ...f, fini: (f.phase === "P4" && f.testRetour === "valide") ? true : f.fini })}><Save size={16} /> Enregistrer</Btn>
         {onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}
       </>}>
       <Field label="Joueur">
