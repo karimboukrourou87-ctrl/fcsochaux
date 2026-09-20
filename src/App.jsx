@@ -653,7 +653,6 @@ const CATEGORIES = [
   { id: "U17 NAT", type: 11, groupe: "Formation" }, { id: "U19 NAT", type: 11, groupe: "Formation" },
   { id: "N2", type: 11, groupe: "Formation" }, { id: "Ligue 2", type: 11, groupe: "PRO" },
   { id: "Foot loisirs", type: 11, groupe: "Loisirs" },
-  { id: "U7F", type: 4, groupe: "Féminines" }, { id: "U8F", type: 5, groupe: "Féminines" }, { id: "U9F", type: 8, groupe: "Féminines" }, { id: "U10F", type: 8, groupe: "Féminines" },
   { id: "U11F", type: 8, groupe: "Féminines" }, { id: "U13F", type: 8, groupe: "Féminines" }, { id: "U15F", type: 11, groupe: "Féminines" },
   { id: "U18F", type: 11, groupe: "Féminines" }, { id: "U19F NAT", type: 11, groupe: "Féminines" }, { id: "SENIORS F", type: 11, groupe: "Féminines" },
 ];
