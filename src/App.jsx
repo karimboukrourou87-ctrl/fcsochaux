@@ -619,7 +619,7 @@ const CLUB_LONG = "FC SOCHAUX-MONTBÉLIARD";
 /* ============================================================
    Données de référence
    ============================================================ */
-const GROUPES = ["École de foot", "Pré-formation", "Formation", "PRO", "Loisirs", "Féminines"];
+const GROUPES = ["École de foot", "Pré-formation", "Formation", "PRO", "Loisirs", "Féminines", "Foot santé"];
 function secteurLabel(cat) {
   const ci = CATEGORIES.find((x) => x.id === cat);
   const g = ci ? ci.groupe : "";
@@ -627,6 +627,7 @@ function secteurLabel(cat) {
   if (g === "Formation") return "Formation";
   if (g === "PRO") return "Professionnel";
   if (g === "Loisirs") return "Foot loisirs";
+  if (g === "Foot santé") return "Foot santé";
   if (g === "Féminines") return cat;
   return "École de foot";
 }
@@ -655,6 +656,7 @@ const CATEGORIES = [
   { id: "Foot loisirs", type: 11, groupe: "Loisirs" },
   { id: "U11F", type: 8, groupe: "Féminines" }, { id: "U13F", type: 8, groupe: "Féminines" }, { id: "U15F", type: 11, groupe: "Féminines" },
   { id: "U18F", type: 11, groupe: "Féminines" }, { id: "U19F NAT", type: 11, groupe: "Féminines" }, { id: "SENIORS F", type: 11, groupe: "Féminines" },
+  { id: "Foot santé", type: 11, groupe: "Foot santé" },
 ];
 
 // Catégories qu'une catégorie peut demander (joueur surclassé de deux ans en dessous)
@@ -5418,7 +5420,7 @@ function ProgrammeSemaine({ db, onClose }) {
     return { lundi: f(lu), dim: f(di), label: `${jjmm(f(lu))} au ${jjmm(f(di))}` };
   }, [offset]);
 
-  const ordreSecteur = { "PRO": 0, "Formation": 1, "Pré-formation": 2, "École de foot": 3, "Loisirs": 4, "Féminines": 5 };
+  const ordreSecteur = { "PRO": 0, "Formation": 1, "Pré-formation": 2, "École de foot": 3, "Loisirs": 4, "Féminines": 5, "Foot santé": 6 };
   const secteurDe = (cat) => { const ci = CATEGORIES.find((x) => x.id === cat); return ci ? ci.groupe : ""; };
   const rangSecteur = (cat) => { const r = ordreSecteur[secteurDe(cat)]; return r == null ? 9 : r; };
   const ageDe = (cat) => { const m = /U(\d+)/.exec(cat || ""); if (m) return +m[1]; if (["PRO", "N2", "Ligue 2"].includes(cat) || (cat || "").includes("SENIORS")) return 99; return 50; };
