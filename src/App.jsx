@@ -656,7 +656,7 @@ const CATEGORIES = [
   { id: "Foot loisirs", type: 11, groupe: "Loisirs" },
   { id: "U11F", type: 8, groupe: "Féminines" }, { id: "U13F", type: 8, groupe: "Féminines" }, { id: "U15F", type: 11, groupe: "Féminines" },
   { id: "U18F", type: 11, groupe: "Féminines" }, { id: "U19F NAT", type: 11, groupe: "Féminines" }, { id: "SENIORS F", type: 11, groupe: "Féminines" },
-  { id: "Foot santé", type: 11, groupe: "Foot santé" },
+  { id: "Foot santé", type: 6, groupe: "Foot santé" },
 ];
 
 // Catégories qu'une catégorie peut demander (joueur surclassé de deux ans en dessous)
@@ -724,6 +724,26 @@ const FORMATIONS = {
       { l: "DC", x: 50, y: 68 },
       { l: "MG", x: 28, y: 45 }, { l: "MD", x: 72, y: 45 },
       { l: "AT", x: 50, y: 20 },
+    ],
+  },
+  6: {
+    "2-1-2": [
+      { l: "G", x: 50, y: 90 },
+      { l: "DG", x: 30, y: 68 }, { l: "DD", x: 70, y: 68 },
+      { l: "MC", x: 50, y: 46 },
+      { l: "AG", x: 32, y: 22 }, { l: "AD", x: 68, y: 22 },
+    ],
+    "2-2-1": [
+      { l: "G", x: 50, y: 90 },
+      { l: "DG", x: 30, y: 70 }, { l: "DD", x: 70, y: 70 },
+      { l: "MG", x: 32, y: 46 }, { l: "MD", x: 68, y: 46 },
+      { l: "AT", x: 50, y: 20 },
+    ],
+    "1-2-2": [
+      { l: "G", x: 50, y: 90 },
+      { l: "DC", x: 50, y: 70 },
+      { l: "MG", x: 30, y: 47 }, { l: "MD", x: 70, y: 47 },
+      { l: "AG", x: 32, y: 22 }, { l: "AD", x: 68, y: 22 },
     ],
   },
   8: {
@@ -2952,7 +2972,7 @@ function EditJoueur({ joueur, cat, onClose, onSave }) {
 /* ============================================================
    Composition d'équipe
    ============================================================ */
-const FORMATS_MULTI = { U13: [8, 10, 11], "Foot loisirs": [11, 9, 8] };
+const FORMATS_MULTI = { U13: [8, 10, 11], "Foot loisirs": [11, 9, 8], "Foot santé": [6, 5] };
 function Compo({ players, cat, catInfo, db, mutate }) {
   const matchsCat = (db.matches || []).filter((m) => m.cat === cat).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const aujourdhui = hoyISO();
