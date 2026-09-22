@@ -2328,7 +2328,7 @@ function assiduiteJoueur(p, db, saison) {
     if (saison && saisonDe(t.date) !== saison) return;
     const st = t.presence && t.presence[p.id];
     if (st === "present" || st === "retard") presences++;
-    if (st === "absent") absences++;
+    if (st === "absent" || st === "malade") absences++;
     if (st === "retard") retards++;
   });
   return { matchs, presences, absences, retards, jaunes, rouges };
@@ -2342,19 +2342,35 @@ function cartonsActifsJoueur(p, db) {
   const ref = (p && p.discRef) || { jaunes: 0, rouges: 0 };
   return { jaunes: Math.max(0, a.jaunes - (ref.jaunes || 0)), rouges: Math.max(0, a.rouges - (ref.rouges || 0)) };
 }
+/* Avertissements actifs selon le barème FFF : cartons jaunes reçus sur des matchs
+   différents dans les 3 derniers mois (prescription), révoqués après une suspension.
+   Ligue 2 : cumul sur la saison sans prescription (règle LFP). */
+function jaunesActifsRegle(p, db) {
+  if (!p) return 0;
+  const sansPrescription = p.cat === "Ligue 2";
+  const limite = sansPrescription ? "0000-00-00" : addDays(hoyISO(), -92);
+  const revoc = p.discDate && p.discDate > limite ? p.discDate : limite;
+  let n = 0;
+  (db.matches || []).forEach((m) => {
+    if (m.cat === p.cat && m.date && m.date > revoc && m.jaunes && (+m.jaunes[p.id] || 0) > 0) n++;
+  });
+  return n;
+}
 function estSuspendu(p) {
   if (!p) return false;
-  if ((+p.suspension || 0) > 0) return true;
-  if (p.suspensionFin && p.suspensionFin > hoyISO()) return true;
-  return false;
+  // la date de disponibilité fait foi : purge automatique une fois la date passée
+  if (p.suspensionFin) return p.suspensionFin >= hoyISO();
+  // pas de date renseignée : suspendu tant qu'il reste des matchs à purger
+  return (+p.suspension || 0) > 0;
 }
 /* Risque de suspension a verifier, selon les cartons cumules */
 function risqueSuspension(p, db, cat) {
   if (estSuspendu(p)) return { alerte: false };
   const c = cartonsActifsJoueur(p, db);
+  const j = jaunesActifsRegle(p, db);
   const seuil = seuilSuspension(cat);
   if (c.rouges > 0) return { alerte: true, raison: "carton rouge à traiter" };
-  if (c.jaunes >= seuil) return { alerte: true, raison: `${c.jaunes} cartons jaunes cumulés (seuil ${seuil})` };
+  if (j >= seuil) return { alerte: true, raison: `${j} avertissements retenus sur 3 mois (seuil ${seuil})` };
   return { alerte: false };
 }
 
@@ -2414,6 +2430,9 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
           {liste.map((p) => {
             const bless = db.injuries.some((i) => i.joueurId === p.id && !i.fini);
             const st = statsJoueur(p, db, saisonCourante());
+            const cA = cartonsActifsJoueur(p, db);
+            const jA = jaunesActifsRegle(p, db);
+            const susp = estSuspendu(p);
             return (
               <Card key={p.id} onClick={() => setFiche(p.id)} style={{ display: "flex", alignItems: "center", gap: 13, padding: 12 }}>
                 <div style={{ position: "relative", flex: "0 0 auto" }}>
@@ -2423,7 +2442,18 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
                   )}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, fontSize: 15 }}>{p.prenom} {p.nom} {bless && <HeartPulse size={14} color={C.rouge} style={{ verticalAlign: "middle" }} />}</div>
+                  <div style={{ fontWeight: 800, fontSize: 15, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span>{p.prenom} {p.nom}</span>
+                    {bless && <HeartPulse size={14} color={C.rouge} style={{ verticalAlign: "middle" }} />}
+                    {jA > 0 && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                        <span style={{ width: 11, height: 15, borderRadius: 2, background: "#F2C200", display: "inline-block", border: "1px solid #D9AE00" }} />
+                        {jA > 1 ? <span style={{ fontSize: 11, fontWeight: 900, color: C.encre }}>{jA}</span> : null}
+                      </span>
+                    )}
+                    {cA.rouges > 0 && estSuspendu(p) && <span style={{ width: 11, height: 15, borderRadius: 2, background: "#D33A2C", display: "inline-block", border: "1px solid #B5483F" }} />}
+                    {susp && <span style={{ fontSize: 10.5, fontWeight: 800, color: C.rouge, background: "#FBE3E3", borderRadius: 6, padding: "1px 6px" }}>Suspendu</span>}
+                  </div>
                   <div style={{ fontSize: 12.5, color: C.gris, marginTop: 1 }}>{p.poste || "Poste non défini"}{p.pied ? ` · ${p.pied}` : ""}</div>
                 </div>
                 <div style={{ textAlign: "right", flex: "0 0 auto" }}>
@@ -2751,18 +2781,32 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
       {(cartonsActifs || assi.jaunes > 0 || assi.rouges > 0) && (
         <>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, margin: "0 0 6px" }}>Discipline</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 16 }}>
-            {[["Cartons jaunes", assi.jaunes, "#E3B505"], ["Cartons rouges", assi.rouges, C.rouge]].map(([l, v, col]) => (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 6 }}>
+            {[["Avertissements retenus", jaunesActifsRegle(p, db), "#E3B505"], ["Cartons rouges", assi.rouges, C.rouge]].map(([l, v, col]) => (
               <div key={l} style={{ background: "#fff", borderRadius: 12, padding: "12px 6px", textAlign: "center", border: `1px solid ${C.grisClair}` }}>
                 <div style={{ fontSize: 20, fontWeight: 900, color: col }}>{v}</div>
                 <div style={{ fontSize: 10.5, color: C.gris, marginTop: 2 }}>{l}</div>
               </div>
             ))}
           </div>
+          <div style={{ fontSize: 11, color: C.gris, marginBottom: 14, lineHeight: 1.5 }}>Avertissements retenus selon le barème FFF : cartons jaunes des 3 derniers mois{p.cat === "Ligue 2" ? " (Ligue 2 : cumul saison, seuil 5)" : ` (suspension à ${seuilSuspension(p.cat)})`}. Total de la saison : {assi.jaunes} jaune{assi.jaunes > 1 ? "s" : ""}. Les avertissements sont effacés après une suspension.</div>
           {(() => {
             const risque = risqueSuspension(p, db, p.cat);
+            const cAct = cartonsActifsJoueur(p, db);
             const susp = +p.suspension || 0;
-            const setSusp = (delta) => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.suspension = Math.max(0, (+pl.suspension || 0) + delta); return d; });
+            const setSusp = (delta) => mutate((d) => {
+              const pl = d.players.find((x) => x.id === p.id);
+              const N = Math.max(0, (+pl.suspension || 0) + delta);
+              pl.suspension = N;
+              if (N > 0) {
+                pl.discDate = hoyISO(); // toute suspension ferme révoque les avertissements
+                const prochains = (d.matches || []).filter((m) => m.cat === pl.cat && m.date && m.date >= hoyISO()).sort((a, b) => a.date.localeCompare(b.date));
+                if (prochains.length >= N) pl.suspensionFin = prochains[N - 1].date;
+              } else {
+                pl.suspensionFin = "";
+              }
+              return d;
+            });
             const marquerVus = () => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); const a = assiduiteJoueur(pl, d, saisonCourante()); pl.discRef = { jaunes: a.jaunes, rouges: a.rouges }; return d; });
             const setDateFin = (v) => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.suspensionFin = v || ""; return d; });
             const bloque = estSuspendu(p);
@@ -2784,9 +2828,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
                 <div style={{ marginTop: 8 }}>
                   <Field label="Disponible le (fin de suspension)"><Inp type="date" value={p.suspensionFin || ""} onChange={(e) => setDateFin(e.target.value)} /></Field>
                 </div>
-                {risque.alerte && (
-                  <Btn variant="ghost" size="sm" style={{ marginTop: 8 }} onClick={marquerVus}>Cartons pris en compte (réinitialiser l'alerte)</Btn>
-                )}
+                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.5 }}>Indique le nombre de matchs de suspension : la date de disponibilité se calcule automatiquement d'après le calendrier de la catégorie. La suspension et le carton rouge disparaissent tout seuls une fois cette date passée. Tu peux aussi ajuster la date à la main.</div>
               </div>
             );
           })()}
@@ -4529,13 +4571,13 @@ function RecapPresences({ players, db, cat, annee, mois, onClose }) {
   const themes = [...new Set(seancesMois.map((t) => t.theme).filter(Boolean))];
 
   const rows = players.map((p) => {
-    let pr = 0, ab = 0, bl = 0, re = 0, ma = 0;
+    let pr = 0, ab = 0, bl = 0, re = 0;
     pointees.forEach((s) => {
       const st = s.presence[p.id];
-      if (st === "present") pr++; else if (st === "retard") { pr++; re++; } else if (st === "absent") ab++; else if (st === "blesse") bl++; else if (st === "malade") ma++;
+      if (st === "present") pr++; else if (st === "retard") { pr++; re++; } else if (st === "absent" || st === "malade") ab++; else if (st === "blesse") bl++;
     });
     const taux = total ? Math.round((pr / total) * 100) : 0;
-    return { p, pr, ab, bl, re, ma, taux };
+    return { p, pr, ab, bl, re, taux };
   }).sort((a, b) => b.taux - a.taux || b.pr - a.pr);
 
   return (
@@ -4549,21 +4591,19 @@ function RecapPresences({ players, db, cat, annee, mois, onClose }) {
           </div>
           <div style={{ display: "flex", gap: 12, marginBottom: 10, fontSize: 11.5, fontWeight: 700, color: C.gris, flexWrap: "wrap" }}>
             <span style={{ color: C.vert }}>● Présents</span>
-            <span style={{ color: C.rouge }}>● Absents</span>
-            <span style={{ color: "#8E5AA8" }}>● Malades</span>
+            <span style={{ color: C.rouge }}>● Absents (malades inclus)</span>
             <span style={{ color: "#C67C3C" }}>● Retards</span>
             <span style={{ color: C.jauneFonce }}>● Blessés</span>
           </div>
           <div style={{ display: "grid", gap: 7 }}>
-            {rows.map(({ p, pr, ab, bl, re, ma, taux }) => (
-              <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 11px", background: "#fff", borderRadius: 11, border: `1px solid ${C.grisClair}` }}>
+            {rows.map(({ p, pr, ab, bl, re, taux }) => (
+              <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", background: "#fff", borderRadius: 11, border: `1px solid ${C.grisClair}` }}>
                 <div style={{ flex: 1, fontWeight: 700, fontSize: 14, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.prenom} {p.nom}</div>
                 <Pastille bg="#E2F4E9" color={C.vert}>{pr}</Pastille>
                 <Pastille bg="#FBE3E3" color={C.rouge}>{ab}</Pastille>
-                <Pastille bg="#F1E7F6" color="#8E5AA8">{ma}</Pastille>
                 <Pastille bg="#FBEAD9" color="#C67C3C">{re}</Pastille>
                 <Pastille bg="#FFF3DA" color={C.jauneFonce}>{bl}</Pastille>
-                <div style={{ width: 42, textAlign: "right", fontWeight: 900, color: C.bleu }}>{taux}%</div>
+                <div style={{ width: 44, textAlign: "right", fontWeight: 900, color: C.bleu }}>{taux}%</div>
               </div>
             ))}
           </div>
