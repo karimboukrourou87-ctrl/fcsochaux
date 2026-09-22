@@ -2024,6 +2024,9 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
   const matchJoue = (m) => m.scorePour != null && m.scorePour !== "" && m.scoreContre != null && m.scoreContre !== "";
   const prochainMatch = db.matches.filter((m) => m.cat === cat && m.date && m.date >= todayStr && !matchJoue(m)).sort((a, b) => a.date.localeCompare(b.date))[0];
   const blesses = db.injuries.filter((i) => !i.fini && players.some((p) => p.id === i.joueurId)).length;
+  const enSuiviMedical = priseEnChargeMedicale(cat) !== "parents"
+    ? db.injuries.filter((i) => i.cat === cat && !i.fini && (i.priseEnCharge ? i.priseEnCharge === "club" : true)).length
+    : db.injuries.filter((i) => i.cat === cat && !i.fini && i.priseEnCharge === "club").length;
   const nbOrga = db.matches.filter((m) => {
     if (m.cat !== cat || !m.date || m.date < todayStr || matchJoue(m)) return false;
     const t = m.transport || {}, e = m.encadrement || {}, r = m.reservation || {};
@@ -2042,6 +2045,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
   const alerteReunions = (db.reunions || []).filter((r) => (r.date || "") >= todayStr && (r.participants || []).some((p) => (p.email || "").toLowerCase() === (monEmail || "").toLowerCase() && p.email)).length;
   const alerteDemRecues = (demResume && demResume.recues) || 0;
   const alerteDemEnvoyees = (demResume && demResume.envoyees) || 0;
+  const alerteSuivi = priseEnChargeMedicale(cat) !== "parents" ? enSuiviMedical : 0;
 
   const cartes = [
     { titre: "Scores du week-end", sous: "Résultats de toutes les catégories", icon: Trophy, action: onScores, accent: true },
@@ -2051,7 +2055,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
     { titre: "Organisation des matchs", sous: "Terrain, vestiaires, transport et encadrement", icon: MapPin, action: onOrganisation, badge: nbOrga },
     { titre: "Programme de la semaine", sous: "Récapitulatif des matchs à imprimer", icon: ClipboardList, action: onProgramme },
     { titre: "Documents administratifs", sous: "Licences et contrôle médical à surveiller", icon: ShieldAlert, action: onDocuments, badge: alerteDocs },
-    { titre: "Suivi médical", sous: "Blessés suivis par l'équipe médicale (U17 aux pros)", icon: Activity, action: priseEnChargeMedicale(cat) !== "parents" ? onSuivi : null },
+    { titre: "Suivi médical", sous: "Blessés suivis par l'équipe médicale (U17 aux pros)", icon: Activity, action: priseEnChargeMedicale(cat) !== "parents" ? onSuivi : null, badge: priseEnChargeMedicale(cat) !== "parents" ? enSuiviMedical : 0 },
     { titre: "Bilan de saison de l'équipe", sous: "Résultats, buteurs et passeurs de la saison", icon: Trophy, action: onBilan },
     { titre: "Réunions", sous: "Programmer les réunions et recueillir les présences", icon: Users, action: onReunions, badge: alerteReunions },
     { titre: "Calendrier du club", sous: "Tous les événements, toutes catégories réunies", icon: CalendarDays, action: onCalendrier },
@@ -2088,7 +2092,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
         </Card>
       )}
 
-      {(alerteDemRecues > 0 || alerteDemEnvoyees > 0 || alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0 || aRisqueSusp > 0 || blesses > 0) && (
+      {(alerteDemRecues > 0 || alerteDemEnvoyees > 0 || alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0 || aRisqueSusp > 0 || alerteSuivi > 0 || blesses > 0) && (
         <div style={{ background: "#FFF3DA", border: "1px solid #EBD3AE", borderRadius: 14, padding: "12px 14px", marginBottom: 18 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: "#B87A2B", fontSize: 13.5, marginBottom: 6 }}><Bell size={16} /> À ne pas oublier</div>
           {alerteDemRecues > 0 && (
@@ -2133,8 +2137,14 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
               <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
             </div>
           )}
+          {alerteSuivi > 0 && onSuivi && (
+            <div onClick={onSuivi} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: (alerteDemRecues > 0 || alerteDemEnvoyees > 0 || alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0 || aRisqueSusp > 0) ? "1px solid #EBD3AE" : "none" }}>
+              <Activity size={15} color={C.bleu} /> <span style={{ flex: 1 }}>{alerteSuivi} joueur{alerteSuivi > 1 ? "s" : ""} en suivi médical</span>
+              <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
+            </div>
+          )}
           {blesses > 0 && (
-            <div onClick={() => setTab("entrainements")} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: (alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0 || aRisqueSusp > 0) ? "1px solid #EBD3AE" : "none" }}>
+            <div onClick={() => setTab("entrainements")} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: (alerteDemRecues > 0 || alerteDemEnvoyees > 0 || alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0 || aRisqueSusp > 0 || alerteSuivi > 0) ? "1px solid #EBD3AE" : "none" }}>
               <HeartPulse size={15} color={C.rouge} /> <span style={{ flex: 1 }}>{blesses} joueur{blesses > 1 ? "s" : ""} blessé{blesses > 1 ? "s" : ""} en cours de soin</span>
               <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
             </div>
@@ -4215,9 +4225,10 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
         <div style={{ display: "grid", gap: 9 }}>{players.map(ligne)}</div>}
 
       <div style={{ fontWeight: 800, margin: "16px 0 8px" }}>Compte rendu du match</div>
-      <textarea value={cur.rapport || ""} onChange={(e) => setRapport(e.target.value)} rows={5}
+      <textarea value={cur.rapport || ""} onChange={(e) => setRapport(e.target.value)} rows={10}
         placeholder="Analyse de la rencontre, points forts, axes de progrès..."
-        style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
+        style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit", fontSize: 15.5, lineHeight: 1.5, minHeight: 220 }} />
+      <div style={{ fontSize: 11.5, color: C.gris, marginTop: 4 }}>Aucune limite de longueur. Tu peux étirer la zone par le coin en bas à droite.</div>
 
       <Btn variant="accent" full style={{ marginTop: 16 }} onClick={telechargerRapport}><FileDown size={16} /> Exporter le rapport en PDF</Btn>
       {msgPdf && <div style={{ fontSize: 12.5, color: C.encre, background: C.fond, borderRadius: 10, padding: 10, marginTop: 8 }}>{msgPdf}</div>}
@@ -4467,7 +4478,7 @@ function Entrainements({ players, cat, db, mutate }) {
                 const p = db.players.find((x) => x.id === b.joueurId);
                 const clubType = priseEnChargeMedicale(b.cat);
                 const estClub = b.priseEnCharge ? b.priseEnCharge === "club" : clubType !== "parents";
-                const patho = b.pathologie && b.pathologie !== "Autre" ? b.pathologie : (b.zone || "Blessure");
+                const patho = b.pathologie && b.pathologie !== "Autre" ? b.pathologie : (b.zone || b.signeCoach || "Blessure à évaluer");
                 return (
                   <Card key={b.id} onClick={() => setBlessure(b)} style={{ borderColor: b.fini ? C.grisClair : "#F3C9C9" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -4518,13 +4529,13 @@ function RecapPresences({ players, db, cat, annee, mois, onClose }) {
   const themes = [...new Set(seancesMois.map((t) => t.theme).filter(Boolean))];
 
   const rows = players.map((p) => {
-    let pr = 0, ab = 0, bl = 0, re = 0;
+    let pr = 0, ab = 0, bl = 0, re = 0, ma = 0;
     pointees.forEach((s) => {
       const st = s.presence[p.id];
-      if (st === "present") pr++; else if (st === "retard") { pr++; re++; } else if (st === "absent") ab++; else if (st === "blesse") bl++;
+      if (st === "present") pr++; else if (st === "retard") { pr++; re++; } else if (st === "absent") ab++; else if (st === "blesse") bl++; else if (st === "malade") ma++;
     });
     const taux = total ? Math.round((pr / total) * 100) : 0;
-    return { p, pr, ab, bl, re, taux };
+    return { p, pr, ab, bl, re, ma, taux };
   }).sort((a, b) => b.taux - a.taux || b.pr - a.pr);
 
   return (
@@ -4536,21 +4547,23 @@ function RecapPresences({ players, db, cat, annee, mois, onClose }) {
           <div style={{ fontSize: 13, color: C.gris, marginBottom: 12 }}>
             {total} séance{total > 1 ? "s" : ""} pointée{total > 1 ? "s" : ""}. Taux = présences sur le total des séances.
           </div>
-          <div style={{ display: "flex", gap: 12, marginBottom: 10, fontSize: 11.5, fontWeight: 700, color: C.gris }}>
+          <div style={{ display: "flex", gap: 12, marginBottom: 10, fontSize: 11.5, fontWeight: 700, color: C.gris, flexWrap: "wrap" }}>
             <span style={{ color: C.vert }}>● Présents</span>
             <span style={{ color: C.rouge }}>● Absents</span>
-            <span style={{ color: C.jauneFonce }}>● Blessés</span>
+            <span style={{ color: "#8E5AA8" }}>● Malades</span>
             <span style={{ color: "#C67C3C" }}>● Retards</span>
+            <span style={{ color: C.jauneFonce }}>● Blessés</span>
           </div>
           <div style={{ display: "grid", gap: 7 }}>
-            {rows.map(({ p, pr, ab, bl, re, taux }) => (
-              <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", background: "#fff", borderRadius: 11, border: `1px solid ${C.grisClair}` }}>
+            {rows.map(({ p, pr, ab, bl, re, ma, taux }) => (
+              <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 11px", background: "#fff", borderRadius: 11, border: `1px solid ${C.grisClair}` }}>
                 <div style={{ flex: 1, fontWeight: 700, fontSize: 14, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.prenom} {p.nom}</div>
                 <Pastille bg="#E2F4E9" color={C.vert}>{pr}</Pastille>
                 <Pastille bg="#FBE3E3" color={C.rouge}>{ab}</Pastille>
-                <Pastille bg="#FFF3DA" color={C.jauneFonce}>{bl}</Pastille>
+                <Pastille bg="#F1E7F6" color="#8E5AA8">{ma}</Pastille>
                 <Pastille bg="#FBEAD9" color="#C67C3C">{re}</Pastille>
-                <div style={{ width: 44, textAlign: "right", fontWeight: 900, color: C.bleu }}>{taux}%</div>
+                <Pastille bg="#FFF3DA" color={C.jauneFonce}>{bl}</Pastille>
+                <div style={{ width: 42, textAlign: "right", fontWeight: 900, color: C.bleu }}>{taux}%</div>
               </div>
             ))}
           </div>
@@ -4572,7 +4585,8 @@ function EditSeance({ seance, players, onClose, onSave }) {
   const [f, setF] = useState({ presence: {}, ...seance });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const setP = (id, v) => setF((p) => ({ ...p, presence: { ...p.presence, [id]: v } }));
-  const opts = [["present", "Présent", C.vert], ["absent", "Absent", C.rouge], ["blesse", "Blessé", C.jauneFonce], ["retard", "Retard", "#C67C3C"]];
+  const tousPresents = () => setF((o) => { const pr = { ...(o.presence || {}) }; players.forEach((p) => { if (pr[p.id] !== "blesse") pr[p.id] = "present"; }); return { ...o, presence: pr }; });
+  const opts = [["present", "Présent", C.vert], ["absent", "Absent", C.rouge], ["malade", "Malade", "#8E5AA8"], ["retard", "Retard", "#C67C3C"], ["blesse", "Blessé", C.jauneFonce]];
   const themesConnus = THEMES.flatMap((g) => g.items);
   const [autreTheme, setAutreTheme] = useState(!!(seance.theme && !themesConnus.includes(seance.theme)));
 
@@ -4600,18 +4614,21 @@ function EditSeance({ seance, players, onClose, onSave }) {
         <textarea value={f.details || ""} onChange={(e) => set("details", e.target.value)} rows={3}
           placeholder="Exercices, consignes, objectifs de la séance..." style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
       </Field>
-      <div style={{ fontWeight: 800, margin: "8px 0", color: C.bleu }}>Présences</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "8px 0" }}>
+        <span style={{ fontWeight: 800, color: C.bleu }}>Présences</span>
+        {players.length > 0 && <Btn variant="ghost" size="sm" onClick={tousPresents}><Check size={15} /> Tous présents</Btn>}
+      </div>
       {players.length === 0 ? <Empty icon={<Users size={22} color={C.gris} />} text="Aucun joueur" /> :
         <div style={{ display: "grid", gap: 8 }}>
           {players.map((p) => (
             <div key={p.id} style={{ padding: "8px 0", borderBottom: `1px solid ${C.grisClair}` }}>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{p.prenom} {p.nom}</div>
-              <div style={{ display: "flex", gap: 6 }}>
+              <div style={{ display: "flex", gap: 5 }}>
                 {opts.map(([val, lab, col]) => {
                   const on = f.presence[p.id] === val;
                   return (
                     <button key={val} onClick={() => setP(p.id, on ? null : val)} style={{
-                      flex: 1, border: "none", cursor: "pointer", borderRadius: 9, padding: "7px 4px", fontSize: 12, fontWeight: 800,
+                      flex: 1, border: "none", cursor: "pointer", borderRadius: 9, padding: "7px 2px", fontSize: 11.5, fontWeight: 800,
                       background: on ? col : C.grisClair, color: on ? "#fff" : C.gris,
                     }}>{lab}</button>
                   );
@@ -4625,7 +4642,7 @@ function EditSeance({ seance, players, onClose, onSave }) {
 }
 
 function DetailSeance({ seance, players, onClose, onEdit, onDelete }) {
-  const groupes = { present: [], absent: [], blesse: [] };
+  const groupes = { present: [], absent: [], malade: [], retard: [], blesse: [] };
   players.forEach((p) => { const st = seance.presence?.[p.id]; if (st && groupes[st]) groupes[st].push(p); });
   const bloc = (titre, arr, col) => arr.length > 0 && (
     <div style={{ marginBottom: 12 }}>
@@ -4646,6 +4663,8 @@ function DetailSeance({ seance, players, onClose, onEdit, onDelete }) {
       {seance.details ? <div style={{ fontSize: 13.5, color: C.gris, marginBottom: 14, whiteSpace: "pre-wrap" }}>{seance.details}</div> : <div style={{ height: 8 }} />}
       {bloc("Présents", groupes.present, C.vert)}
       {bloc("Absents", groupes.absent, C.rouge)}
+      {bloc("Malades", groupes.malade, "#8E5AA8")}
+      {bloc("Retards", groupes.retard, "#C67C3C")}
       {bloc("Blessés", groupes.blesse, C.jauneFonce)}
     </Modal>
   );
@@ -4725,25 +4744,38 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
         ? <div style={{ fontSize: 11.5, color: C.bleu, marginBottom: 12, fontWeight: 700 }}>{sousType === "pro" ? "Professionnels du club" : "Centre de formation"}. Ce joueur apparaît dans la rubrique Suivi médical, renseignée par l'équipe médicale.</div>
         : <div style={{ fontSize: 11.5, color: "#B87A2B", marginBottom: 12 }}>Soins gérés par les parents. Renseigne les retours ci-dessous.</div>}
       {medical && <div style={{ background: "#EAF0F7", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "9px 12px", fontSize: 12, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Informations renseignées par le coach, non modifiables ici. Complète le suivi médical plus bas.</div>}
-      <Field label="Pathologie">
-        <Sel value={f.pathologie || ""} onChange={(e) => set("pathologie", e.target.value)} disabled={medical} style={medical ? { background: "#F0F1F3", color: C.gris } : undefined}>
-          <option value="">Choisir une pathologie</option>
-          {(medical ? PATHOLOGIES : PATHOLOGIES_COACH).map((p) => <option key={p}>{p}</option>)}
-        </Sel>
-      </Field>
-      {f.pathologie === "Autre" && <Field label="Préciser la pathologie"><Inp value={f.zone || ""} onChange={(e) => set("zone", e.target.value)} placeholder="Nature de la blessure" disabled={medical} style={medical ? { background: "#F0F1F3", color: C.gris } : undefined} /></Field>}
-      <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Côté touché</div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        {[["droit", "Droit"], ["gauche", "Gauche"], ["deux", "Les deux"]].map(([v, lab]) => {
-          const on = f.cote === v;
-          return (
-            <button key={v} onClick={() => { if (medical) return; set("cote", on ? "" : v); }} disabled={medical} style={{
-              flex: 1, border: "none", cursor: medical ? "not-allowed" : "pointer", borderRadius: 10, padding: "10px 6px", fontWeight: 800, fontSize: 13,
-              background: on ? C.bleu : "#EEF2F8", color: on ? "#fff" : C.gris, opacity: (medical && !on) ? 0.55 : 1,
-            }}>{lab}</button>
-          );
-        })}
-      </div>
+      {!medical && (
+        <>
+          <Field label="Blessure visible (optionnel)">
+            <Inp value={f.signeCoach || ""} onChange={(e) => set("signeCoach", e.target.value)} placeholder="Seulement si c'est évident, par exemple entorse cheville" />
+          </Field>
+          <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Tu n'as pas besoin de donner la pathologie précise, c'est l'équipe médicale qui la renseignera. Indique seulement ce qui se voit, si c'est le cas.</div>
+        </>
+      )}
+      {medical && (
+        <>
+          {f.signeCoach ? <div style={{ fontSize: 12.5, color: C.encre, background: "#F4F7FB", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "9px 12px", marginBottom: 12 }}>Signalé par le coach : {f.signeCoach}</div> : null}
+          <Field label="Pathologie">
+            <Sel value={f.pathologie || ""} onChange={(e) => set("pathologie", e.target.value)}>
+              <option value="">Choisir une pathologie</option>
+              {PATHOLOGIES.map((p) => <option key={p}>{p}</option>)}
+            </Sel>
+          </Field>
+          {f.pathologie === "Autre" && <Field label="Préciser la pathologie"><Inp value={f.zone || ""} onChange={(e) => set("zone", e.target.value)} placeholder="Nature de la blessure" /></Field>}
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Côté touché</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            {[["droit", "Droit"], ["gauche", "Gauche"], ["deux", "Les deux"]].map(([v, lab]) => {
+              const on = f.cote === v;
+              return (
+                <button key={v} onClick={() => set("cote", on ? "" : v)} style={{
+                  flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "10px 6px", fontWeight: 800, fontSize: 13,
+                  background: on ? C.bleu : "#EEF2F8", color: on ? "#fff" : C.gris,
+                }}>{lab}</button>
+              );
+            })}
+          </div>
+        </>
+      )}
       <Field label="Survenue lors de">
         <Sel value={f.circonstance || ""} onChange={(e) => set("circonstance", e.target.value)} disabled={medical} style={medical ? { background: "#F0F1F3", color: C.gris } : undefined}>
           <option value="">Non précisé</option>
@@ -5611,7 +5643,7 @@ function exporterSuiviMedicalPDF(jsPDF, blessures, db, cat) {
   blessures.forEach((b) => {
     const p = (db.players || []).find((x) => x.id === b.joueurId);
     const nom = p ? `${p.prenom} ${p.nom}` : "Joueur";
-    const patho = (b.pathologie && b.pathologie !== "Autre") ? b.pathologie : (b.zone || "Blessure");
+    const patho = (b.pathologie && b.pathologie !== "Autre") ? b.pathologie : (b.zone || b.signeCoach || "Blessure à évaluer");
     const statut = b.fini ? "Rétabli" : "En cours";
     const sType = priseEnChargeMedicale(b.cat);
     const enClub = b.priseEnCharge ? b.priseEnCharge === "club" : sType !== "parents";
@@ -5692,7 +5724,7 @@ function SuiviMedical({ db, mutate, cat, onClose }) {
           <div style={{ display: "grid", gap: 10 }}>
             {blessures.map((b) => {
               const p = db.players.find((x) => x.id === b.joueurId);
-              const patho = b.pathologie && b.pathologie !== "Autre" ? b.pathologie : (b.zone || "Blessure");
+              const patho = b.pathologie && b.pathologie !== "Autre" ? b.pathologie : (b.zone || b.signeCoach || "Blessure à évaluer");
               return (
                 <Card key={b.id} onClick={() => setEdit(b)} style={{ borderColor: b.fini ? C.grisClair : "#F3C9C9" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
