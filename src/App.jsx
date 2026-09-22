@@ -10,8 +10,10 @@ import {
 /* ============================================================
    Sauvegarde et export des données
    ============================================================ */
-function Sauvegarde({ db, mutate, cat, demo, onClose }) {
+function Sauvegarde({ db, mutate, cat, demo, estAdmin, userId, onClose }) {
   const [aImporter, setAImporter] = useState(null);
+  const [aImporterClub, setAImporterClub] = useState(null);
+  const [busyClub, setBusyClub] = useState(false);
   const [err, setErr] = useState(null);
   const [ok, setOk] = useState(null);
 
@@ -48,6 +50,56 @@ function Sauvegarde({ db, mutate, cat, demo, onClose }) {
     setAImporter(null); setOk("Données restaurées.");
   }
 
+  async function exporterClub() {
+    setBusyClub(true); setErr(null); setOk(null);
+    try {
+      const sb = await getSupabase();
+      const { data, error } = await sb.from("categorie_data").select("categorie, data");
+      if (error) throw error;
+      const categories = {};
+      (data || []).forEach((row) => { categories[row.categorie] = row.data; });
+      let reunions = [];
+      try { reunions = await loadReunions(); } catch (e) {}
+      const obj = { club: true, exporteLe: new Date().toISOString(), categories, reunions };
+      const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const d = new Date();
+      a.href = url;
+      a.download = `sochaux-CLUB-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.json`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setOk(`Sauvegarde complète téléchargée (${Object.keys(categories).length} catégorie(s)).`);
+    } catch (e) { setErr("Sauvegarde complète impossible. Vérifie la connexion."); }
+    finally { setBusyClub(false); }
+  }
+  function choisirFichierClub(ev) {
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        if (!parsed || typeof parsed !== "object" || !parsed.categories) throw new Error("format");
+        setErr(null); setOk(null); setAImporterClub(parsed);
+      } catch (e) { setAImporterClub(null); setOk(null); setErr("Fichier non valide. Choisis une sauvegarde complète du club."); }
+    };
+    reader.onerror = () => setErr("Lecture du fichier impossible.");
+    reader.readAsText(f);
+  }
+  async function confirmerImportClub() {
+    setBusyClub(true); setErr(null);
+    try {
+      const cats = aImporterClub.categories || {};
+      const noms = Object.keys(cats);
+      for (const c of noms) { await saveCat(c, { ...EMPTY_DB, ...cats[c] }, userId); }
+      if (Array.isArray(aImporterClub.reunions)) { try { await saveReunions(aImporterClub.reunions); } catch (e) {} }
+      setAImporterClub(null); setOk(`Club restauré (${noms.length} catégorie(s)). Recharge l'application pour tout voir.`);
+    } catch (e) { setErr("Restauration complète impossible. Vérifie la connexion et les droits."); }
+    finally { setBusyClub(false); }
+  }
+
   return (
     <Modal title="Sauvegarde des données" onClose={onClose}>
       {demo && (
@@ -56,11 +108,32 @@ function Sauvegarde({ db, mutate, cat, demo, onClose }) {
         </div>
       )}
 
-      <div style={{ fontWeight: 800, marginBottom: 6 }}>Exporter</div>
+      {estAdmin && !demo && (
+        <div style={{ marginBottom: 18, paddingBottom: 18, borderBottom: `1px solid ${C.grisClair}` }}>
+          <div style={{ fontWeight: 800, marginBottom: 6 }}>Sauvegarde de tout le club</div>
+          <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 8, lineHeight: 1.5 }}>Réservé à la direction. Télécharge toutes les catégories du club en un seul fichier, en une fois.</div>
+          <Btn variant="accent" full disabled={busyClub} onClick={exporterClub}><FileDown size={16} /> {busyClub ? "Préparation..." : "Télécharger la sauvegarde complète"}</Btn>
+          <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "11px 16px", fontWeight: 700, fontSize: 14, color: C.encre, background: "#fff", marginTop: 8 }}>
+            <Upload size={16} /> Restaurer tout le club
+            <input type="file" accept="application/json,.json" onChange={choisirFichierClub} style={{ display: "none" }} />
+          </label>
+          {aImporterClub && (
+            <div style={{ marginTop: 12, background: "#FFF6F6", border: "1px solid #F3C9C9", borderRadius: 10, padding: 11 }}>
+              <div style={{ fontSize: 13, color: C.rouge, fontWeight: 700, marginBottom: 8 }}>Restaurer tout le club depuis ce fichier ? Les catégories du fichier seront remplacées. Cette action est définitive.</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Btn variant="danger" size="sm" disabled={busyClub} onClick={confirmerImportClub}>{busyClub ? "Restauration..." : "Confirmer"}</Btn>
+                <Btn variant="ghost" size="sm" onClick={() => setAImporterClub(null)}>Annuler</Btn>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ fontWeight: 800, marginBottom: 6 }}>{estAdmin && !demo ? "Sauvegarde de la catégorie" : "Exporter"}</div>
       <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 8 }}>Télécharge un fichier de sauvegarde {demo ? "de toutes les catégories" : `de la catégorie ${cat}`}.</div>
       <Btn variant="accent" full onClick={exporter}><FileDown size={16} /> Télécharger la sauvegarde</Btn>
 
-      <div style={{ fontWeight: 800, margin: "18px 0 6px" }}>Restaurer</div>
+      <div style={{ fontWeight: 800, margin: "18px 0 6px" }}>Restaurer{estAdmin && !demo ? " la catégorie" : ""}</div>
       <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 8 }}>Remplace les données actuelles par celles d'un fichier de sauvegarde.</div>
       <label style={{
         display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer",
@@ -1738,7 +1811,7 @@ export default function App() {
       {showClassement && <Classement cat={cat} db={db} mutate={mutate} onClose={() => setShowClassement(false)} />}
       {showTransport && <Transports db={db} mutate={mutate} cat={cat} onClose={() => setShowTransport(false)} />}
       {showOrganisation && <OrganisationMatchs db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
-      {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} onClose={() => setShowSauvegarde(false)} />}
+      {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
       {showPlanning && <Planning db={db} mutate={mutate} cats={cats} profil={profil} peutValider={peutValider} cat={cat} onClose={() => setShowPlanning(false)} />}
       {showPlanningHebdo && <PlanningHebdo onClose={() => setShowPlanningHebdo(false)} />}
       {showAcces && <AccesSecteurs db={{ acces: accesSource }} mutate={mutateReu} estAdmin={estAdmin} onClose={() => setShowAcces(false)} />}
