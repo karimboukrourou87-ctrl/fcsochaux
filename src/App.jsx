@@ -2419,9 +2419,24 @@ function jaunesActifsRegle(p, db) {
   const revoc = p.discDate && p.discDate > limite ? p.discDate : limite;
   let n = 0;
   (db.matches || []).forEach((m) => {
-    if (m.cat === p.cat && m.date && m.date > revoc && m.jaunes && (+m.jaunes[p.id] || 0) > 0) n++;
+    // un avertissement simple = 1 jaune. Deux jaunes dans un même match valent une exclusion (rouge), pas deux avertissements.
+    if (m.cat === p.cat && m.date && m.date > revoc && m.jaunes && (+(m.jaunes[p.id] || 0)) === 1) n++;
   });
   return n;
+}
+/* Carton rouge actif : rouge direct ou deux jaunes dans un même match (exclusion), non révoqué */
+function rougeActif(p, db) {
+  if (!p) return false;
+  const sansPrescription = p.cat === "Ligue 2";
+  const limite = sansPrescription ? "0000-00-00" : addDays(hoyISO(), -92);
+  const revoc = p.discDate && p.discDate > limite ? p.discDate : limite;
+  let r = false;
+  (db.matches || []).forEach((m) => {
+    if (m.cat !== p.cat || !m.date || m.date <= revoc) return;
+    if ((+((m.jaunes && m.jaunes[p.id]) || 0)) >= 2) r = true;
+    if (m.rouges && m.rouges[p.id]) r = true;
+  });
+  return r;
 }
 function estSuspendu(p) {
   if (!p) return false;
@@ -2433,10 +2448,9 @@ function estSuspendu(p) {
 /* Risque de suspension a verifier, selon les cartons cumules */
 function risqueSuspension(p, db, cat) {
   if (estSuspendu(p)) return { alerte: false };
-  const c = cartonsActifsJoueur(p, db);
   const j = jaunesActifsRegle(p, db);
   const seuil = seuilSuspension(cat);
-  if (c.rouges > 0) return { alerte: true, raison: "carton rouge à traiter" };
+  if (rougeActif(p, db)) return { alerte: true, raison: "carton rouge à traiter" };
   if (j >= seuil) return { alerte: true, raison: `${j} avertissements retenus sur 3 mois (seuil ${seuil})` };
   return { alerte: false };
 }
@@ -2518,7 +2532,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
                         {jA > 1 ? <span style={{ fontSize: 11, fontWeight: 900, color: C.encre }}>{jA}</span> : null}
                       </span>
                     )}
-                    {cA.rouges > 0 && estSuspendu(p) && <span style={{ width: 11, height: 15, borderRadius: 2, background: "#D33A2C", display: "inline-block", border: "1px solid #B5483F" }} />}
+                    {(rougeActif(p, db) || estSuspendu(p)) && <span style={{ width: 11, height: 15, borderRadius: 2, background: "#D33A2C", display: "inline-block", border: "1px solid #B5483F" }} />}
                     {susp && <span style={{ fontSize: 10.5, fontWeight: 800, color: C.rouge, background: "#FBE3E3", borderRadius: 6, padding: "1px 6px" }}>Suspendu</span>}
                   </div>
                   <div style={{ fontSize: 12.5, color: C.gris, marginTop: 1 }}>{p.poste || "Poste non défini"}{p.pied ? ` · ${p.pied}` : ""}</div>
