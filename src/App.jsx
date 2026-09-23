@@ -4441,10 +4441,11 @@ function Entrainements({ players, cat, db, mutate }) {
             </div>
           </Card>
 
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
             <Btn variant="primary" size="sm" onClick={() => setRecap(true)}><ClipboardList size={16} /> Récap présences</Btn>
             <Btn variant="ghost" size="sm" onClick={() => setEdit({ cat, presence: {} })}><Plus size={16} /> Séance ponctuelle</Btn>
           </div>
+          <Btn variant="accent" full style={{ marginBottom: 12 }} onClick={() => setBlessure({ cat, circonstance: "entrainement", debut: hoyISO() })}><HeartPulse size={16} /> Signaler un joueur blessé à l'entraînement</Btn>
 
           {entries.length === 0 ? (
             <Empty icon={<Dumbbell size={26} color={C.gris} />} text="Aucune séance ce mois" sub={jours.length === 0 ? "Choisis d'abord les jours d'entraînement" : "Aucun entraînement sur les jours choisis"} />
@@ -4510,7 +4511,7 @@ function Entrainements({ players, cat, db, mutate }) {
       {sous === "infirmerie" && (
         <>
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-            <Btn variant="accent" size="sm" onClick={() => setBlessure({ cat })}><Plus size={16} /> Blessure</Btn>
+            <Btn variant="accent" size="sm" onClick={() => setBlessure({ cat, circonstance: "entrainement", debut: hoyISO() })}><Plus size={16} /> Signaler un blessé</Btn>
           </div>
           {blessures.length === 0 ? (
             <Empty icon={<HeartPulse size={26} color={C.gris} />} text="Aucune blessure" sub="Tant mieux pour le groupe" />
