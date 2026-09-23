@@ -2534,7 +2534,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
             const bjNum = (n) => (
               <span style={{ position: "relative", display: "inline-block", width: 11, height: 15 }}>
                 <span style={bj} />
-                <span style={{ position: "absolute", top: -7, right: -6, fontSize: 8.5, fontWeight: 900, color: C.encre, background: "#fff", border: "1px solid #E6E9EE", borderRadius: 7, minWidth: 12, height: 12, lineHeight: "11px", textAlign: "center" }}>{n}</span>
+                <span style={{ position: "absolute", top: -9, left: "50%", transform: "translateX(-50%)", fontSize: 8.5, fontWeight: 900, color: C.encre, background: "#fff", border: "1px solid #E6E9EE", borderRadius: 7, width: 13, height: 13, lineHeight: "12px", textAlign: "center", boxSizing: "border-box" }}>{n}</span>
               </span>
             );
             return (
@@ -2551,7 +2551,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
                     {bless && <HeartPulse size={14} color={C.rouge} style={{ verticalAlign: "middle" }} />}
                     {cd.jaunes > 0 && <span title="Cartons jaunes" style={{ display: "inline-flex" }}>{bjNum(cd.jaunes)}</span>}
                     {cd.exclusions > 0 && Array.from({ length: cd.exclusions }).map((_, i) => (
-                      <span key={"exc" + i} style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title="Deux avertissements, exclusion">
+                      <span key={"exc" + i} style={{ display: "inline-flex", alignItems: "center", gap: 5 }} title="Deux avertissements, exclusion">
                         {bjNum(2)}<span style={br} />
                       </span>
                     ))}
