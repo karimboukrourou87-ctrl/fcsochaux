@@ -2531,12 +2531,26 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
             const susp = estSuspendu(p);
             const bj = { width: 11, height: 15, borderRadius: 2, background: "#F2C200", display: "inline-block", border: "1px solid #D9AE00" };
             const br = { width: 11, height: 15, borderRadius: 2, background: "#D33A2C", display: "inline-block", border: "1px solid #B5483F" };
-            const bjNum = (n) => (
-              <span style={{ position: "relative", display: "inline-block", width: 11, height: 15 }}>
-                <span style={bj} />
+            const bjNum = (n, key) => (
+              <span key={key} style={{ position: "relative", display: "inline-block", width: 11, height: 15 }}>
+                <span style={{ position: "absolute", inset: 0, borderRadius: 2, background: "#F2C200", border: "1px solid #D9AE00" }} />
                 <span style={{ position: "absolute", top: -9, left: "50%", transform: "translateX(-50%)", fontSize: 8.5, fontWeight: 900, color: C.encre, background: "#fff", border: "1px solid #E6E9EE", borderRadius: 7, width: 13, height: 13, lineHeight: "12px", textAlign: "center", boxSizing: "border-box" }}>{n}</span>
               </span>
             );
+            const cartonsRow = (() => {
+              const items = [];
+              if (cd.jaunes > 0) items.push(bjNum(cd.jaunes, "j"));
+              for (let i = 0; i < cd.exclusions; i++) {
+                items.push(bjNum(2, "ej" + i));
+                items.push(<span key={"er" + i} style={br} />);
+              }
+              if (cd.rouges > 0) {
+                items.push(<span key="r" style={br} />);
+                if (cd.rouges > 1) items.push(<span key="rn" style={{ fontSize: 11, fontWeight: 900, color: C.encre }}>{cd.rouges}</span>);
+              }
+              if (susp && cd.rouges === 0 && cd.exclusions === 0) items.push(<span key="s" style={br} />);
+              return items.length ? <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>{items}</span> : null;
+            })();
             return (
               <Card key={p.id} onClick={() => setFiche(p.id)} style={{ display: "flex", alignItems: "center", gap: 13, padding: 12 }}>
                 <div style={{ position: "relative", flex: "0 0 auto" }}>
@@ -2549,19 +2563,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
                   <div style={{ fontWeight: 800, fontSize: 15, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <span>{p.prenom} {p.nom}</span>
                     {bless && <HeartPulse size={14} color={C.rouge} style={{ verticalAlign: "middle" }} />}
-                    {cd.jaunes > 0 && <span title="Cartons jaunes" style={{ display: "inline-flex" }}>{bjNum(cd.jaunes)}</span>}
-                    {cd.exclusions > 0 && Array.from({ length: cd.exclusions }).map((_, i) => (
-                      <span key={"exc" + i} style={{ display: "inline-flex", alignItems: "center", gap: 5 }} title="Deux avertissements, exclusion">
-                        {bjNum(2)}<span style={br} />
-                      </span>
-                    ))}
-                    {cd.rouges > 0 && (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title="Carton rouge direct">
-                        <span style={br} />
-                        {cd.rouges > 1 ? <span style={{ fontSize: 11, fontWeight: 900, color: C.encre }}>{cd.rouges}</span> : null}
-                      </span>
-                    )}
-                    {susp && cd.rouges === 0 && cd.exclusions === 0 && <span style={br} title="Suspendu" />}
+                    {cartonsRow}
                     {susp && <span style={{ fontSize: 10.5, fontWeight: 800, color: C.rouge, background: "#FBE3E3", borderRadius: 6, padding: "1px 6px" }}>Suspendu</span>}
                   </div>
                   <div style={{ fontSize: 12.5, color: C.gris, marginTop: 1 }}>{p.poste || "Poste non défini"}{p.pied ? ` · ${p.pied}` : ""}</div>
