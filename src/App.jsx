@@ -2438,6 +2438,22 @@ function rougeActif(p, db) {
   });
   return r;
 }
+/* Detail des cartons actifs, pour l'affichage : avertissements simples, exclusions (2 jaunes), rouges directs */
+function cartonsDetail(p, db) {
+  if (!p) return { jaunes: 0, exclusions: 0, rouges: 0 };
+  const sansPrescription = p.cat === "Ligue 2";
+  const limite = sansPrescription ? "0000-00-00" : addDays(hoyISO(), -92);
+  const revoc = p.discDate && p.discDate > limite ? p.discDate : limite;
+  let jaunes = 0, exclusions = 0, rouges = 0;
+  (db.matches || []).forEach((m) => {
+    if (m.cat !== p.cat || !m.date || m.date <= revoc) return;
+    const j = +((m.jaunes && m.jaunes[p.id]) || 0);
+    if (j >= 2) exclusions++;
+    else if (j === 1) jaunes++;
+    if (m.rouges && m.rouges[p.id]) rouges++;
+  });
+  return { jaunes, exclusions, rouges };
+}
 function estSuspendu(p) {
   if (!p) return false;
   // la date de disponibilité fait foi : purge automatique une fois la date passée
@@ -2511,9 +2527,10 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
           {liste.map((p) => {
             const bless = db.injuries.some((i) => i.joueurId === p.id && !i.fini);
             const st = statsJoueur(p, db, saisonCourante());
-            const cA = cartonsActifsJoueur(p, db);
-            const jA = jaunesActifsRegle(p, db);
+            const cd = cartonsDetail(p, db);
             const susp = estSuspendu(p);
+            const bj = { width: 11, height: 15, borderRadius: 2, background: "#F2C200", display: "inline-block", border: "1px solid #D9AE00" };
+            const br = { width: 11, height: 15, borderRadius: 2, background: "#D33A2C", display: "inline-block", border: "1px solid #B5483F" };
             return (
               <Card key={p.id} onClick={() => setFiche(p.id)} style={{ display: "flex", alignItems: "center", gap: 13, padding: 12 }}>
                 <div style={{ position: "relative", flex: "0 0 auto" }}>
@@ -2526,13 +2543,24 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
                   <div style={{ fontWeight: 800, fontSize: 15, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <span>{p.prenom} {p.nom}</span>
                     {bless && <HeartPulse size={14} color={C.rouge} style={{ verticalAlign: "middle" }} />}
-                    {jA > 0 && (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-                        <span style={{ width: 11, height: 15, borderRadius: 2, background: "#F2C200", display: "inline-block", border: "1px solid #D9AE00" }} />
-                        {jA > 1 ? <span style={{ fontSize: 11, fontWeight: 900, color: C.encre }}>{jA}</span> : null}
+                    {cd.jaunes > 0 && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title="Cartons jaunes">
+                        <span style={bj} />
+                        {cd.jaunes > 1 ? <span style={{ fontSize: 11, fontWeight: 900, color: C.encre }}>{cd.jaunes}</span> : null}
                       </span>
                     )}
-                    {(rougeActif(p, db) || estSuspendu(p)) && <span style={{ width: 11, height: 15, borderRadius: 2, background: "#D33A2C", display: "inline-block", border: "1px solid #B5483F" }} />}
+                    {cd.exclusions > 0 && Array.from({ length: cd.exclusions }).map((_, i) => (
+                      <span key={"exc" + i} style={{ display: "inline-flex", alignItems: "center", gap: 1 }} title="Deux avertissements, exclusion">
+                        <span style={bj} /><span style={bj} /><span style={{ ...br, marginLeft: 2 }} />
+                      </span>
+                    ))}
+                    {cd.rouges > 0 && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title="Carton rouge direct">
+                        <span style={br} />
+                        {cd.rouges > 1 ? <span style={{ fontSize: 11, fontWeight: 900, color: C.encre }}>{cd.rouges}</span> : null}
+                      </span>
+                    )}
+                    {susp && cd.rouges === 0 && cd.exclusions === 0 && <span style={br} title="Suspendu" />}
                     {susp && <span style={{ fontSize: 10.5, fontWeight: 800, color: C.rouge, background: "#FBE3E3", borderRadius: 6, padding: "1px 6px" }}>Suspendu</span>}
                   </div>
                   <div style={{ fontSize: 12.5, color: C.gris, marginTop: 1 }}>{p.poste || "Poste non défini"}{p.pied ? ` · ${p.pied}` : ""}</div>
