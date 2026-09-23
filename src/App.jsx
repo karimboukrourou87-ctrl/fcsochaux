@@ -14,6 +14,8 @@ function Sauvegarde({ db, mutate, cat, demo, estAdmin, userId, onClose }) {
   const [aImporter, setAImporter] = useState(null);
   const [aImporterClub, setAImporterClub] = useState(null);
   const [busyClub, setBusyClub] = useState(false);
+  const [nsConfirm, setNsConfirm] = useState(false);
+  const [sauvegardeFaite, setSauvegardeFaite] = useState(false);
   const [err, setErr] = useState(null);
   const [ok, setOk] = useState(null);
 
@@ -70,6 +72,7 @@ function Sauvegarde({ db, mutate, cat, demo, estAdmin, userId, onClose }) {
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
       setOk(`Sauvegarde complète téléchargée (${Object.keys(categories).length} catégorie(s)).`);
+      setSauvegardeFaite(true);
     } catch (e) { setErr("Sauvegarde complète impossible. Vérifie la connexion."); }
     finally { setBusyClub(false); }
   }
@@ -100,6 +103,33 @@ function Sauvegarde({ db, mutate, cat, demo, estAdmin, userId, onClose }) {
     finally { setBusyClub(false); }
   }
 
+  async function nouvelleSaison() {
+    if (!sauvegardeFaite) { setNsConfirm(false); setErr("Tu dois d'abord télécharger la sauvegarde complète avant de démarrer une nouvelle saison."); return; }
+    setBusyClub(true); setErr(null); setOk(null);
+    try {
+      const sb = await getSupabase();
+      const { data, error } = await sb.from("categorie_data").select("categorie, data");
+      if (error) throw error;
+      for (const row of (data || [])) {
+        const blob = { ...EMPTY_DB, ...(row.data || {}) };
+        const saison = saisonDuBlob(blob);
+        const players = (blob.players || []).map((p) => {
+          const pl = structuredClone(p);
+          pl.parcours = pl.parcours || [];
+          if (!pl.parcours.some((s) => s.saison === saison)) pl.parcours.unshift(instantaneSaison(p, blob, saison));
+          pl.suspension = ""; pl.suspensionFin = ""; pl.discRef = { jaunes: 0, rouges: 0 }; pl.discDate = "";
+          pl.medicalStatut = ""; pl.medicalSaison = "";
+          return pl;
+        });
+        const nouveau = { ...EMPTY_DB, players, encadrement: blob.encadrement || [], config: { trainingDays: (blob.config && blob.config.trainingDays) || {}, breaks: {}, classement: {} } };
+        await saveCat(row.categorie, nouveau, userId);
+      }
+      try { await saveReunions([]); } catch (e) {}
+      setNsConfirm(false); setOk("Nouvelle saison démarrée. Les effectifs sont conservés, le reste est remis à zéro. Recharge l'application.");
+    } catch (e) { setErr("Impossible de démarrer la nouvelle saison. Vérifie la connexion."); }
+    finally { setBusyClub(false); }
+  }
+
   return (
     <Modal title="Sauvegarde des données" onClose={onClose}>
       {demo && (
@@ -126,6 +156,26 @@ function Sauvegarde({ db, mutate, cat, demo, estAdmin, userId, onClose }) {
               </div>
             </div>
           )}
+
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.grisClair}` }}>
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>Nouvelle saison</div>
+            <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 8, lineHeight: 1.5 }}>Repart sur une saison vierge pour toutes les catégories : matchs, séances, statistiques, cartons, blessures et compositions remis à zéro. Les joueurs sont conservés et leur parcours de la saison est archivé dans leur fiche. Fais d'abord la sauvegarde complète ci-dessus.</div>
+            {!nsConfirm ? (
+              <>
+                <Btn variant="ghost" full disabled={!sauvegardeFaite} onClick={() => setNsConfirm(true)}><CalendarDays size={16} /> Démarrer une nouvelle saison</Btn>
+                {!sauvegardeFaite && <div style={{ fontSize: 12, color: "#B87A2B", fontWeight: 700, marginTop: 6, lineHeight: 1.5 }}>Bloqué : télécharge d'abord la sauvegarde complète ci-dessus. Le bouton s'activera ensuite.</div>}
+                {sauvegardeFaite && <div style={{ fontSize: 12, color: C.vert, fontWeight: 700, marginTop: 6 }}>Sauvegarde complète effectuée, tu peux démarrer la nouvelle saison.</div>}
+              </>
+            ) : (
+              <div style={{ background: "#FFF6F6", border: "1px solid #F3C9C9", borderRadius: 10, padding: 11 }}>
+                <div style={{ fontSize: 13, color: C.rouge, fontWeight: 700, marginBottom: 8, lineHeight: 1.5 }}>As-tu bien téléchargé la sauvegarde complète ? Cette action efface définitivement les données de jeu de toutes les catégories. Les joueurs et leur parcours sont conservés.</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Btn variant="danger" size="sm" disabled={busyClub} onClick={nouvelleSaison}>{busyClub ? "En cours..." : "Oui, démarrer la nouvelle saison"}</Btn>
+                  <Btn variant="ghost" size="sm" onClick={() => setNsConfirm(false)}>Annuler</Btn>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -2311,6 +2361,16 @@ function instantaneSaison(p, db, saison) {
     blessures,
     dateArchive: hoyISO(),
   };
+}
+
+/* Saison correspondant aux donnees d'une categorie (d'apres les dates des matchs et seances) */
+function saisonDuBlob(blob) {
+  const dates = [];
+  (blob.matches || []).forEach((m) => { if (m.date) dates.push(m.date); });
+  (blob.trainings || []).forEach((t) => { if (t.date) dates.push(t.date); });
+  if (!dates.length) return saisonCourante();
+  dates.sort();
+  return saisonDe(dates[dates.length - 1]) || saisonCourante();
 }
 
 /* Assiduite d'un joueur sur une saison : matchs joues, presences, absences, retards */
