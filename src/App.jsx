@@ -4549,8 +4549,8 @@ function Entrainements({ players, cat, db, mutate }) {
                 }
                 const t = en.training;
                 const pres = Object.values(t?.presence || {});
-                const nbPres = pres.filter((x) => x === "present").length;
-                const nbAbs = pres.filter((x) => x === "absent").length;
+                const nbPres = pres.filter((x) => x === "present" || x === "retard").length;
+                const nbAbs = pres.filter((x) => x === "absent" || x === "malade").length;
                 const nbBl = pres.filter((x) => x === "blesse").length;
                 return (
                   <Card key={en.date} onClick={() => t ? setOpen(t) : setEdit({ cat, date: en.date, presence: {} })}>
