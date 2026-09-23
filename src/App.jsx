@@ -73,8 +73,13 @@ function Sauvegarde({ db, mutate, cat, demo, estAdmin, userId, onClose }) {
       URL.revokeObjectURL(url);
       setOk(`Sauvegarde complète téléchargée (${Object.keys(categories).length} catégorie(s)).`);
       setSauvegardeFaite(true);
-    } catch (e) { setErr("Sauvegarde complète impossible. Vérifie la connexion."); }
+      return true;
+    } catch (e) { setErr("Sauvegarde complète impossible. Vérifie la connexion."); return false; }
     finally { setBusyClub(false); }
+  }
+  async function sauvegarderEtFermer() {
+    const ok = await exporterClub();
+    if (ok) setNsConfirm(true);
   }
   function choisirFichierClub(ev) {
     const f = ev.target.files && ev.target.files[0];
@@ -158,19 +163,16 @@ function Sauvegarde({ db, mutate, cat, demo, estAdmin, userId, onClose }) {
           )}
 
           <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.grisClair}` }}>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>Nouvelle saison</div>
-            <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 8, lineHeight: 1.5 }}>Repart sur une saison vierge pour toutes les catégories : matchs, séances, statistiques, cartons, blessures et compositions remis à zéro. Les joueurs sont conservés et leur parcours de la saison est archivé dans leur fiche. Fais d'abord la sauvegarde complète ci-dessus.</div>
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>Clôture de saison</div>
+            <div style={{ fontSize: 13, color: C.bleu, fontWeight: 800, marginBottom: 6 }}>Saison en cours : {saisonCourante()}</div>
+            <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 8, lineHeight: 1.5 }}>Ce bouton télécharge d'abord la sauvegarde complète de la saison {saisonCourante()}, puis, après confirmation, repart sur une saison vierge pour {saisonSuivante(saisonCourante())} : matchs, séances, statistiques, cartons, blessures et compositions remis à zéro. Les joueurs sont conservés et leur parcours archivé dans leur fiche.</div>
             {!nsConfirm ? (
-              <>
-                <Btn variant="ghost" full disabled={!sauvegardeFaite} onClick={() => setNsConfirm(true)}><CalendarDays size={16} /> Démarrer une nouvelle saison</Btn>
-                {!sauvegardeFaite && <div style={{ fontSize: 12, color: "#B87A2B", fontWeight: 700, marginTop: 6, lineHeight: 1.5 }}>Bloqué : télécharge d'abord la sauvegarde complète ci-dessus. Le bouton s'activera ensuite.</div>}
-                {sauvegardeFaite && <div style={{ fontSize: 12, color: C.vert, fontWeight: 700, marginTop: 6 }}>Sauvegarde complète effectuée, tu peux démarrer la nouvelle saison.</div>}
-              </>
+              <Btn variant="ghost" full disabled={busyClub} onClick={sauvegarderEtFermer}><CalendarDays size={16} /> {busyClub ? "Sauvegarde..." : `Sauvegarder et fermer la saison ${saisonCourante()}`}</Btn>
             ) : (
               <div style={{ background: "#FFF6F6", border: "1px solid #F3C9C9", borderRadius: 10, padding: 11 }}>
-                <div style={{ fontSize: 13, color: C.rouge, fontWeight: 700, marginBottom: 8, lineHeight: 1.5 }}>As-tu bien téléchargé la sauvegarde complète ? Cette action efface définitivement les données de jeu de toutes les catégories. Les joueurs et leur parcours sont conservés.</div>
+                <div style={{ fontSize: 13, color: C.rouge, fontWeight: 700, marginBottom: 8, lineHeight: 1.5 }}>La sauvegarde de la saison {saisonCourante()} a été téléchargée. Range-la précieusement. Confirmes-tu la fermeture de la saison {saisonCourante()} et le démarrage de {saisonSuivante(saisonCourante())} ? Les données de jeu de toutes les catégories seront effacées, les joueurs et leur parcours conservés.</div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <Btn variant="danger" size="sm" disabled={busyClub} onClick={nouvelleSaison}>{busyClub ? "En cours..." : "Oui, démarrer la nouvelle saison"}</Btn>
+                  <Btn variant="danger" size="sm" disabled={busyClub} onClick={nouvelleSaison}>{busyClub ? "En cours..." : `Oui, fermer ${saisonCourante()} et démarrer ${saisonSuivante(saisonCourante())}`}</Btn>
                   <Btn variant="ghost" size="sm" onClick={() => setNsConfirm(false)}>Annuler</Btn>
                 </div>
               </div>
@@ -2266,6 +2268,11 @@ function statsJoueur(p, db, saison) {
 function saisonCourante(d = new Date()) {
   const y = d.getFullYear();
   return d.getMonth() >= 7 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+}
+function saisonSuivante(s) {
+  const m = /^(\d{4})-(\d{4})$/.exec(s || "");
+  if (!m) return "";
+  return `${m[2]}-${+m[2] + 1}`;
 }
 
 /* Saison correspondant a une date "AAAA-MM-JJ" */
