@@ -2531,6 +2531,12 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
             const susp = estSuspendu(p);
             const bj = { width: 11, height: 15, borderRadius: 2, background: "#F2C200", display: "inline-block", border: "1px solid #D9AE00" };
             const br = { width: 11, height: 15, borderRadius: 2, background: "#D33A2C", display: "inline-block", border: "1px solid #B5483F" };
+            const bjNum = (n) => (
+              <span style={{ position: "relative", display: "inline-block", width: 11, height: 15 }}>
+                <span style={bj} />
+                <span style={{ position: "absolute", top: -7, right: -6, fontSize: 8.5, fontWeight: 900, color: C.encre, background: "#fff", border: "1px solid #E6E9EE", borderRadius: 7, minWidth: 12, height: 12, lineHeight: "11px", textAlign: "center" }}>{n}</span>
+              </span>
+            );
             return (
               <Card key={p.id} onClick={() => setFiche(p.id)} style={{ display: "flex", alignItems: "center", gap: 13, padding: 12 }}>
                 <div style={{ position: "relative", flex: "0 0 auto" }}>
@@ -2543,15 +2549,10 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
                   <div style={{ fontWeight: 800, fontSize: 15, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <span>{p.prenom} {p.nom}</span>
                     {bless && <HeartPulse size={14} color={C.rouge} style={{ verticalAlign: "middle" }} />}
-                    {cd.jaunes > 0 && (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title="Cartons jaunes">
-                        <span style={bj} />
-                        {cd.jaunes > 1 ? <span style={{ fontSize: 11, fontWeight: 900, color: C.encre }}>{cd.jaunes}</span> : null}
-                      </span>
-                    )}
+                    {cd.jaunes > 0 && <span title="Cartons jaunes" style={{ display: "inline-flex" }}>{bjNum(cd.jaunes)}</span>}
                     {cd.exclusions > 0 && Array.from({ length: cd.exclusions }).map((_, i) => (
-                      <span key={"exc" + i} style={{ display: "inline-flex", alignItems: "center", gap: 1 }} title="Deux avertissements, exclusion">
-                        <span style={bj} /><span style={bj} /><span style={{ ...br, marginLeft: 2 }} />
+                      <span key={"exc" + i} style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title="Deux avertissements, exclusion">
+                        {bjNum(2)}<span style={br} />
                       </span>
                     ))}
                     {cd.rouges > 0 && (
