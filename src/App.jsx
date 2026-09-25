@@ -3234,11 +3234,21 @@ function Compo({ players, cat, catInfo, db, mutate }) {
   const maxRempl = maxConvoques - formation.length;
 
   function changerFormat(fmt) {
+    const slotsLoc = { ...(lineup.slots || {}) };
+    const remplLoc = [...(lineup.remplacants || [])];
+    const capLoc = lineup.capitaine || null;
     mutate((d) => {
       const lu = d.lineups[key] || { slots: {}, remplacants: [] };
       lu.format = fmt;
-      lu.formation = Object.keys(FORMATIONS[fmt])[0];
-      lu.slots = {};
+      const nouvelleFormation = Object.keys(FORMATIONS[fmt])[0];
+      lu.formation = nouvelleFormation;
+      const nbSlots = FORMATIONS[fmt][nouvelleFormation].length;
+      const ex = (lu.slots && Object.keys(lu.slots).length) ? lu.slots : slotsLoc;
+      const nouveaux = {};
+      Object.keys(ex || {}).forEach((idx) => { if (+idx < nbSlots) nouveaux[idx] = ex[idx]; });
+      lu.slots = nouveaux;
+      lu.remplacants = (lu.remplacants && lu.remplacants.length) ? lu.remplacants : remplLoc;
+      if (!lu.capitaine) lu.capitaine = capLoc;
       d.lineups[key] = lu;
       return d;
     });
@@ -3425,7 +3435,9 @@ function Compo({ players, cat, catInfo, db, mutate }) {
       {/* Remplaçants */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}><ArrowRightLeft size={17} color={C.bleu} /> Remplaçants ({remplacants.length}/{maxRempl})</div>
-        {remplacants.length < maxRempl && <Btn variant="accent" size="sm" onClick={() => setPickRempl(true)}><Plus size={15} /> Ajouter</Btn>}
+        {remplacants.length < maxRempl
+          ? <Btn variant="accent" size="sm" onClick={() => setPickRempl(true)}><Plus size={15} /> Ajouter</Btn>
+          : <Btn variant="ghost" size="sm" onClick={() => setPickRempl(true)}><Users size={15} /> Effectif restant ({benchDispo.length})</Btn>}
       </div>
       {remplacants.length === 0 ? (
         <div style={{ fontSize: 13, color: C.gris, marginBottom: 10 }}>Aucun remplaçant. Banc jusqu'à {maxRempl} joueurs.</div>
@@ -3494,18 +3506,22 @@ function Compo({ players, cat, catInfo, db, mutate }) {
       )}
 
       {pickRempl && (
-        <Modal title placeholder onClose={() => setPickRempl(false)}>
-          <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>Banc jusqu'à {maxRempl} joueurs (convoqués {convoques}/{maxConvoques}).</div>
+        <Modal title={remplacants.length >= maxRempl ? "Effectif restant" : "Ajouter un remplaçant"} onClose={() => setPickRempl(false)}>
+          {remplacants.length >= maxRempl
+            ? <div style={{ fontSize: 12.5, color: "#B87A2B", fontWeight: 700, marginBottom: 10, lineHeight: 1.5, background: "#FFF7E6", border: "1px solid #F0DBA8", borderRadius: 10, padding: 10 }}>Banc complet ({maxRempl}). Voici les joueurs non convoqués. Pour en ajouter un, retire d'abord un remplaçant.</div>
+            : <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>Banc jusqu'à {maxRempl} joueurs (convoqués {convoques}/{maxConvoques}).</div>}
           {benchDispo.length === 0 ? (
             <Empty icon={<Users size={24} color={C.gris} />} text="Aucun joueur disponible" sub="Tous les joueurs sont déjà titulaires ou sur le banc" />
           ) : (
             <div style={{ display: "grid", gap: 8 }}>
               {benchDispo.map((p) => {
                 const susp = estSuspendu(p);
+                const bancPlein = remplacants.length >= maxRempl;
+                const bloque = susp || bancPlein;
                 return (
-                <button key={p.id} onClick={() => { if (susp) return; ajouterRemplacant(p.id); }} disabled={susp} style={{
+                <button key={p.id} onClick={() => { if (bloque) return; ajouterRemplacant(p.id); }} disabled={bloque} style={{
                   display: "flex", alignItems: "center", gap: 11, padding: 11, borderRadius: 12,
-                  border: `1px solid ${susp ? "#F3C9C9" : C.grisClair}`, background: susp ? "#FDF2F2" : "#fff", cursor: susp ? "not-allowed" : "pointer", textAlign: "left", opacity: susp ? 0.75 : 1,
+                  border: `1px solid ${susp ? "#F3C9C9" : C.grisClair}`, background: susp ? "#FDF2F2" : "#fff", cursor: bloque ? "default" : "pointer", textAlign: "left", opacity: susp ? 0.75 : 1,
                 }}>
                   <Avatar p={p} size={38} radius={10} />
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -4201,7 +4217,20 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
     mutate((d) => {
       const m = d.matches.find((x) => x.id === match.id);
       m.rouges = m.rouges || {};
-      if (m.rouges[joueurId]) delete m.rouges[joueurId]; else m.rouges[joueurId] = 1;
+      const pl = d.players.find((x) => x.id === joueurId);
+      if (m.rouges[joueurId]) {
+        delete m.rouges[joueurId];
+        // retire la suspension automatique si elle n'a pas encore été affinée (toujours 1 match)
+        if (pl && (+pl.suspension || 0) === 1) { pl.suspension = 0; pl.suspensionFin = ""; }
+      } else {
+        m.rouges[joueurId] = 1;
+        // suspension automatique minimale : 1 match ferme, pour le match suivant
+        if (pl) {
+          pl.suspension = 1;
+          const prochains = (d.matches || []).filter((x) => x.cat === m.cat && x.date && x.date > (m.date || "")).sort((a, b) => a.date.localeCompare(b.date));
+          pl.suspensionFin = prochains.length ? prochains[0].date : "";
+        }
+      }
       return d;
     });
   }
