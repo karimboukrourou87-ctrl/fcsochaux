@@ -2427,12 +2427,12 @@ function jaunesActifsRegle(p, db) {
 /* Carton rouge actif : rouge direct ou deux jaunes dans un même match (exclusion), non révoqué */
 function rougeActif(p, db) {
   if (!p) return false;
+  // rouges et exclusions : prescription 3 mois seule (non concernés par la révocation des avertissements)
   const sansPrescription = p.cat === "Ligue 2";
   const limite = sansPrescription ? "0000-00-00" : addDays(hoyISO(), -92);
-  const revoc = p.discDate && p.discDate > limite ? p.discDate : limite;
   let r = false;
   (db.matches || []).forEach((m) => {
-    if (m.cat !== p.cat || !m.date || m.date <= revoc) return;
+    if (m.cat !== p.cat || !m.date || m.date <= limite) return;
     if ((+((m.jaunes && m.jaunes[p.id]) || 0)) >= 2) r = true;
     if (m.rouges && m.rouges[p.id]) r = true;
   });
@@ -2443,21 +2443,39 @@ function cartonsDetail(p, db) {
   if (!p) return { jaunes: 0, exclusions: 0, rouges: 0 };
   const sansPrescription = p.cat === "Ligue 2";
   const limite = sansPrescription ? "0000-00-00" : addDays(hoyISO(), -92);
-  const revoc = p.discDate && p.discDate > limite ? p.discDate : limite;
+  const revocJ = p.discDate && p.discDate > limite ? p.discDate : limite; // révocation des avertissements
   let jaunes = 0, exclusions = 0, rouges = 0;
   (db.matches || []).forEach((m) => {
-    if (m.cat !== p.cat || !m.date || m.date <= revoc) return;
+    if (m.cat !== p.cat || !m.date) return;
     const j = +((m.jaunes && m.jaunes[p.id]) || 0);
-    if (j >= 2) exclusions++;
-    else if (j === 1) jaunes++;
-    if (m.rouges && m.rouges[p.id]) rouges++;
+    if (m.date > revocJ && j === 1) jaunes++;                 // avertissements simples, révocables
+    if (m.date > limite && j >= 2) exclusions++;              // exclusions, prescription seule
+    if (m.date > limite && m.rouges && m.rouges[p.id]) rouges++; // rouges directs, prescription seule
   });
   return { jaunes, exclusions, rouges };
 }
+/* Carton rouge DIRECT actif (hors exclusion pour deux jaunes), non révoqué */
+function rougeDirectActif(p, db) {
+  if (!p) return false;
+  const sansPrescription = p.cat === "Ligue 2";
+  const limite = sansPrescription ? "0000-00-00" : addDays(hoyISO(), -92);
+  let r = false;
+  (db.matches || []).forEach((m) => {
+    if (m.cat !== p.cat || !m.date || m.date <= limite) return;
+    if (m.rouges && m.rouges[p.id]) r = true;
+  });
+  return r;
+}
 function estSuspendu(p) {
   if (!p) return false;
+  const auj = hoyISO();
   // la date de disponibilité fait foi : purge automatique une fois la date passée
-  if (p.suspensionFin) return p.suspensionFin >= hoyISO();
+  if (p.suspensionFin) {
+    if (p.suspensionFin < auj) return false;
+    // si une date d'effet est renseignée, la suspension ne compte qu'à partir de cette date
+    if (p.suspensionDebut && p.suspensionDebut > auj) return false;
+    return true;
+  }
   // pas de date renseignée : suspendu tant qu'il reste des matchs à purger
   return (+p.suspension || 0) > 0;
 }
@@ -2921,6 +2939,8 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
             });
             const marquerVus = () => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); const a = assiduiteJoueur(pl, d, saisonCourante()); pl.discRef = { jaunes: a.jaunes, rouges: a.rouges }; return d; });
             const setDateFin = (v) => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.suspensionFin = v || ""; return d; });
+            const setDateDebut = (v) => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.suspensionDebut = v || ""; return d; });
+            const exclusion2j = !rougeDirectActif(p, db) && rougeActif(p, db);
             const bloque = estSuspendu(p);
             const dispoTxt = p.suspensionFin ? `disponible le ${new Date(p.suspensionFin + "T00:00:00").toLocaleDateString("fr-FR")}` : "";
             return (
@@ -2937,10 +2957,15 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
                   </div>
                   <Compteur label="" val={susp} onMinus={() => setSusp(-1)} onPlus={() => setSusp(1)} />
                 </div>
-                <div style={{ marginTop: 8 }}>
-                  <Field label="Disponible le (fin de suspension)"><Inp type="date" value={p.suspensionFin || ""} onChange={(e) => setDateFin(e.target.value)} /></Field>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+                  <Field label="Suspension à partir du"><Inp type="date" value={p.suspensionDebut || ""} onChange={(e) => setDateDebut(e.target.value)} /></Field>
+                  <Field label="Disponible le (fin)"><Inp type="date" value={p.suspensionFin || ""} onChange={(e) => setDateFin(e.target.value)} /></Field>
                 </div>
-                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.5 }}>Indique le nombre de matchs de suspension : la date de disponibilité se calcule automatiquement d'après le calendrier de la catégorie. La suspension et le carton rouge disparaissent tout seuls une fois cette date passée. Tu peux aussi ajuster la date à la main.</div>
+                {exclusion2j ? (
+                  <div style={{ fontSize: 11.5, color: "#B87A2B", fontWeight: 700, marginTop: 4, lineHeight: 1.5, background: "#FFF7E6", border: "1px solid #F0DBA8", borderRadius: 8, padding: "7px 9px" }}>Exclusion pour deux avertissements : pas de suspension automatique, c'est la commission qui décide. Saisis la date d'effet et la date de disponibilité une fois le procès-verbal reçu.</div>
+                ) : (
+                  <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.5 }}>Pour un rouge direct, un match de suspension est appliqué automatiquement. Indique le nombre de matchs ou ajuste les dates après la commission. La suspension se lève toute seule une fois la date de disponibilité passée.</div>
+                )}
               </div>
             );
           })()}
@@ -3489,7 +3514,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
                 const placeAilleurs = used.includes(p.id) && lineup.slots?.[pick] !== p.id;
                 const estRempl = remplacants.includes(p.id);
                 const susp = estSuspendu(p);
-                const rge = !susp && rougeActif(p, db);
+                const rge = !susp && rougeDirectActif(p, db);
                 const bloque = susp || rge;
                 return (
                   <button key={p.id} onClick={() => { if (bloque) return; assign(pick, p.id); }} disabled={bloque} style={{
@@ -3521,7 +3546,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
             <div style={{ display: "grid", gap: 8 }}>
               {benchDispo.map((p) => {
                 const susp = estSuspendu(p);
-                const rge = !susp && rougeActif(p, db);
+                const rge = !susp && rougeDirectActif(p, db);
                 const bancPlein = remplacants.length >= maxRempl;
                 const bloque = susp || rge || bancPlein;
                 return (
@@ -4226,13 +4251,16 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
       const pl = d.players.find((x) => x.id === joueurId);
       if (m.rouges[joueurId]) {
         delete m.rouges[joueurId];
-        // retire la suspension automatique si elle n'a pas encore été affinée (toujours 1 match)
-        if (pl && (+pl.suspension || 0) === 1) { pl.suspension = 0; pl.suspensionFin = ""; }
+        // retire la suspension automatique si elle n'a pas encore été affinée (1 ou 2 matchs)
+        if (pl && ((+pl.suspension || 0) === 1 || (+pl.suspension || 0) === 2)) { pl.suspension = 0; pl.suspensionFin = ""; }
       } else {
         m.rouges[joueurId] = 1;
-        // suspension automatique minimale : 1 match ferme, pour le prochain match à venir
+        // suspension automatique du rouge direct : 1 match ferme, + 1 match si le joueur
+        // était déjà sous le coup de 2 avertissements non révoqués (barème FFF)
         if (pl) {
-          pl.suspension = 1;
+          const jAvant = jaunesActifsRegle(pl, d);
+          pl.suspension = jAvant >= 2 ? 2 : 1;
+          pl.discDate = m.date || hoyISO(); // toute suspension ferme révoque les avertissements
           const auj = hoyISO();
           const ref = (m.date && m.date > auj) ? m.date : auj;
           const prochains = (d.matches || []).filter((x) => x.cat === m.cat && x.date && x.date >= ref && x.id !== m.id).sort((a, b) => a.date.localeCompare(b.date));
