@@ -4227,10 +4227,12 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
         if (pl && (+pl.suspension || 0) === 1) { pl.suspension = 0; pl.suspensionFin = ""; }
       } else {
         m.rouges[joueurId] = 1;
-        // suspension automatique minimale : 1 match ferme, pour le match suivant
+        // suspension automatique minimale : 1 match ferme, pour le prochain match à venir
         if (pl) {
           pl.suspension = 1;
-          const prochains = (d.matches || []).filter((x) => x.cat === m.cat && x.date && x.date > (m.date || "")).sort((a, b) => a.date.localeCompare(b.date));
+          const auj = hoyISO();
+          const ref = (m.date && m.date > auj) ? m.date : auj;
+          const prochains = (d.matches || []).filter((x) => x.cat === m.cat && x.date && x.date >= ref && x.id !== m.id).sort((a, b) => a.date.localeCompare(b.date));
           pl.suspensionFin = prochains.length ? prochains[0].date : "";
         }
       }
