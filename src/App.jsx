@@ -2454,6 +2454,23 @@ function cartonsDetail(p, db) {
   });
   return { jaunes, exclusions, rouges };
 }
+/* Liste chronologique des cartons d'un joueur sur une saison, avec date et statut (retenu ou non) */
+function cartonsListe(p, db, saison) {
+  if (!p) return [];
+  const sansPrescription = p.cat === "Ligue 2";
+  const limite = sansPrescription ? "0000-00-00" : addDays(hoyISO(), -92);
+  const revocJ = p.discDate && p.discDate > limite ? p.discDate : limite;
+  const list = [];
+  (db.matches || []).forEach((m) => {
+    if (m.cat !== p.cat || !m.date) return;
+    if (saison && saisonDe(m.date) !== saison) return;
+    const j = +((m.jaunes && m.jaunes[p.id]) || 0);
+    if (j === 1) list.push({ date: m.date, type: "jaune", retenu: m.date > revocJ });
+    else if (j >= 2) list.push({ date: m.date, type: "exclusion", retenu: m.date > limite });
+    if (m.rouges && m.rouges[p.id]) list.push({ date: m.date, type: "rouge", retenu: m.date > limite });
+  });
+  return list.sort((a, b) => a.date.localeCompare(b.date));
+}
 /* Carton rouge DIRECT actif (hors exclusion pour deux jaunes), non révoqué */
 function rougeDirectActif(p, db) {
   if (!p) return false;
@@ -2919,7 +2936,29 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
               </div>
             ))}
           </div>
-          <div style={{ fontSize: 11, color: C.gris, marginBottom: 14, lineHeight: 1.5 }}>Avertissements retenus selon le barème FFF : cartons jaunes des 3 derniers mois{p.cat === "Ligue 2" ? " (Ligue 2 : cumul saison, seuil 5)" : ` (suspension à ${seuilSuspension(p.cat)})`}. Total de la saison : {assi.jaunes} jaune{assi.jaunes > 1 ? "s" : ""}. Les avertissements sont effacés après une suspension.</div>
+          <div style={{ fontSize: 11, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Avertissements retenus selon le barème FFF : cartons jaunes des 3 derniers mois{p.cat === "Ligue 2" ? " (Ligue 2 : cumul saison, seuil 5)" : ` (suspension à ${seuilSuspension(p.cat)})`}. Total de la saison : {assi.jaunes} jaune{assi.jaunes > 1 ? "s" : ""}. Les avertissements sont effacés après une suspension.</div>
+          {(() => {
+            const liste = cartonsListe(p, db, saisonSel);
+            if (!liste.length) return null;
+            const bj = { width: 10, height: 14, borderRadius: 2, background: "#F2C200", border: "1px solid #D9AE00", display: "inline-block" };
+            const br = { width: 10, height: 14, borderRadius: 2, background: "#D33A2C", border: "1px solid #B5483F", display: "inline-block" };
+            return (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.gris, marginBottom: 6 }}>CHRONOLOGIE DES CARTONS</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {liste.map((c, i) => (
+                    <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: c.retenu ? C.encre : C.gris, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 8, padding: "4px 8px", opacity: c.retenu ? 1 : 0.65 }}>
+                      {c.type === "jaune" && <span style={bj} />}
+                      {c.type === "exclusion" && (<><span style={bj} /><span style={bj} /><span style={br} /></>)}
+                      {c.type === "rouge" && <span style={br} />}
+                      {new Date(c.date + "T00:00:00").toLocaleDateString("fr-FR")}
+                      {!c.retenu && <span style={{ fontSize: 10, fontWeight: 600, color: C.gris }}>(prescrit)</span>}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           {(() => {
             const risque = risqueSuspension(p, db, p.cat);
             const cAct = cartonsActifsJoueur(p, db);
