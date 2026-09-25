@@ -2395,7 +2395,7 @@ function assiduiteJoueur(p, db, saison) {
     if (saison && saisonDe(t.date) !== saison) return;
     const st = t.presence && t.presence[p.id];
     if (st === "present" || st === "retard") presences++;
-    if (st === "absent" || st === "malade") absences++;
+    if (st === "absent" || st === "malade" || st === "blesse") absences++;
     if (st === "retard") retards++;
   });
   return { matchs, presences, absences, retards, jaunes, rouges };
@@ -3449,8 +3449,11 @@ function Compo({ players, cat, catInfo, db, mutate }) {
             return (
               <div key={pid} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", background: "#fff", borderRadius: 11, border: `1px solid ${C.grisClair}` }}>
                 <Avatar p={p} size={34} radius={9} />
-                <div style={{ flex: 1, fontWeight: 800, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.prenom} {p.nom}</div>
-                <span style={{ fontSize: 12, color: C.gris }}>{p.poste || ""}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.prenom} {p.nom}</div>
+                  {p.poste ? <div style={{ fontSize: 11.5, color: C.gris }}>{p.poste}</div> : null}
+                </div>
+                <input type="number" inputMode="numeric" min={1} max={maxNumero(cat)} value={p.numero ?? ""} onChange={(e) => setNumero(pid, e.target.value)} placeholder="N°" style={{ width: 48, padding: "6px 6px", borderRadius: 8, border: `1px solid ${C.grisClair}`, fontSize: 13, textAlign: "center", flex: "0 0 auto" }} />
                 <X size={16} color={C.gris} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => retirerRemplacant(pid)} />
               </div>
             );
