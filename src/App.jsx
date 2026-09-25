@@ -3486,17 +3486,19 @@ function Compo({ players, cat, catInfo, db, mutate }) {
                 const placeAilleurs = used.includes(p.id) && lineup.slots?.[pick] !== p.id;
                 const estRempl = remplacants.includes(p.id);
                 const susp = estSuspendu(p);
+                const rge = !susp && rougeActif(p, db);
+                const bloque = susp || rge;
                 return (
-                  <button key={p.id} onClick={() => { if (susp) return; assign(pick, p.id); }} disabled={susp} style={{
+                  <button key={p.id} onClick={() => { if (bloque) return; assign(pick, p.id); }} disabled={bloque} style={{
                     display: "flex", alignItems: "center", gap: 11, padding: 11, borderRadius: 12,
-                    border: `1px solid ${susp ? "#F3C9C9" : C.grisClair}`, background: susp ? "#FDF2F2" : "#fff", cursor: susp ? "not-allowed" : "pointer", textAlign: "left", opacity: susp ? 0.75 : 1,
+                    border: `1px solid ${bloque ? "#F3C9C9" : C.grisClair}`, background: bloque ? "#FDF2F2" : "#fff", cursor: bloque ? "not-allowed" : "pointer", textAlign: "left", opacity: bloque ? 0.75 : 1,
                   }}>
                     <Avatar p={p} size={38} radius={10} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 800 }}>{p.prenom} {p.nom}</div>
-                      <div style={{ fontSize: 12, color: susp ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(p.suspensionFin)}` : "")) : (p.poste || "Poste libre")}</div>
+                      <div style={{ fontSize: 12, color: bloque ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(p.suspensionFin)}` : "")) : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
                     </div>
-                    {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : placeAilleurs ? <Pastille bg={C.grisClair} color={C.gris}>déjà placé</Pastille> : estRempl ? <Pastille bg="#FFF3DA" color={C.jauneFonce}>banc</Pastille> : null}
+                    {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : rge ? <Pastille bg="#FBE3E3" color={C.rouge}>Rouge</Pastille> : placeAilleurs ? <Pastille bg={C.grisClair} color={C.gris}>déjà placé</Pastille> : estRempl ? <Pastille bg="#FFF3DA" color={C.jauneFonce}>banc</Pastille> : null}
                   </button>
                 );
               })}
@@ -3516,19 +3518,20 @@ function Compo({ players, cat, catInfo, db, mutate }) {
             <div style={{ display: "grid", gap: 8 }}>
               {benchDispo.map((p) => {
                 const susp = estSuspendu(p);
+                const rge = !susp && rougeActif(p, db);
                 const bancPlein = remplacants.length >= maxRempl;
-                const bloque = susp || bancPlein;
+                const bloque = susp || rge || bancPlein;
                 return (
                 <button key={p.id} onClick={() => { if (bloque) return; ajouterRemplacant(p.id); }} disabled={bloque} style={{
                   display: "flex", alignItems: "center", gap: 11, padding: 11, borderRadius: 12,
-                  border: `1px solid ${susp ? "#F3C9C9" : C.grisClair}`, background: susp ? "#FDF2F2" : "#fff", cursor: bloque ? "default" : "pointer", textAlign: "left", opacity: susp ? 0.75 : 1,
+                  border: `1px solid ${(susp || rge) ? "#F3C9C9" : C.grisClair}`, background: (susp || rge) ? "#FDF2F2" : "#fff", cursor: bloque ? "default" : "pointer", textAlign: "left", opacity: (susp || rge) ? 0.75 : 1,
                 }}>
                   <Avatar p={p} size={38} radius={10} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 800 }}>{p.prenom} {p.nom}</div>
-                    <div style={{ fontSize: 12, color: susp ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(p.suspensionFin)}` : "")) : (p.poste || "Poste libre")}</div>
+                    <div style={{ fontSize: 12, color: (susp || rge) ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(p.suspensionFin)}` : "")) : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
                   </div>
-                  {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : null}
+                  {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : rge ? <Pastille bg="#FBE3E3" color={C.rouge}>Rouge</Pastille> : null}
                 </button>
                 );
               })}
@@ -4359,9 +4362,6 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
               </span>
             )}
           </div>
-        )}
-        {cr && (
-          <div style={{ fontSize: 11.5, color: C.rouge, fontWeight: 700, marginTop: 8, lineHeight: 1.5, background: "#FBE3E3", borderRadius: 8, padding: "7px 9px" }}>Exclusion : le joueur est suspendu 1 match automatiquement pour le prochain match. À affiner dans sa fiche après la commission.</div>
         )}
       </Card>
     );
