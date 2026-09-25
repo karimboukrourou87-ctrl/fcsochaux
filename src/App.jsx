@@ -4360,6 +4360,9 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
             )}
           </div>
         )}
+        {cr && (
+          <div style={{ fontSize: 11.5, color: C.rouge, fontWeight: 700, marginTop: 8, lineHeight: 1.5, background: "#FBE3E3", borderRadius: 8, padding: "7px 9px" }}>Exclusion : le joueur est suspendu 1 match automatiquement pour le prochain match. À affiner dans sa fiche après la commission.</div>
+        )}
       </Card>
     );
   };
