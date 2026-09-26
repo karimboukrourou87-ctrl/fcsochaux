@@ -5604,7 +5604,7 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
 const CRENEAUX_ANCIEN = ["08h00", "09h00", "10h00", "11h00", "12h00", "13h00", "13h30", "14h00", "14h30", "15h30", "16h30", "17h30", "18h00", "19h00", "20h00"];
 const CRENEAUX_DEFAUT = (() => { const a = []; for (let m = 8 * 60; m <= 21 * 60 + 30; m += 30) a.push(`${pad(Math.floor(m / 60))}h${pad(m % 60)}`); return a; })();
 
-function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValider, avecActivite, onClose, onSave, onDelete, onValider }) {
+function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValider, avecActivite, estPlage, onClose, onSave, onDelete, onDeleteUn, onValider }) {
   const [occupants, setOccupants] = useState(actuel && actuel.equipe ? actuel.equipe.split(" + ").map((x) => x.trim()).filter(Boolean) : []);
   const [saisie, setSaisie] = useState("");
   const [activite, setActivite] = useState((actuel && actuel.activite) || "match");
@@ -5616,9 +5616,15 @@ function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValid
       footer={
         <>
           <Btn variant="accent" full disabled={occupants.length === 0} onClick={() => onSave(occupants.join(" + "), activite, fin)}><Save size={16} /> {peutValider ? "Attribuer" : "Demander"}</Btn>
-          {actuel && onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}
+          {actuel && onDelete && <Btn variant="danger" onClick={estPlage ? onDeleteUn : onDelete}><Trash2 size={16} /></Btn>}
         </>
       }>
+      {actuel && estPlage && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <Btn variant="danger" size="sm" full onClick={onDeleteUn}><Trash2 size={15} /> Effacer ce créneau ({creneau})</Btn>
+          <Btn variant="danger" size="sm" full onClick={onDelete}><Trash2 size={15} /> Effacer toute la plage</Btn>
+        </div>
+      )}
       <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12 }}>Créneau de {creneau}. Tu peux mettre plusieurs équipes qui se partagent ce {typeLabel.toLowerCase()}, par exemple U14 et U15, ou ajouter le district. {peutValider ? "En tant que responsable, ton attribution est directement validée." : "Ta demande sera à valider par la direction."}</div>
 
       {actuel && (
@@ -6025,6 +6031,7 @@ function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
                         <td key={col} onClick={() => setEdit({ cr, col })} style={{ padding: 5, borderTop: `1px solid ${C.grisClair}`, borderLeft: `1px solid ${C.grisClair}`, cursor: "pointer", verticalAlign: "middle" }}>
                           <div style={{ background: co.bg, border: `1px solid ${co.bd}`, borderRadius: 8, minHeight: 34, padding: "5px 7px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 1 }}>
                             <span style={{ fontSize: 12, fontWeight: 800, color: c ? C.encre : C.grisClair, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c ? c.equipe : "+"}</span>
+                            {c && c.debut && c.fin && <span style={{ fontSize: 9, fontWeight: 700, color: C.gris }}>{c.debut} - {c.fin}</span>}
                             {c && c.activite && <span style={{ fontSize: 9, fontWeight: 700, color: c.activite === "match" ? C.bleu : "#7A8290" }}>{c.activite === "match" ? "Match" : "Entraînement"}</span>}
                           </div>
                         </td>
@@ -6056,6 +6063,7 @@ function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
                         <td key={dstr} onClick={() => setEdit({ cr, col: colSemActif, dateJour: dstr })} style={{ padding: 5, borderTop: `1px solid ${C.grisClair}`, borderLeft: `1px solid ${C.grisClair}`, cursor: "pointer", verticalAlign: "middle" }}>
                           <div style={{ background: co.bg, border: `1px solid ${co.bd}`, borderRadius: 8, minHeight: 34, padding: "5px 7px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 1 }}>
                             <span style={{ fontSize: 12, fontWeight: 800, color: c ? C.encre : C.grisClair, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c ? c.equipe : "+"}</span>
+                            {c && c.debut && c.fin && <span style={{ fontSize: 9, fontWeight: 700, color: C.gris }}>{c.debut} - {c.fin}</span>}
                             {c && c.activite && <span style={{ fontSize: 9, fontWeight: 700, color: c.activite === "match" ? C.bleu : "#7A8290" }}>{c.activite === "match" ? "Match" : "Entraînement"}</span>}
                           </div>
                         </td>
@@ -6077,9 +6085,11 @@ function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
         return (
           <EditCasePlanning
             typeLabel={typeLabel} colonne={edit.col} creneau={edit.cr} actuel={actuel} cats={cats} peutValider={peutValider} avecActivite={type === "terrains"}
+            estPlage={!!(actuel && actuel.fin && actuel.debut && actuel.fin !== actuel.debut)}
             onClose={() => setEdit(null)}
             onSave={(equipe, activite, fin) => { ecrirePlage(edit.cr, edit.col, { equipe, activite: type === "terrains" ? activite : undefined, statut: peutValider ? "valide" : "attente", demandeur: moi }, fin, edit.dateJour); setEdit(null); }}
             onValider={() => { const deb = (actuel && actuel.debut) || edit.cr; ecrirePlage(deb, edit.col, { ...actuel, statut: "valide" }, actuel && actuel.fin, edit.dateJour); setEdit(null); }}
+            onDeleteUn={() => { ecrire(edit.cr, edit.col, null, edit.dateJour); setEdit(null); }}
             onDelete={() => { const deb = (actuel && actuel.debut) || edit.cr; ecrirePlage(deb, edit.col, null, actuel && actuel.fin, edit.dateJour); setEdit(null); }}
           />
         );
