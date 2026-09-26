@@ -3723,7 +3723,7 @@ function EditMatch({ match, onClose, onSave }) {
       <Field label="Nom de la compétition (optionnel)"><Inp value={f.competition || ""} onChange={(e) => set("competition", e.target.value)} placeholder="Journée 5, Coupe du Doubs..." /></Field>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Field label="Journée N° (optionnel)"><Inp value={f.journee || ""} onChange={(e) => set("journee", e.target.value)} placeholder="5" /></Field>
-        <Field label="Numéro de la rencontre (optionnel)"><Inp value={f.numeroRencontre || ""} onChange={(e) => set("numeroRencontre", e.target.value)} placeholder="Ex : 55746308" /></Field>
+        <Field label="Numéro du match (optionnel)"><Inp value={f.numeroRencontre || ""} onChange={(e) => set("numeroRencontre", e.target.value)} placeholder="Ex : 55746308" /></Field>
       </div>
       <Field label="Heure du match"><Inp type="time" value={f.heure || ""} onChange={(e) => set("heure", e.target.value)} /></Field>
       <Field label="Terrain ou lieu du match"><Inp value={f.lieuMatch || ""} onChange={(e) => set("lieuMatch", e.target.value)} placeholder="Synthétique centre, stade adverse..." /></Field>
