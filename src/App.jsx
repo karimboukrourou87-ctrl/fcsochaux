@@ -3721,6 +3721,10 @@ function EditMatch({ match, onClose, onSave }) {
         </Sel>
       </Field>
       <Field label="Nom de la compétition (optionnel)"><Inp value={f.competition || ""} onChange={(e) => set("competition", e.target.value)} placeholder="Journée 5, Coupe du Doubs..." /></Field>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <Field label="Journée N° (optionnel)"><Inp value={f.journee || ""} onChange={(e) => set("journee", e.target.value)} placeholder="5" /></Field>
+        <Field label="Numéro de la rencontre (optionnel)"><Inp value={f.numeroRencontre || ""} onChange={(e) => set("numeroRencontre", e.target.value)} placeholder="Ex : 55746308" /></Field>
+      </div>
       <Field label="Heure du match"><Inp type="time" value={f.heure || ""} onChange={(e) => set("heure", e.target.value)} /></Field>
       <Field label="Terrain ou lieu du match"><Inp value={f.lieuMatch || ""} onChange={(e) => set("lieuMatch", e.target.value)} placeholder="Synthétique centre, stade adverse..." /></Field>
       <Field label="Intendance (optionnel)"><Inp value={f.intendance || ""} onChange={(e) => set("intendance", e.target.value)} placeholder="Goûters, bouteilles d'eau..." /></Field>
@@ -4248,9 +4252,175 @@ function exporterRapportMatchPDF(jsPDF, match, players, db, educateur) {
   doc.save("Rapport_" + (match.cat || "match") + "_" + String(match.date || "").replace(/[^0-9A-Za-z]/g, "_") + ".pdf");
 }
 
+function exporterDefiJonglagePDF(jsPDF, j, match) {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const W = 595, H = 842, M = 34;
+  const NUIT = [14, 30, 51], BLEU = [26, 53, 83], OR = [198, 162, 76], ENCRE = [22, 32, 46], GRIS = [110, 120, 132], TRAIT = [200, 206, 214], JAUNEF = [255, 249, 230];
+  const sc = (c) => doc.setTextColor(c[0], c[1], c[2]);
+  const sd = (c) => doc.setDrawColor(c[0], c[1], c[2]);
+  const sf = (c) => doc.setFillColor(c[0], c[1], c[2]);
+  try { doc.setProperties({ title: "Défi jonglage U13R", creator: CLUB_LONG }); } catch (e) {}
+  const cap = (v) => Math.min(50, Math.max(0, +v || 0));
+  const totalJ = (r) => cap(r.pd) + cap(r.pg) + cap(r.alt);
+  const totalEq = (arr) => (arr || []).reduce((s, r) => s + totalJ(r), 0);
+
+  // en-tête
+  if (typeof LOGO_CLUB === "string" && LOGO_CLUB) { try { doc.addImage(LOGO_CLUB, "PNG", M, 24, 30, 36); } catch (e) {} }
+  sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(17); doc.text("DÉFI JONGLAGE", M + 40, 42);
+  sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.text("U13R · Fiche de comptage", M + 40, 56);
+  sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+  doc.text("Ligue Bourgogne Franche Comté", W - M, 40, { align: "right" });
+  doc.text("de Football", W - M, 52, { align: "right" });
+  sd(OR); doc.setLineWidth(1.2); doc.line(M, 66, W - M, 66); doc.setLineWidth(0.5);
+
+  // règles
+  let y = 80;
+  sf([248, 249, 251]); doc.rect(M, y, W - 2 * M, 74, "F");
+  sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.text("RÈGLES DU DÉFI", M + 8, y + 13);
+  sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(7.6);
+  const regles = "Chaque joueur inscrit sur la feuille de match participe et a 2 essais pour réaliser au maximum 50 jonglages pied droit, 50 pied gauche et 50 alternés. Départ ballon au sol. Pas de surface de rattrapage, pied posé au sol entre chaque contact. Les joueurs jonglent par 2 (un de chaque équipe). Le résultat est l'addition des jonglages des 12 joueurs (0 par joueur manquant). Photo nette de la feuille à renvoyer par le club recevant avant le lundi 14h00 : sportif@lbfc.fff.fr";
+  doc.splitTextToSize(regles, W - 2 * M - 16).forEach((ln, i) => doc.text(ln, M + 8, y + 26 + i * 9.5));
+  y += 86;
+
+  // ligne date / journée / match
+  sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+  const dtx = j.date ? new Date(j.date + "T00:00:00").toLocaleDateString("fr-FR") : (match.date ? new Date(match.date + "T00:00:00").toLocaleDateString("fr-FR") : "...... / ...... / 2026");
+  doc.text("Date : " + dtx, M, y);
+  doc.text("Journée N° : " + (j.journee || "......"), M + 200, y);
+  doc.text("Match N° : " + (j.matchNum || "..............."), M + 340, y);
+  y += 16;
+
+  const colX = [M, M + 24, M + 174, M + 269, M + 337, M + 405, M + 467, W - M];
+  const heads = ["N°", "NOM", "Prénom", "Pied droit", "Pied gauche", "Alterné", "Total"];
+  const ctr = (a) => (colX[a] + colX[a + 1]) / 2;
+  function bloc(titre, nomEquipe, rows) {
+    sf(NUIT); doc.rect(M, y, W - 2 * M, 16, "F");
+    sc([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+    doc.text(titre + "  —  " + (nomEquipe || ""), M + 6, y + 11);
+    y += 16;
+    // en-têtes colonnes
+    sf([238, 241, 245]); doc.rect(M, y, W - 2 * M, 14, "F");
+    sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(7.4);
+    heads.forEach((h, i) => { if (i <= 2) doc.text(h, colX[i] + 4, y + 9.5); else doc.text(h, ctr(i), y + 9.5, { align: "center" }); });
+    y += 14;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    for (let i = 0; i < 12; i++) {
+      const r = (rows && rows[i]) || {};
+      const h = 15;
+      sd(TRAIT); doc.rect(M, y, W - 2 * M, h);
+      colX.slice(1, 7).forEach((x) => doc.line(x, y, x, y + h));
+      sc(ENCRE);
+      doc.text(String(r.num || (i + 1)), colX[0] + 6, y + 10);
+      if (r.nom) doc.text(String(r.nom).toUpperCase(), colX[1] + 4, y + 10);
+      if (r.prenom) doc.text(String(r.prenom), colX[2] + 4, y + 10);
+      const cell = (v, a) => { if (v !== "" && v != null) doc.text(String(cap(v)), ctr(a), y + 10, { align: "center" }); };
+      cell(r.pd, 3); cell(r.pg, 4); cell(r.alt, 5);
+      if (r.nom || r.pd !== "" || r.pg !== "" || r.alt !== "") { doc.setFont("helvetica", "bold"); doc.text(String(totalJ(r)), ctr(6), y + 10, { align: "center" }); doc.setFont("helvetica", "normal"); }
+      y += h;
+    }
+    // total équipe
+    sf(JAUNEF); doc.rect(M, y, W - 2 * M, 16, "F"); sd(TRAIT); doc.rect(M, y, W - 2 * M, 16);
+    sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+    doc.text("TOTAL ÉQUIPE", colX[2] + 4, y + 11);
+    doc.setTextColor(OR[0], OR[1], OR[2]); doc.setFontSize(12);
+    doc.text(String(totalEq(rows)), ctr(6), y + 11.5, { align: "center" });
+    y += 26;
+  }
+
+  bloc("ÉQUIPE À DOMICILE", j.domNom || CLUB_LONG, j.dom);
+  bloc("ÉQUIPE VISITEUSE", j.visNom || match.adversaire, j.vis);
+
+  sc(GRIS); doc.setFont("helvetica", "italic"); doc.setFontSize(7);
+  const prec = "Si le club recevant ne renvoie pas la fiche, il se voit attribuer 0 jonglage pour la journée. Le club visiteur totalise la moyenne de ses performances de la journée précédente (ou la moyenne des autres équipes en Journée 1).";
+  doc.splitTextToSize(prec, W - 2 * M).forEach((ln, i) => doc.text(ln, M, y + 6 + i * 9));
+
+  doc.save("Defi_jonglage_U13R_" + String(j.matchNum || match.date || "").replace(/[^0-9A-Za-z]/g, "_") + ".pdf");
+}
+
+function DefiJonglage({ match, players, db, mutate, onClose }) {
+  const cur = db.matches.find((x) => x.id === match.id) || match;
+  const [msgPdf, setMsgPdf] = useState(null);
+  const cap = (v) => v === "" ? "" : Math.min(50, Math.max(0, Math.round(+v) || 0));
+  const totalJ = (r) => (Math.min(50, +r.pd || 0)) + (Math.min(50, +r.pg || 0)) + (Math.min(50, +r.alt || 0));
+  const totalEq = (arr) => (arr || []).reduce((s, r) => s + totalJ(r), 0);
+
+  // pré-remplissage des 12 joueurs à domicile depuis la composition du match, sinon lignes vides
+  function domInit() {
+    const lu = db.lineups[match.id];
+    let convoques = [];
+    if (lu) {
+      const ids = [...Object.values(lu.slots || {}), ...(lu.remplacants || [])];
+      convoques = ids.map((id) => players.find((p) => p.id === id)).filter(Boolean);
+    }
+    const rows = [];
+    for (let i = 0; i < 12; i++) {
+      const p = convoques[i];
+      rows.push(p ? { num: p.numero || (i + 1), nom: p.nom || "", prenom: p.prenom || "", pd: "", pg: "", alt: "" } : { num: i + 1, nom: "", prenom: "", pd: "", pg: "", alt: "" });
+    }
+    return rows;
+  }
+  const j0 = cur.jonglage || {};
+  const [j, setJ] = useState({
+    journee: j0.journee || cur.journee || "", matchNum: j0.matchNum || cur.numeroRencontre || "", date: j0.date || match.date || "",
+    domNom: j0.domNom || CLUB_LONG, visNom: j0.visNom || match.adversaire || "",
+    dom: (j0.dom && j0.dom.length) ? j0.dom : domInit(),
+    vis: (j0.vis && j0.vis.length) ? j0.vis : Array.from({ length: 12 }, (_, i) => ({ num: i + 1, nom: "", prenom: "", pd: "", pg: "", alt: "" })),
+  });
+  const setCell = (cote, i, k, v) => setJ((o) => { const arr = [...o[cote]]; arr[i] = { ...arr[i], [k]: (k === "pd" || k === "pg" || k === "alt") ? cap(v) : v }; return { ...o, [cote]: arr }; });
+  const enregistrer = () => { mutate((d) => { d.matches.find((x) => x.id === match.id).jonglage = j; return d; }); };
+  async function telecharger() {
+    enregistrer(); setMsgPdf("Préparation du PDF...");
+    try { const jsPDF = await chargerJsPDF(); exporterDefiJonglagePDF(jsPDF, j, match); setMsgPdf(null); }
+    catch (e) { setMsgPdf("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
+  }
+
+  const tableau = (cote, titre) => (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ background: C.bleuNuit, color: "#fff", fontWeight: 800, fontSize: 12.5, padding: "8px 10px", borderRadius: "10px 10px 0 0" }}>{titre}</div>
+      <div style={{ padding: "8px 8px 10px", border: `1px solid ${C.grisClair}`, borderTop: "none", borderRadius: "0 0 10px 10px" }}>
+        <Field label="Nom de l'équipe"><Inp value={j[cote === "dom" ? "domNom" : "visNom"]} onChange={(e) => setJ((o) => ({ ...o, [cote === "dom" ? "domNom" : "visNom"]: e.target.value }))} /></Field>
+        <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+          {j[cote].map((r, i) => (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "24px 1fr 46px 46px 46px 34px", gap: 4, alignItems: "center" }}>
+              <input value={r.num ?? ""} onChange={(e) => setCell(cote, i, "num", e.target.value)} style={{ width: "100%", padding: "5px 2px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12, textAlign: "center", boxSizing: "border-box" }} />
+              <input value={r.nom || ""} placeholder={`Nom ${i + 1}`} onChange={(e) => setCell(cote, i, "nom", e.target.value)} style={{ width: "100%", padding: "5px 6px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12, boxSizing: "border-box" }} />
+              <input value={r.pd ?? ""} placeholder="D" inputMode="numeric" onChange={(e) => setCell(cote, i, "pd", e.target.value)} title="Pied droit" style={{ width: "100%", padding: "5px 2px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12, textAlign: "center", boxSizing: "border-box" }} />
+              <input value={r.pg ?? ""} placeholder="G" inputMode="numeric" onChange={(e) => setCell(cote, i, "pg", e.target.value)} title="Pied gauche" style={{ width: "100%", padding: "5px 2px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12, textAlign: "center", boxSizing: "border-box" }} />
+              <input value={r.alt ?? ""} placeholder="Alt" inputMode="numeric" onChange={(e) => setCell(cote, i, "alt", e.target.value)} title="Alterné" style={{ width: "100%", padding: "5px 2px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12, textAlign: "center", boxSizing: "border-box" }} />
+              <div style={{ fontWeight: 800, fontSize: 13, textAlign: "center", color: C.bleu }}>{totalJ(r) || ""}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, background: "#FFF9E6", border: `1px solid #F0DBA8`, borderRadius: 9, padding: "8px 10px" }}>
+          <span style={{ fontWeight: 800, fontSize: 13 }}>TOTAL ÉQUIPE</span>
+          <span style={{ fontWeight: 900, fontSize: 18, color: C.jauneFonce }}>{totalEq(j[cote])}</span>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <Modal title="Défi jonglage U13R" onClose={onClose}
+      footer={<><Btn variant="ghost" full onClick={() => { enregistrer(); onClose(); }}><Save size={16} /> Enregistrer</Btn><Btn variant="accent" full onClick={telecharger}><FileDown size={16} /> Fiche PDF</Btn></>}>
+      <div style={{ fontSize: 12, color: C.gris, lineHeight: 1.5, marginBottom: 12, background: C.fond, borderRadius: 10, padding: 10 }}>
+        Fiche officielle Ligue Bourgogne-Franche-Comté. Chaque joueur, 2 essais, maximum 50 par pied droit, pied gauche et alterné. Total automatique par joueur et par équipe. Le club recevant envoie la photo de la fiche avant lundi 14h à sportif@lbfc.fff.fr.
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+        <Field label="Date"><Inp type="date" value={j.date || ""} onChange={(e) => setJ((o) => ({ ...o, date: e.target.value }))} /></Field>
+        <Field label="Journée N°"><Inp value={j.journee} onChange={(e) => setJ((o) => ({ ...o, journee: e.target.value }))} /></Field>
+        <Field label="Match N°"><Inp value={j.matchNum} onChange={(e) => setJ((o) => ({ ...o, matchNum: e.target.value }))} /></Field>
+      </div>
+      {tableau("dom", "ÉQUIPE À DOMICILE")}
+      {tableau("vis", "ÉQUIPE VISITEUSE")}
+      {msgPdf && <div style={{ fontSize: 12.5, color: C.encre, background: C.fond, borderRadius: 10, padding: 10, marginTop: 4 }}>{msgPdf}</div>}
+    </Modal>
+  );
+}
+
 function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, peutValider, profil }) {
   const [noteFor, setNoteFor] = useState(null);
   const [orga, setOrga] = useState(false);
+  const [jong, setJong] = useState(false);
   const [msgPdf, setMsgPdf] = useState(null);
   const joue = match.scorePour != null && match.scoreContre != null;
 
@@ -4488,11 +4658,16 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
         style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit", fontSize: 15.5, lineHeight: 1.5, minHeight: 220 }} />
       <div style={{ fontSize: 11.5, color: C.gris, marginTop: 4 }}>Aucune limite de longueur. Tu peux étirer la zone par le coin en bas à droite.</div>
 
-      <Btn variant="accent" full style={{ marginTop: 16 }} onClick={telechargerRapport}><FileDown size={16} /> Exporter le rapport en PDF</Btn>
+      {match.cat === "U13" && (
+        <Btn variant="ghost" full style={{ marginTop: 10 }} onClick={() => setJong(true)}><ClipboardList size={16} /> Défi jonglage U13R (fiche ligue)</Btn>
+      )}
+
+      <Btn variant="accent" full style={{ marginTop: 10 }} onClick={telechargerRapport}><FileDown size={16} /> Exporter le rapport en PDF</Btn>
       {msgPdf && <div style={{ fontSize: 12.5, color: C.encre, background: C.fond, borderRadius: 10, padding: 10, marginTop: 8 }}>{msgPdf}</div>}
 
       {noteFor && <NoterJoueur match={match} player={noteFor} db={db} mutate={mutate} onClose={() => setNoteFor(null)} />}
       {orga && <OrgaMatch match={match} db={db} mutate={mutate} peutValider={peutValider} onClose={() => setOrga(false)} />}
+      {jong && <DefiJonglage match={match} players={players} db={db} mutate={mutate} onClose={() => setJong(false)} />}
     </Modal>
   );
 }
