@@ -4254,87 +4254,114 @@ function exporterRapportMatchPDF(jsPDF, match, players, db, educateur) {
 
 function exporterDefiJonglagePDF(jsPDF, j, match) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
-  const W = 595, H = 842, M = 34;
-  const NUIT = [14, 30, 51], BLEU = [26, 53, 83], OR = [198, 162, 76], ENCRE = [22, 32, 46], GRIS = [110, 120, 132], TRAIT = [200, 206, 214], JAUNEF = [255, 249, 230];
+  const W = 595, H = 842, M = 40;
+  const NAVY = [40, 54, 84], GOLD = [200, 164, 78], RED = [178, 68, 55];
+  const PEACH = [253, 246, 239], ORB = [214, 158, 92], REDTITLE = [150, 52, 42];
+  const GREYBAND = [232, 232, 236], ENCRE = [30, 38, 52], GRIS = [110, 120, 132];
+  const BORDER = [176, 184, 196], WHITE = [255, 255, 255];
+  const HOME_TOTAL = [200, 214, 235], HOME_ALT = [238, 242, 249];
+  const VIS_TOTAL = [245, 224, 212], VIS_ALT = [240, 240, 242];
   const sc = (c) => doc.setTextColor(c[0], c[1], c[2]);
   const sd = (c) => doc.setDrawColor(c[0], c[1], c[2]);
   const sf = (c) => doc.setFillColor(c[0], c[1], c[2]);
   try { doc.setProperties({ title: "Défi jonglage U13R", creator: CLUB_LONG }); } catch (e) {}
-  const cap = (v) => Math.min(50, Math.max(0, +v || 0));
+  const cap = (v) => Math.min(50, Math.max(0, Math.round(+v) || 0));
+  const has = (v) => v !== "" && v != null;
   const totalJ = (r) => cap(r.pd) + cap(r.pg) + cap(r.alt);
   const totalEq = (arr) => (arr || []).reduce((s, r) => s + totalJ(r), 0);
 
-  // en-tête
-  if (typeof LOGO_CLUB === "string" && LOGO_CLUB) { try { doc.addImage(LOGO_CLUB, "PNG", M, 24, 30, 36); } catch (e) {} }
-  sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(17); doc.text("DÉFI JONGLAGE", M + 40, 42);
-  sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.text("U13R · Fiche de comptage", M + 40, 56);
-  sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-  doc.text("Ligue Bourgogne Franche Comté", W - M, 40, { align: "right" });
-  doc.text("de Football", W - M, 52, { align: "right" });
-  sd(OR); doc.setLineWidth(1.2); doc.line(M, 66, W - M, 66); doc.setLineWidth(0.5);
+  // bandeau en-tête bleu nuit
+  sf(NAVY); doc.rect(M, 30, W - 2 * M, 66, "F");
+  const catLabel = /F$/.test(match.cat || "") ? (match.cat || "U13F") : ((match.cat || "U13") + "R");
+  sc(WHITE); doc.setFont("times", "bold"); doc.setFontSize(27); doc.text("DÉFI JONGLAGE", M + 18, 66);
+  doc.setFontSize(12.5); sc(GOLD); doc.setFont("times", "bold"); doc.text(catLabel, M + 18, 85);
+  sc(WHITE); doc.setFont("times", "bold"); doc.text("  Fiche de comptage", M + 18 + doc.getTextWidth(catLabel), 85);
+  sc(WHITE); doc.setFont("helvetica", "normal"); doc.setFontSize(10.5);
+  doc.text("Ligue Bourgogne Franche Comté", W - M - 16, 60, { align: "right" });
+  doc.text("de Football", W - M - 16, 74, { align: "right" });
 
-  // règles
-  let y = 80;
-  sf([248, 249, 251]); doc.rect(M, y, W - 2 * M, 74, "F");
-  sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.text("RÈGLES DU DÉFI", M + 8, y + 13);
-  sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(7.6);
-  const regles = "Chaque joueur inscrit sur la feuille de match participe et a 2 essais pour réaliser au maximum 50 jonglages pied droit, 50 pied gauche et 50 alternés. Départ ballon au sol. Pas de surface de rattrapage, pied posé au sol entre chaque contact. Les joueurs jonglent par 2 (un de chaque équipe). Le résultat est l'addition des jonglages des 12 joueurs (0 par joueur manquant). Photo nette de la feuille à renvoyer par le club recevant avant le lundi 14h00 : sportif@lbfc.fff.fr";
-  doc.splitTextToSize(regles, W - 2 * M - 16).forEach((ln, i) => doc.text(ln, M + 8, y + 26 + i * 9.5));
-  y += 86;
+  // encadré règles
+  let y = 108;
+  const rulesH = 118;
+  sf(PEACH); sd(ORB); doc.setLineWidth(1); doc.rect(M, y, W - 2 * M, rulesH, "FD"); doc.setLineWidth(0.4);
+  sc(REDTITLE); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.text("RÈGLES DU DÉFI", M + 12, y + 16);
+  sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+  const regles = [
+    "Chaque joueur inscrit sur la feuille de match y participe et il a 2 essais pour réaliser au maximum 50 jonglages",
+    "pied droit, 50 jonglages pied gauche et 50 jonglages alternés. Départ ballon au sol, possibilité de lever le ballon avec",
+    "le pied « fort » pour le jonglage pied « faible ». Pas de surface de rattrapage. Pied posé au sol entre chaque contact.",
+    "Les joueurs jongleront par 2 (un de chaque équipe. Ex : le N°2 avec le N°2 adverse).",
+    "Le résultat est l'addition des jonglages de chaque joueur (somme pour les 12 joueurs, noté 0 par joueur manquant).",
+    "Effectuer les totaux pour chaque équipe (la commission sportive vérifiera pour mettre à jour le classement).",
+    "Photo nette de la feuille à renvoyer par le club recevant à la ligue (avant le lundi 14h00) : sportif@lbfc.fff.fr",
+  ];
+  regles.forEach((ln, i) => doc.text(ln, M + 12, y + 32 + i * 11.5));
+  y += rulesH + 14;
 
-  // ligne date / journée / match
-  sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-  const dtx = j.date ? new Date(j.date + "T00:00:00").toLocaleDateString("fr-FR") : (match.date ? new Date(match.date + "T00:00:00").toLocaleDateString("fr-FR") : "...... / ...... / 2026");
-  doc.text("Date : " + dtx, M, y);
-  doc.text("Journée N° : " + (j.journee || "......"), M + 200, y);
-  doc.text("Match N° : " + (j.matchNum || "..............."), M + 340, y);
-  y += 16;
+  // bande grise date / journée / match
+  sf(GREYBAND); doc.rect(M, y, W - 2 * M, 20, "F");
+  sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+  const dtx = has(j.date) ? new Date(j.date + "T00:00:00").toLocaleDateString("fr-FR") : (match.date ? new Date(match.date + "T00:00:00").toLocaleDateString("fr-FR") : "....... / ....... / 2026");
+  doc.text("Date : " + dtx, M + 10, y + 13.5);
+  doc.text("Journée N° : " + (has(j.journee) ? j.journee : "........"), M + 200, y + 13.5);
+  doc.text("Match N° : " + (has(j.matchNum) ? j.matchNum : "..............."), M + 330, y + 13.5);
+  y += 32;
 
-  const colX = [M, M + 24, M + 174, M + 269, M + 337, M + 405, M + 467, W - M];
+  const colX = [M, M + 30, M + 160, M + 292, M + 356, M + 420, M + 468, W - M];
   const heads = ["N°", "NOM", "Prénom", "Pied droit", "Pied gauche", "Alterné", "Total"];
   const ctr = (a) => (colX[a] + colX[a + 1]) / 2;
-  function bloc(titre, nomEquipe, rows) {
-    sf(NUIT); doc.rect(M, y, W - 2 * M, 16, "F");
-    sc([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
-    doc.text(titre + "  —  " + (nomEquipe || ""), M + 6, y + 11);
+
+  function bloc(labelTxt, nomEquipe, rows, accent, totalCol, altCol) {
+    // label équipe (encart couleur) + nom
+    sf(accent); doc.rect(M, y, 150, 18, "F");
+    sc(WHITE); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.text(labelTxt, M + 8, y + 12.5);
+    sc(GRIS); doc.setFont("helvetica", "italic"); doc.setFontSize(9); doc.text("(Nom de l'équipe) :", M + 160, y + 12.5);
+    sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text((nomEquipe || "").toUpperCase(), M + 270, y + 12.5);
+    sd(BORDER); doc.line(M + 262, y + 16, W - M, y + 16);
+    y += 24;
+    // en-tête colonnes coloré
+    sf(accent); doc.rect(M, y, W - 2 * M, 16, "F");
+    sc(WHITE); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+    heads.forEach((h, i) => { if (i <= 2) doc.text(h, colX[i] + 5, y + 11); else doc.text(h, ctr(i), y + 11, { align: "center" }); });
     y += 16;
-    // en-têtes colonnes
-    sf([238, 241, 245]); doc.rect(M, y, W - 2 * M, 14, "F");
-    sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(7.4);
-    heads.forEach((h, i) => { if (i <= 2) doc.text(h, colX[i] + 4, y + 9.5); else doc.text(h, ctr(i), y + 9.5, { align: "center" }); });
-    y += 14;
-    doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    // lignes joueurs
+    doc.setFontSize(8.5);
     for (let i = 0; i < 12; i++) {
       const r = (rows && rows[i]) || {};
-      const h = 15;
-      sd(TRAIT); doc.rect(M, y, W - 2 * M, h);
+      const h = 15.5;
+      if (i % 2 === 1) { sf(altCol); doc.rect(M, y, W - 2 * M, h, "F"); }
+      sf(totalCol); doc.rect(colX[6], y, colX[7] - colX[6], h, "F");
+      sd(BORDER); doc.setLineWidth(0.4);
+      doc.rect(M, y, W - 2 * M, h);
       colX.slice(1, 7).forEach((x) => doc.line(x, y, x, y + h));
-      sc(ENCRE);
-      doc.text(String(r.num || (i + 1)), colX[0] + 6, y + 10);
-      if (r.nom) doc.text(String(r.nom).toUpperCase(), colX[1] + 4, y + 10);
-      if (r.prenom) doc.text(String(r.prenom), colX[2] + 4, y + 10);
-      const cell = (v, a) => { if (v !== "" && v != null) doc.text(String(cap(v)), ctr(a), y + 10, { align: "center" }); };
+      sc(ENCRE); doc.setFont("helvetica", "normal");
+      doc.text(String(r.num || (i + 1)), ctr(0), y + 10.5, { align: "center" });
+      if (has(r.nom)) { doc.setFont("helvetica", "bold"); doc.text(String(r.nom).toUpperCase(), colX[1] + 5, y + 10.5); }
+      if (has(r.prenom)) { doc.setFont("helvetica", "bold"); doc.text(String(r.prenom), colX[2] + 5, y + 10.5); }
+      doc.setFont("helvetica", "normal");
+      const cell = (v, a) => { if (has(v)) doc.text(String(cap(v)), ctr(a), y + 10.5, { align: "center" }); };
       cell(r.pd, 3); cell(r.pg, 4); cell(r.alt, 5);
-      if (r.nom || r.pd !== "" || r.pg !== "" || r.alt !== "") { doc.setFont("helvetica", "bold"); doc.text(String(totalJ(r)), ctr(6), y + 10, { align: "center" }); doc.setFont("helvetica", "normal"); }
+      if (has(r.nom) || has(r.pd) || has(r.pg) || has(r.alt)) { doc.setFont("helvetica", "bold"); doc.text(String(totalJ(r)), ctr(6), y + 10.5, { align: "center" }); }
       y += h;
     }
-    // total équipe
-    sf(JAUNEF); doc.rect(M, y, W - 2 * M, 16, "F"); sd(TRAIT); doc.rect(M, y, W - 2 * M, 16);
-    sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-    doc.text("TOTAL ÉQUIPE", colX[2] + 4, y + 11);
-    doc.setTextColor(OR[0], OR[1], OR[2]); doc.setFontSize(12);
-    doc.text(String(totalEq(rows)), ctr(6), y + 11.5, { align: "center" });
-    y += 26;
+    // bande total équipe
+    sf(accent); doc.rect(M, y, W - 2 * M, 18, "F");
+    sf(WHITE); doc.rect(colX[6] + 1, y + 1, colX[7] - colX[6] - 2, 16, "F");
+    sc(WHITE); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+    doc.text("TOTAL ÉQUIPE", ctr(2), y + 12.5, { align: "center" });
+    sc(accent); doc.setFontSize(12); doc.text(String(totalEq(rows)), ctr(6), y + 13, { align: "center" });
+    y += 28;
   }
 
-  bloc("ÉQUIPE À DOMICILE", j.domNom || CLUB_LONG, j.dom);
-  bloc("ÉQUIPE VISITEUSE", j.visNom || match.adversaire, j.vis);
+  bloc("ÉQUIPE À DOMICILE", j.domNom || CLUB_LONG, j.dom, NAVY, HOME_TOTAL, HOME_ALT);
+  bloc("ÉQUIPE VISITEUSE", j.visNom || match.adversaire, j.vis, RED, VIS_TOTAL, VIS_ALT);
 
-  sc(GRIS); doc.setFont("helvetica", "italic"); doc.setFontSize(7);
-  const prec = "Si le club recevant ne renvoie pas la fiche, il se voit attribuer 0 jonglage pour la journée. Le club visiteur totalise la moyenne de ses performances de la journée précédente (ou la moyenne des autres équipes en Journée 1).";
-  doc.splitTextToSize(prec, W - 2 * M).forEach((ln, i) => doc.text(ln, M, y + 6 + i * 9));
+  sc(REDTITLE); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.text("PRÉCISIONS :", M, y + 4);
+  sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+  const prec = "Si le club recevant ne renvoie pas la fiche de jonglerie, il se verra attribuer le total de 0 jonglage pour la journée identifiée. Le club visiteur se verra totaliser la moyenne des jonglages de ses performances de la journée précédente (ou la moyenne des autres équipes s'il s'agit de la Journée 1).";
+  doc.splitTextToSize(prec, W - 2 * M).forEach((ln, i) => doc.text(ln, M, y + 15 + i * 9.5));
 
-  doc.save("Defi_jonglage_U13R_" + String(j.matchNum || match.date || "").replace(/[^0-9A-Za-z]/g, "_") + ".pdf");
+  doc.save("Defi_jonglage_" + catLabel + "_" + String(j.matchNum || match.date || "").replace(/[^0-9A-Za-z]/g, "_") + ".pdf");
 }
 
 function DefiJonglage({ match, players, db, mutate, onClose }) {
@@ -4367,6 +4394,7 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
     vis: (j0.vis && j0.vis.length) ? j0.vis : Array.from({ length: 12 }, (_, i) => ({ num: i + 1, nom: "", prenom: "", pd: "", pg: "", alt: "" })),
   });
   const setCell = (cote, i, k, v) => setJ((o) => { const arr = [...o[cote]]; arr[i] = { ...arr[i], [k]: (k === "pd" || k === "pg" || k === "alt") ? cap(v) : v }; return { ...o, [cote]: arr }; });
+  const toutA50 = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => (r.nom || cote === "dom") ? { ...r, pd: 50, pg: 50, alt: 50 } : r) }));
   const enregistrer = () => { mutate((d) => { d.matches.find((x) => x.id === match.id).jonglage = j; return d; }); };
   async function telecharger() {
     enregistrer(); setMsgPdf("Préparation du PDF...");
@@ -4379,7 +4407,8 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
       <div style={{ background: C.bleuNuit, color: "#fff", fontWeight: 800, fontSize: 12.5, padding: "8px 10px", borderRadius: "10px 10px 0 0" }}>{titre}</div>
       <div style={{ padding: "8px 8px 10px", border: `1px solid ${C.grisClair}`, borderTop: "none", borderRadius: "0 0 10px 10px" }}>
         <Field label="Nom de l'équipe"><Inp value={j[cote === "dom" ? "domNom" : "visNom"]} onChange={(e) => setJ((o) => ({ ...o, [cote === "dom" ? "domNom" : "visNom"]: e.target.value }))} /></Field>
-        <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+        <Btn variant="ghost" size="sm" full style={{ margin: "8px 0 2px" }} onClick={() => toutA50(cote)}><Check size={15} /> Tout à 50 (puis corriger si besoin)</Btn>
+        <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
           {j[cote].map((r, i) => (
             <div key={i} style={{ display: "grid", gridTemplateColumns: "24px 1fr 46px 46px 46px 34px", gap: 4, alignItems: "center" }}>
               <input value={r.num ?? ""} onChange={(e) => setCell(cote, i, "num", e.target.value)} style={{ width: "100%", padding: "5px 2px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12, textAlign: "center", boxSizing: "border-box" }} />
@@ -4399,8 +4428,9 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
     </div>
   );
 
+  const catLabel = /F$/.test(match.cat || "") ? (match.cat || "U13F") : ((match.cat || "U13") + "R");
   return (
-    <Modal title="Défi jonglage U13R" onClose={onClose}
+    <Modal title={"Défi jonglage " + catLabel} onClose={onClose}
       footer={<><Btn variant="ghost" full onClick={() => { enregistrer(); onClose(); }}><Save size={16} /> Enregistrer</Btn><Btn variant="accent" full onClick={telecharger}><FileDown size={16} /> Fiche PDF</Btn></>}>
       <div style={{ fontSize: 12, color: C.gris, lineHeight: 1.5, marginBottom: 12, background: C.fond, borderRadius: 10, padding: 10 }}>
         Fiche officielle Ligue Bourgogne-Franche-Comté. Chaque joueur, 2 essais, maximum 50 par pied droit, pied gauche et alterné. Total automatique par joueur et par équipe. Le club recevant envoie la photo de la fiche avant lundi 14h à sportif@lbfc.fff.fr.
@@ -4658,8 +4688,8 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
         style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit", fontSize: 15.5, lineHeight: 1.5, minHeight: 220 }} />
       <div style={{ fontSize: 11.5, color: C.gris, marginTop: 4 }}>Aucune limite de longueur. Tu peux étirer la zone par le coin en bas à droite.</div>
 
-      {match.cat === "U13" && (
-        <Btn variant="ghost" full style={{ marginTop: 10 }} onClick={() => setJong(true)}><ClipboardList size={16} /> Défi jonglage U13R (fiche ligue)</Btn>
+      {["U9", "U10", "U11", "U12", "U13", "U11F", "U13F"].includes(match.cat) && (
+        <Btn variant="ghost" full style={{ marginTop: 10 }} onClick={() => setJong(true)}><ClipboardList size={16} /> Défi jonglage {/F$/.test(match.cat) ? match.cat : match.cat + "R"} (fiche ligue)</Btn>
       )}
 
       <Btn variant="accent" full style={{ marginTop: 10 }} onClick={telechargerRapport}><FileDown size={16} /> Exporter le rapport en PDF</Btn>
