@@ -4400,6 +4400,7 @@ function DefiJonglageLigue({ match, players, db, mutate, onClose }) {
   });
   const setCell = (cote, i, k, v) => setJ((o) => { const arr = [...o[cote]]; arr[i] = { ...arr[i], [k]: (k === "pd" || k === "pg" || k === "alt") ? cap(v) : v }; return { ...o, [cote]: arr }; });
   const toutA50 = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => ({ ...r, pd: 50, pg: 50, alt: 50 })) }));
+  const effacer = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => ({ ...r, pd: "", pg: "", alt: "" })) }));
   const enregistrer = () => { mutate((d) => { d.matches.find((x) => x.id === match.id).jonglage = j; return d; }); };
   async function telecharger() {
     enregistrer(); setMsgPdf("Préparation du PDF...");
@@ -4412,7 +4413,10 @@ function DefiJonglageLigue({ match, players, db, mutate, onClose }) {
       <div style={{ background: C.bleuNuit, color: "#fff", fontWeight: 800, fontSize: 12.5, padding: "8px 10px", borderRadius: "10px 10px 0 0" }}>{titre}</div>
       <div style={{ padding: "8px 8px 10px", border: `1px solid ${C.grisClair}`, borderTop: "none", borderRadius: "0 0 10px 10px" }}>
         <Field label="Nom de l'équipe"><Inp value={j[cote === "dom" ? "domNom" : "visNom"]} onChange={(e) => setJ((o) => ({ ...o, [cote === "dom" ? "domNom" : "visNom"]: e.target.value }))} /></Field>
-        <Btn variant="ghost" size="sm" full style={{ margin: "8px 0 2px" }} onClick={() => toutA50(cote)}><Check size={15} /> Tout à 50 (puis corriger si besoin)</Btn>
+        <div style={{ display: "flex", gap: 8, margin: "8px 0 2px" }}>
+          <Btn variant="ghost" size="sm" full onClick={() => toutA50(cote)}><Check size={15} /> Tout à 50</Btn>
+          <Btn variant="ghost" size="sm" full onClick={() => effacer(cote)}><Trash2 size={15} /> Effacer</Btn>
+        </div>
         <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
           {j[cote].map((r, i) => {
             const inp = { width: "100%", padding: "6px 6px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12.5, boxSizing: "border-box" };
@@ -4669,6 +4673,7 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
   });
   const setCell = (cote, i, k, v) => setJ((o) => { const arr = [...o[cote]]; arr[i] = { ...arr[i], [k]: (k === "nom" || k === "prenom") ? v : cap(v) }; return { ...o, [cote]: arr }; });
   const toutA50 = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => ({ ...r, pd1: 50, pd2: 50, pg1: 50, pg2: 50 })) }));
+  const effacer = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => ({ ...r, pd1: "", pd2: "", pg1: "", pg2: "" })) }));
   const enregistrer = () => { mutate((d) => { d.matches.find((x) => x.id === match.id).jonglage = j; return d; }); };
   async function telecharger() {
     enregistrer(); setMsgPdf("Préparation du PDF...");
@@ -4681,7 +4686,10 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
       <div style={{ background: accent, color: "#3a2a10", fontWeight: 800, fontSize: 12.5, padding: "8px 10px", borderRadius: "10px 10px 0 0" }}>{titre}</div>
       <div style={{ padding: "8px 8px 10px", border: `1px solid ${C.grisClair}`, borderTop: "none", borderRadius: "0 0 10px 10px" }}>
         <Field label="Nom de l'équipe"><Inp value={j[cote === "dom" ? "domNom" : "visNom"]} onChange={(e) => setJ((o) => ({ ...o, [cote === "dom" ? "domNom" : "visNom"]: e.target.value }))} /></Field>
-        <Btn variant="ghost" size="sm" full style={{ margin: "8px 0 2px" }} onClick={() => toutA50(cote)}><Check size={15} /> Tout à 50 (puis corriger si besoin)</Btn>
+        <div style={{ display: "flex", gap: 8, margin: "8px 0 2px" }}>
+          <Btn variant="ghost" size="sm" full onClick={() => toutA50(cote)}><Check size={15} /> Tout à 50</Btn>
+          <Btn variant="ghost" size="sm" full onClick={() => effacer(cote)}><Trash2 size={15} /> Effacer</Btn>
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, marginTop: 8 }}>
           <div style={{ textAlign: "center", fontSize: 11, fontWeight: 800, color: "#B87A2B", background: "#FBEAD9", borderRadius: 7, padding: "4px 0" }}>PIED DROIT (max 50)</div>
           <div style={{ textAlign: "center", fontSize: 11, fontWeight: 800, color: C.bleu, background: "#EAF0F7", borderRadius: 7, padding: "4px 0" }}>PIED GAUCHE (max 50)</div>
