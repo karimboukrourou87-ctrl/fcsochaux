@@ -4415,16 +4415,25 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
         <Field label="Nom de l'équipe"><Inp value={j[cote === "dom" ? "domNom" : "visNom"]} onChange={(e) => setJ((o) => ({ ...o, [cote === "dom" ? "domNom" : "visNom"]: e.target.value }))} /></Field>
         <Btn variant="ghost" size="sm" full style={{ margin: "8px 0 2px" }} onClick={() => toutA50(cote)}><Check size={15} /> Tout à 50 (puis corriger si besoin)</Btn>
         <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
-          {j[cote].map((r, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "24px 1fr 46px 46px 46px 34px", gap: 4, alignItems: "center" }}>
-              <input value={r.num ?? ""} inputMode="numeric" placeholder={String(i + 1)} onChange={(e) => setCell(cote, i, "num", e.target.value)} title="Numéro (feuille de match)" style={{ width: "100%", padding: "5px 2px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12, textAlign: "center", boxSizing: "border-box" }} />
-              <input value={r.nom || ""} placeholder={`Nom ${i + 1}`} onChange={(e) => setCell(cote, i, "nom", e.target.value)} style={{ width: "100%", padding: "5px 6px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12, boxSizing: "border-box" }} />
-              <input value={r.pd ?? ""} placeholder="D" inputMode="numeric" onChange={(e) => setCell(cote, i, "pd", e.target.value)} title="Pied droit" style={{ width: "100%", padding: "5px 2px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12, textAlign: "center", boxSizing: "border-box" }} />
-              <input value={r.pg ?? ""} placeholder="G" inputMode="numeric" onChange={(e) => setCell(cote, i, "pg", e.target.value)} title="Pied gauche" style={{ width: "100%", padding: "5px 2px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12, textAlign: "center", boxSizing: "border-box" }} />
-              <input value={r.alt ?? ""} placeholder="Alt" inputMode="numeric" onChange={(e) => setCell(cote, i, "alt", e.target.value)} title="Alterné" style={{ width: "100%", padding: "5px 2px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12, textAlign: "center", boxSizing: "border-box" }} />
-              <div style={{ fontWeight: 800, fontSize: 13, textAlign: "center", color: C.bleu }}>{totalJ(r) || ""}</div>
+          {j[cote].map((r, i) => {
+            const inp = { width: "100%", padding: "6px 6px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12.5, boxSizing: "border-box" };
+            const num = { ...inp, textAlign: "center", padding: "6px 2px" };
+            return (
+            <div key={i} style={{ border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 7, background: i % 2 ? "#FBFCFD" : "#fff" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr", gap: 5 }}>
+                <input value={r.num ?? ""} inputMode="numeric" placeholder={String(i + 1)} onChange={(e) => setCell(cote, i, "num", e.target.value)} title="Numéro (feuille de match)" style={num} />
+                <input value={r.nom || ""} placeholder="Nom" onChange={(e) => setCell(cote, i, "nom", e.target.value)} style={inp} />
+                <input value={r.prenom || ""} placeholder="Prénom" onChange={(e) => setCell(cote, i, "prenom", e.target.value)} style={inp} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 48px", gap: 5, marginTop: 5, alignItems: "center" }}>
+                <input value={r.pd ?? ""} placeholder="Droit" inputMode="numeric" onChange={(e) => setCell(cote, i, "pd", e.target.value)} title="Pied droit" style={{ ...inp, textAlign: "center" }} />
+                <input value={r.pg ?? ""} placeholder="Gauche" inputMode="numeric" onChange={(e) => setCell(cote, i, "pg", e.target.value)} title="Pied gauche" style={{ ...inp, textAlign: "center" }} />
+                <input value={r.alt ?? ""} placeholder="Alterné" inputMode="numeric" onChange={(e) => setCell(cote, i, "alt", e.target.value)} title="Alterné" style={{ ...inp, textAlign: "center" }} />
+                <div style={{ fontWeight: 900, fontSize: 14, textAlign: "center", color: C.bleu }}>{totalJ(r) || ""}</div>
+              </div>
             </div>
-          ))}
+            );
+          })}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, background: "#FFF9E6", border: `1px solid #F0DBA8`, borderRadius: 9, padding: "8px 10px" }}>
           <span style={{ fontWeight: 800, fontSize: 13 }}>TOTAL ÉQUIPE</span>
