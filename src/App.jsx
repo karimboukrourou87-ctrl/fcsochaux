@@ -4252,7 +4252,7 @@ function exporterRapportMatchPDF(jsPDF, match, players, db, educateur) {
   doc.save("Rapport_" + (match.cat || "match") + "_" + String(match.date || "").replace(/[^0-9A-Za-z]/g, "_") + ".pdf");
 }
 
-function exporterDefiJonglagePDF(jsPDF, j, match) {
+function exporterDefiJonglageLiguePDF(jsPDF, j, match) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const W = 595, H = 842, M = 40;
   const NAVY = [40, 54, 84], GOLD = [200, 164, 78], RED = [178, 68, 55];
@@ -4264,15 +4264,14 @@ function exporterDefiJonglagePDF(jsPDF, j, match) {
   const sc = (c) => doc.setTextColor(c[0], c[1], c[2]);
   const sd = (c) => doc.setDrawColor(c[0], c[1], c[2]);
   const sf = (c) => doc.setFillColor(c[0], c[1], c[2]);
-  try { doc.setProperties({ title: "Défi jonglage U13R", creator: CLUB_LONG }); } catch (e) {}
+  try { doc.setProperties({ title: "Défi jonglage Ligue", creator: CLUB_LONG }); } catch (e) {}
   const cap = (v) => Math.min(50, Math.max(0, Math.round(+v) || 0));
   const has = (v) => v !== "" && v != null;
   const totalJ = (r) => cap(r.pd) + cap(r.pg) + cap(r.alt);
   const totalEq = (arr) => (arr || []).reduce((s, r) => s + totalJ(r), 0);
 
-  // bandeau en-tête bleu nuit
-  sf(NAVY); doc.rect(M, 30, W - 2 * M, 66, "F");
   const catLabel = /F$/.test(match.cat || "") ? (match.cat || "U13F") : ((match.cat || "U13") + "R");
+  sf(NAVY); doc.rect(M, 30, W - 2 * M, 66, "F");
   sc(WHITE); doc.setFont("times", "bold"); doc.setFontSize(27); doc.text("DÉFI JONGLAGE", M + 18, 66);
   doc.setFontSize(12.5); sc(GOLD); doc.setFont("times", "bold"); doc.text(catLabel, M + 18, 85);
   sc(WHITE); doc.setFont("times", "bold"); doc.text("  Fiche de comptage", M + 18 + doc.getTextWidth(catLabel), 85);
@@ -4280,7 +4279,6 @@ function exporterDefiJonglagePDF(jsPDF, j, match) {
   doc.text("Ligue Bourgogne Franche Comté", W - M - 16, 60, { align: "right" });
   doc.text("de Football", W - M - 16, 74, { align: "right" });
 
-  // encadré règles
   let y = 108;
   const rulesH = 118;
   sf(PEACH); sd(ORB); doc.setLineWidth(1); doc.rect(M, y, W - 2 * M, rulesH, "FD"); doc.setLineWidth(0.4);
@@ -4298,7 +4296,6 @@ function exporterDefiJonglagePDF(jsPDF, j, match) {
   regles.forEach((ln, i) => doc.text(ln, M + 12, y + 32 + i * 11.5));
   y += rulesH + 14;
 
-  // bande grise date / journée / match
   sf(GREYBAND); doc.rect(M, y, W - 2 * M, 20, "F");
   sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
   const dtx = has(j.date) ? new Date(j.date + "T00:00:00").toLocaleDateString("fr-FR") : (match.date ? new Date(match.date + "T00:00:00").toLocaleDateString("fr-FR") : "....... / ....... / 2026");
@@ -4312,19 +4309,16 @@ function exporterDefiJonglagePDF(jsPDF, j, match) {
   const ctr = (a) => (colX[a] + colX[a + 1]) / 2;
 
   function bloc(labelTxt, nomEquipe, rows, accent, totalCol, altCol) {
-    // label équipe (encart couleur) + nom
     sf(accent); doc.rect(M, y, 150, 18, "F");
     sc(WHITE); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.text(labelTxt, M + 8, y + 12.5);
     sc(GRIS); doc.setFont("helvetica", "italic"); doc.setFontSize(9); doc.text("(Nom de l'équipe) :", M + 160, y + 12.5);
     sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text((nomEquipe || "").toUpperCase(), M + 270, y + 12.5);
     sd(BORDER); doc.line(M + 262, y + 16, W - M, y + 16);
     y += 24;
-    // en-tête colonnes coloré
     sf(accent); doc.rect(M, y, W - 2 * M, 16, "F");
     sc(WHITE); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
     heads.forEach((h, i) => { if (i <= 2) doc.text(h, colX[i] + 5, y + 11); else doc.text(h, ctr(i), y + 11, { align: "center" }); });
     y += 16;
-    // lignes joueurs
     doc.setFontSize(8.5);
     for (let i = 0; i < 12; i++) {
       const r = (rows && rows[i]) || {};
@@ -4344,7 +4338,6 @@ function exporterDefiJonglagePDF(jsPDF, j, match) {
       if (has(r.nom) || has(r.pd) || has(r.pg) || has(r.alt)) { doc.setFont("helvetica", "bold"); doc.text(String(totalJ(r)), ctr(6), y + 10.5, { align: "center" }); }
       y += h;
     }
-    // bande total équipe
     sf(accent); doc.rect(M, y, W - 2 * M, 18, "F");
     sf(WHITE); doc.rect(colX[6] + 1, y + 1, colX[7] - colX[6] - 2, 16, "F");
     sc(WHITE); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
@@ -4364,14 +4357,14 @@ function exporterDefiJonglagePDF(jsPDF, j, match) {
   doc.save("Defi_jonglage_" + catLabel + "_" + String(j.matchNum || match.date || "").replace(/[^0-9A-Za-z]/g, "_") + ".pdf");
 }
 
-function DefiJonglage({ match, players, db, mutate, onClose }) {
+function DefiJonglageLigue({ match, players, db, mutate, onClose }) {
   const cur = db.matches.find((x) => x.id === match.id) || match;
   const [msgPdf, setMsgPdf] = useState(null);
   const cap = (v) => v === "" ? "" : Math.min(50, Math.max(0, Math.round(+v) || 0));
   const totalJ = (r) => (Math.min(50, +r.pd || 0)) + (Math.min(50, +r.pg || 0)) + (Math.min(50, +r.alt || 0));
   const totalEq = (arr) => (arr || []).reduce((s, r) => s + totalJ(r), 0);
+  const catLabel = /F$/.test(match.cat || "") ? (match.cat || "U13F") : ((match.cat || "U13") + "R");
 
-  // pré-remplissage des 12 joueurs à domicile depuis la composition du match, sinon lignes vides
   function domInit() {
     const lu = db.lineups[match.id];
     let convoques = [];
@@ -4379,7 +4372,6 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
       const ids = [...Object.values(lu.slots || {}), ...(lu.remplacants || [])];
       convoques = ids.map((id) => players.find((p) => p.id === id)).filter(Boolean);
     }
-    // tri croissant par numéro de maillot (feuille de match) ; les sans numéro en fin
     convoques.sort((a, b) => {
       const na = a.numero === "" || a.numero == null ? 999 : +a.numero;
       const nb = b.numero === "" || b.numero == null ? 999 : +b.numero;
@@ -4392,19 +4384,21 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
     }
     return rows;
   }
-  const j0 = cur.jonglage || {};
+  const j0 = (cur.jonglage && cur.jonglage.type === "ligue") ? cur.jonglage : {};
+  const vide = () => Array.from({ length: 12 }, () => ({ num: "", nom: "", prenom: "", pd: "", pg: "", alt: "" }));
   const [j, setJ] = useState({
+    type: "ligue",
     journee: j0.journee || cur.journee || "", matchNum: j0.matchNum || cur.numeroRencontre || "", date: j0.date || match.date || "",
     domNom: j0.domNom || CLUB_LONG, visNom: j0.visNom || match.adversaire || "",
     dom: (j0.dom && j0.dom.length) ? j0.dom : domInit(),
-    vis: (j0.vis && j0.vis.length) ? j0.vis : Array.from({ length: 12 }, (_, i) => ({ num: i + 1, nom: "", prenom: "", pd: "", pg: "", alt: "" })),
+    vis: (j0.vis && j0.vis.length) ? j0.vis : vide(),
   });
   const setCell = (cote, i, k, v) => setJ((o) => { const arr = [...o[cote]]; arr[i] = { ...arr[i], [k]: (k === "pd" || k === "pg" || k === "alt") ? cap(v) : v }; return { ...o, [cote]: arr }; });
-  const toutA50 = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => (r.nom || cote === "dom") ? { ...r, pd: 50, pg: 50, alt: 50 } : r) }));
+  const toutA50 = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => ({ ...r, pd: 50, pg: 50, alt: 50 })) }));
   const enregistrer = () => { mutate((d) => { d.matches.find((x) => x.id === match.id).jonglage = j; return d; }); };
   async function telecharger() {
     enregistrer(); setMsgPdf("Préparation du PDF...");
-    try { const jsPDF = await chargerJsPDF(); exporterDefiJonglagePDF(jsPDF, j, match); setMsgPdf(null); }
+    try { const jsPDF = await chargerJsPDF(); exporterDefiJonglageLiguePDF(jsPDF, j, match); setMsgPdf(null); }
     catch (e) { setMsgPdf("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
   }
 
@@ -4414,7 +4408,7 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
       <div style={{ padding: "8px 8px 10px", border: `1px solid ${C.grisClair}`, borderTop: "none", borderRadius: "0 0 10px 10px" }}>
         <Field label="Nom de l'équipe"><Inp value={j[cote === "dom" ? "domNom" : "visNom"]} onChange={(e) => setJ((o) => ({ ...o, [cote === "dom" ? "domNom" : "visNom"]: e.target.value }))} /></Field>
         <Btn variant="ghost" size="sm" full style={{ margin: "8px 0 2px" }} onClick={() => toutA50(cote)}><Check size={15} /> Tout à 50 (puis corriger si besoin)</Btn>
-        <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
+        <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
           {j[cote].map((r, i) => {
             const inp = { width: "100%", padding: "6px 6px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12.5, boxSizing: "border-box" };
             const num = { ...inp, textAlign: "center", padding: "6px 2px" };
@@ -4443,12 +4437,11 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
     </div>
   );
 
-  const catLabel = /F$/.test(match.cat || "") ? (match.cat || "U13F") : ((match.cat || "U13") + "R");
   return (
-    <Modal title={"Défi jonglage " + catLabel} onClose={onClose}
+    <Modal title={"Défi jonglage " + catLabel + " (Ligue)"} onClose={onClose}
       footer={<><Btn variant="ghost" full onClick={() => { enregistrer(); onClose(); }}><Save size={16} /> Enregistrer</Btn><Btn variant="accent" full onClick={telecharger}><FileDown size={16} /> Fiche PDF</Btn></>}>
       <div style={{ fontSize: 12, color: C.gris, lineHeight: 1.5, marginBottom: 12, background: C.fond, borderRadius: 10, padding: 10 }}>
-        Fiche officielle Ligue Bourgogne-Franche-Comté. Chaque joueur, 2 essais, maximum 50 par pied droit, pied gauche et alterné. Total automatique par joueur et par équipe. Le club recevant envoie la photo de la fiche avant lundi 14h à sportif@lbfc.fff.fr.
+        Fiche officielle Ligue Bourgogne-Franche-Comté (compétition U13 régionale). Chaque joueur, 2 essais, maximum 50 par pied droit, pied gauche et alterné. Total automatique par joueur et par équipe.
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
         <Field label="Date"><Inp type="date" value={j.date || ""} onChange={(e) => setJ((o) => ({ ...o, date: e.target.value }))} /></Field>
@@ -4457,6 +4450,260 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
       </div>
       {tableau("dom", "ÉQUIPE À DOMICILE")}
       {tableau("vis", "ÉQUIPE VISITEUSE")}
+      {msgPdf && <div style={{ fontSize: 12.5, color: C.encre, background: C.fond, borderRadius: 10, padding: 10, marginTop: 4 }}>{msgPdf}</div>}
+    </Modal>
+  );
+}
+
+function exporterDefiJonglagePDF(jsPDF, j, match) {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const W = 595, H = 842, M = 24;
+  const BLACK = [20, 20, 20], RED = [206, 32, 32], GRIS = [90, 90, 90];
+  const BLUEBAND = [185, 197, 231], GREENBAND = [150, 206, 120], ORANGE = [247, 190, 140];
+  const YELLOW = [255, 242, 0], BORDER = [90, 90, 90], WHITE = [255, 255, 255], LIGHT = [245, 246, 248];
+  const sc = (c) => doc.setTextColor(c[0], c[1], c[2]);
+  const sd = (c) => doc.setDrawColor(c[0], c[1], c[2]);
+  const sf = (c) => doc.setFillColor(c[0], c[1], c[2]);
+  try { doc.setProperties({ title: "Feuille défi jonglerie", creator: CLUB_LONG }); } catch (e) {}
+  const cap = (v) => Math.min(50, Math.max(0, Math.round(+v) || 0));
+  const has = (v) => v !== "" && v != null;
+  const bestPD = (r) => Math.max(cap(r.pd1), cap(r.pd2));
+  const bestPG = (r) => Math.max(cap(r.pg1), cap(r.pg2));
+  const totalJ = (r) => bestPD(r) + bestPG(r);
+
+  // titre encadré
+  sd(BLACK); doc.setLineWidth(1.4); doc.rect(M, 28, W - 2 * M, 34); doc.setLineWidth(0.5);
+  sc(BLACK); doc.setFont("times", "bold"); doc.setFontSize(22);
+  doc.text("FEUILLE DU DEFI JONGLERIE U11 et U13", W / 2, 51, { align: "center" });
+  sd(BLACK); doc.setLineWidth(1); doc.rect(M, 64, W - 2 * M, 22); doc.setLineWidth(0.5);
+  sc(RED); doc.setFont("helvetica", "bold"); doc.setFontSize(11.5);
+  doc.text("A transmettre obligatoirement en annexe avec la feuille de match", W / 2, 79, { align: "center" });
+
+  // règles
+  let y = 104;
+  const reglesNoir = [
+    ["Les défis jonglage devront être effectués obligatoirement sur chaque plateau. Tous les joueurs y participent", BLACK],
+    ['Comptabilisation : Par deux - un joueur de chaque équipe (le Joueur local n° "1" avec le "1" adverse - le "2"', BLACK],
+    ['local avec le "2" adverse ... etc.)', BLACK],
+    ["Le ballon doit être levé au pied en U13", BLACK],
+    ["Départ à la main autorisé pour les U11", BLACK],
+    ["2 essais pour chaque surface avec 50 touches maximum (Droit - Gauche)", BLACK],
+    ["Pour chaque essai, aucune surface de rattrapage n'est autorisée (cuisse, poitrine ou autre...)", RED],
+    ["Pour chaque joueur, on additionne le meilleur score PD et PG pour faire la somme et un total sur 100", RED],
+  ];
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+  reglesNoir.forEach(([t, col]) => { sc(col); doc.text(t, M + 4, y); y += 15; });
+  y += 8;
+
+  // bande CATEGORIE / GROUPE
+  const halfW = (W - 2 * M) / 2;
+  sf(BLUEBAND); doc.rect(M, y, W - 2 * M, 20, "F"); sd(BORDER); doc.rect(M, y, W - 2 * M, 20); doc.line(M + halfW, y, M + halfW, y + 20);
+  sc(BLACK); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5);
+  doc.text("CATEGORIE :   " + (match.cat || ""), M + 8, y + 13.5);
+  doc.text("GROUPE ( Ex : Groupe 1 ) :   " + (j.groupe || ""), M + halfW + 8, y + 13.5);
+  y += 20;
+  // bande N° DU MATCH
+  sf(GREENBAND); doc.rect(M, y, W - 2 * M, 20, "F"); sd(BORDER); doc.rect(M, y, W - 2 * M, 20);
+  sc(BLACK); doc.setFont("helvetica", "bold"); doc.text("N° DU MATCH :   " + (j.matchNum || ""), M + 8, y + 13.5);
+  y += 20;
+  // bande EQUIPE RECEVANTE / VISITEUSE
+  sf(ORANGE); doc.rect(M, y, W - 2 * M, 20, "F"); sd(BORDER); doc.rect(M, y, W - 2 * M, 20); doc.line(M + halfW, y, M + halfW, y + 20);
+  sc(BLACK); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+  doc.text("EQUIPE RECEVANTE :  " + (j.domNom || CLUB_LONG), M + 8, y + 13.5);
+  doc.text("EQUIPE VISITEUSE :  " + (j.visNom || match.adversaire || ""), M + halfW + 8, y + 13.5);
+  y += 20;
+
+  // colonnes d'une équipe : ordre, PD e1, PD e2, PG e1, PG e2, total
+  function drawTeam(x0, rows) {
+    const cw = [26, 42, 42, 42, 42, halfW - 26 - 42 * 4];
+    const cx = [x0]; cw.forEach((w) => cx.push(cx[cx.length - 1] + w));
+    // en-tête groupe (2 lignes)
+    const hy = y;
+    sd(BORDER); sf(WHITE);
+    doc.rect(x0, hy, halfW, 30);
+    // ordre feuille (fusion verticale)
+    doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); sc(BLACK);
+    doc.text("ordre", (cx[0] + cx[1]) / 2, hy + 12, { align: "center" });
+    doc.text("feuille", (cx[0] + cx[1]) / 2, hy + 21, { align: "center" });
+    // Pied Droit Maxi 50 (span e1,e2)
+    doc.setFontSize(7.5);
+    doc.text("Pied Droit", (cx[1] + cx[3]) / 2, hy + 11, { align: "center" });
+    doc.setFontSize(6.5); doc.text("Maxi 50", (cx[1] + cx[3]) / 2, hy + 20, { align: "center" });
+    doc.setFontSize(7.5);
+    doc.text("Pied Gauche", (cx[3] + cx[5]) / 2, hy + 11, { align: "center" });
+    doc.setFontSize(6.5); doc.text("maxi 50", (cx[3] + cx[5]) / 2, hy + 20, { align: "center" });
+    // TOTAL SUR 100
+    doc.setFontSize(7); doc.text("TOTAL", (cx[5] + cx[6]) / 2, hy + 12, { align: "center" });
+    doc.text("SUR 100", (cx[5] + cx[6]) / 2, hy + 21, { align: "center" });
+    // sous-entêtes Essai 1 / Essai 2
+    const sy = hy + 30;
+    doc.rect(x0, sy, halfW, 13);
+    doc.setFontSize(6.5);
+    ["Essai 1", "Essai 2", "Essai 1", "Essai 2"].forEach((t, i) => doc.text(t, (cx[i + 1] + cx[i + 2]) / 2, sy + 9, { align: "center" }));
+    // séparateurs verticaux de l'en-tête
+    [cx[1], cx[3], cx[5]].forEach((x) => doc.line(x, hy, x, sy + 13));
+    doc.line(cx[2], sy, cx[2], sy + 13); doc.line(cx[4], sy, cx[4], sy + 13);
+    // bande jaune "Entourer le meilleur essai"
+    const jy = sy + 13;
+    sf(YELLOW); doc.rect(cx[1], jy, cx[5] - cx[1], 12, "F"); sd(BORDER); doc.rect(cx[1], jy, cx[5] - cx[1], 12);
+    sc(BLACK); doc.setFont("helvetica", "bold"); doc.setFontSize(6.3);
+    doc.text("Entourer le meilleur essai à chaque fois", (cx[1] + cx[5]) / 2, jy + 8, { align: "center" });
+    // colonnes ordre + total sur la bande jaune (blanches)
+    sd(BORDER); doc.line(cx[0], jy, cx[0], jy + 12); doc.line(cx[1], jy, cx[1], jy + 12); doc.line(cx[5], jy, cx[5], jy + 12); doc.line(cx[6], jy, cx[6], jy + 12);
+    let ry = jy + 12;
+    const rh = 22;
+    doc.setFont("helvetica", "normal");
+    for (let i = 0; i < 12; i++) {
+      const r = (rows && rows[i]) || {};
+      sd(BORDER); doc.rect(x0, ry, halfW, rh);
+      cx.slice(1, 6).forEach((x) => doc.line(x, ry, x, ry + rh));
+      sc(BLACK); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+      doc.text(String(i + 1), (cx[0] + cx[1]) / 2, ry + 14, { align: "center" });
+      doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+      const bd = bestPD(r), bg = bestPG(r);
+      const put = (v, a, best) => { if (has(v)) { const val = cap(v); if (val === best && val > 0) doc.setFont("helvetica", "bold"); doc.text(String(val), (cx[a] + cx[a + 1]) / 2, ry + 14, { align: "center" }); doc.setFont("helvetica", "normal"); } };
+      put(r.pd1, 1, bd); put(r.pd2, 2, bd); put(r.pg1, 3, bg); put(r.pg2, 4, bg);
+      if (has(r.pd1) || has(r.pd2) || has(r.pg1) || has(r.pg2)) { doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text(String(totalJ(r)), (cx[5] + cx[6]) / 2, ry + 14.5, { align: "center" }); doc.setFont("helvetica", "normal"); }
+      ry += rh;
+    }
+    return ry;
+  }
+
+  const endY = drawTeam(M, j.dom);
+  drawTeam(M + halfW, j.vis);
+  y = endY + 14;
+
+  // EXEMPLE
+  sc(BLACK); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text("EXEMPLE", M, y);
+  y += 6;
+  const ex = [26, 46, 46, 46, 46, 70];
+  const exx = [M]; ex.forEach((w) => exx.push(exx[exx.length - 1] + w));
+  sd(BORDER);
+  doc.rect(M, y, exx[6] - M, 15);
+  doc.setFontSize(6.5); doc.setFont("helvetica", "bold"); sc(BLACK);
+  doc.text("ordre", (exx[0] + exx[1]) / 2, y + 6, { align: "center" }); doc.text("feuille", (exx[0] + exx[1]) / 2, y + 12, { align: "center" });
+  doc.setFontSize(7); doc.text("Pied Droit", (exx[1] + exx[3]) / 2, y + 7, { align: "center" }); doc.setFontSize(6); doc.text("Maxi 50", (exx[1] + exx[3]) / 2, y + 13, { align: "center" });
+  doc.setFontSize(7); doc.text("Pied Gauche", (exx[3] + exx[5]) / 2, y + 7, { align: "center" }); doc.setFontSize(6); doc.text("maxi 50", (exx[3] + exx[5]) / 2, y + 13, { align: "center" });
+  doc.setFontSize(6.5); doc.text("TOTAL", (exx[5] + exx[6]) / 2, y + 6, { align: "center" }); doc.text("SUR 100", (exx[5] + exx[6]) / 2, y + 12, { align: "center" });
+  [exx[1], exx[3], exx[5]].forEach((x) => doc.line(x, y, x, y + 15));
+  let ey = y + 15;
+  doc.rect(M, ey, exx[6] - M, 12); doc.setFontSize(6);
+  ["Essai 1", "Essai 2", "Essai 1", "Essai 2"].forEach((t, i) => doc.text(t, (exx[i + 1] + exx[i + 2]) / 2, ey + 8, { align: "center" }));
+  [exx[1], exx[2], exx[3], exx[4], exx[5]].forEach((x) => doc.line(x, ey, x, ey + 12));
+  ey += 12;
+  doc.rect(M, ey, exx[6] - M, 18);
+  [exx[1], exx[2], exx[3], exx[4], exx[5]].forEach((x) => doc.line(x, ey, x, ey + 18));
+  doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text("N°", (exx[0] + exx[1]) / 2, ey + 12, { align: "center" });
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9); sc(GRIS);
+  doc.text("24", (exx[1] + exx[2]) / 2, ey + 12, { align: "center" });
+  sc(BLACK); doc.setFont("helvetica", "bold"); doc.text("33", (exx[2] + exx[3]) / 2, ey + 12, { align: "center" });
+  doc.text("50", (exx[3] + exx[4]) / 2, ey + 12, { align: "center" });
+  doc.setFont("helvetica", "normal"); sc(GRIS); doc.text("25", (exx[4] + exx[5]) / 2, ey + 12, { align: "center" });
+  sf([150, 206, 120]); doc.rect(exx[5] + 1, ey + 1, exx[6] - exx[5] - 2, 16, "F");
+  sc(BLACK); doc.setFont("helvetica", "bold"); doc.text("83", (exx[5] + exx[6]) / 2, ey + 12, { align: "center" });
+  // trait diagonal sur les essais non retenus (24 et 25)
+  sd(RED); doc.setLineWidth(0.8);
+  doc.line(exx[1] + 4, ey + 15, exx[2] - 4, ey + 3);
+  doc.line(exx[4] + 4, ey + 15, exx[5] - 4, ey + 3);
+  doc.setLineWidth(0.5);
+
+  doc.save("Feuille_defi_jonglerie_" + (match.cat || "") + "_" + String(j.matchNum || match.date || "").replace(/[^0-9A-Za-z]/g, "_") + ".pdf");
+}
+
+function DefiJonglage({ match, players, db, mutate, onClose }) {
+  const cur = db.matches.find((x) => x.id === match.id) || match;
+  const [msgPdf, setMsgPdf] = useState(null);
+  const cap = (v) => v === "" ? "" : Math.min(50, Math.max(0, Math.round(+v) || 0));
+  const bestPD = (r) => Math.max(Math.min(50, +r.pd1 || 0), Math.min(50, +r.pd2 || 0));
+  const bestPG = (r) => Math.max(Math.min(50, +r.pg1 || 0), Math.min(50, +r.pg2 || 0));
+  const totalJ = (r) => bestPD(r) + bestPG(r);
+  const totalEq = (arr) => (arr || []).reduce((s, r) => s + totalJ(r), 0);
+
+  function domInit() {
+    const lu = db.lineups[match.id];
+    let convoques = [];
+    if (lu) {
+      const ids = [...Object.values(lu.slots || {}), ...(lu.remplacants || [])];
+      convoques = ids.map((id) => players.find((p) => p.id === id)).filter(Boolean);
+    }
+    convoques.sort((a, b) => {
+      const na = a.numero === "" || a.numero == null ? 999 : +a.numero;
+      const nb = b.numero === "" || b.numero == null ? 999 : +b.numero;
+      return na - nb;
+    });
+    const rows = [];
+    for (let i = 0; i < 12; i++) {
+      const p = convoques[i];
+      rows.push({ nom: p ? (p.nom || "") : "", prenom: p ? (p.prenom || "") : "", pd1: "", pd2: "", pg1: "", pg2: "" });
+    }
+    return rows;
+  }
+  const j0 = (cur.jonglage && cur.jonglage.type !== "ligue") ? cur.jonglage : {};
+  const vide = () => Array.from({ length: 12 }, () => ({ nom: "", prenom: "", pd1: "", pd2: "", pg1: "", pg2: "" }));
+  const [j, setJ] = useState({
+    type: "district",
+    groupe: j0.groupe || cur.competition || "", matchNum: j0.matchNum || cur.numeroRencontre || "",
+    domNom: j0.domNom || CLUB_LONG, visNom: j0.visNom || match.adversaire || "",
+    dom: (j0.dom && j0.dom.length && j0.dom[0] && "pd1" in j0.dom[0]) ? j0.dom : domInit(),
+    vis: (j0.vis && j0.vis.length && j0.vis[0] && "pd1" in j0.vis[0]) ? j0.vis : vide(),
+  });
+  const setCell = (cote, i, k, v) => setJ((o) => { const arr = [...o[cote]]; arr[i] = { ...arr[i], [k]: (k === "nom" || k === "prenom") ? v : cap(v) }; return { ...o, [cote]: arr }; });
+  const toutA50 = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => ({ ...r, pd1: 50, pg1: 50 })) }));
+  const enregistrer = () => { mutate((d) => { d.matches.find((x) => x.id === match.id).jonglage = j; return d; }); };
+  async function telecharger() {
+    enregistrer(); setMsgPdf("Préparation du PDF...");
+    try { const jsPDF = await chargerJsPDF(); exporterDefiJonglagePDF(jsPDF, j, match); setMsgPdf(null); }
+    catch (e) { setMsgPdf("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
+  }
+
+  const tableau = (cote, titre, accent) => (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ background: accent, color: "#3a2a10", fontWeight: 800, fontSize: 12.5, padding: "8px 10px", borderRadius: "10px 10px 0 0" }}>{titre}</div>
+      <div style={{ padding: "8px 8px 10px", border: `1px solid ${C.grisClair}`, borderTop: "none", borderRadius: "0 0 10px 10px" }}>
+        <Field label="Nom de l'équipe"><Inp value={j[cote === "dom" ? "domNom" : "visNom"]} onChange={(e) => setJ((o) => ({ ...o, [cote === "dom" ? "domNom" : "visNom"]: e.target.value }))} /></Field>
+        <Btn variant="ghost" size="sm" full style={{ margin: "8px 0 2px" }} onClick={() => toutA50(cote)}><Check size={15} /> Tout à 50 (puis corriger si besoin)</Btn>
+        <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
+          {j[cote].map((r, i) => {
+            const inp = { width: "100%", padding: "6px 4px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12.5, textAlign: "center", boxSizing: "border-box" };
+            const bd = bestPD(r), bg = bestPG(r);
+            const hi = (v, best) => (v !== "" && cap(v) === best && best > 0) ? { ...inp, background: "#E2F4E9", fontWeight: 800 } : inp;
+            return (
+              <div key={i} style={{ border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 7, background: i % 2 ? "#FBFCFD" : "#fff" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontWeight: 900, color: C.bleu, minWidth: 18, textAlign: "center" }}>{i + 1}</span>
+                  <span style={{ fontSize: 12.5, color: C.gris, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(r.nom || r.prenom) ? `${r.nom} ${r.prenom}` : "Joueur " + (i + 1)}</span>
+                  <span style={{ fontWeight: 900, fontSize: 14, color: C.bleu }}>{totalJ(r) || ""}<span style={{ fontSize: 10, color: C.gris, fontWeight: 600 }}>/100</span></span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 5 }}>
+                  <input value={r.pd1 ?? ""} placeholder="D e1" inputMode="numeric" onChange={(e) => setCell(cote, i, "pd1", e.target.value)} title="Pied droit essai 1" style={hi(r.pd1, bd)} />
+                  <input value={r.pd2 ?? ""} placeholder="D e2" inputMode="numeric" onChange={(e) => setCell(cote, i, "pd2", e.target.value)} title="Pied droit essai 2" style={hi(r.pd2, bd)} />
+                  <input value={r.pg1 ?? ""} placeholder="G e1" inputMode="numeric" onChange={(e) => setCell(cote, i, "pg1", e.target.value)} title="Pied gauche essai 1" style={hi(r.pg1, bg)} />
+                  <input value={r.pg2 ?? ""} placeholder="G e2" inputMode="numeric" onChange={(e) => setCell(cote, i, "pg2", e.target.value)} title="Pied gauche essai 2" style={hi(r.pg2, bg)} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, background: "#FFF9E6", border: `1px solid #F0DBA8`, borderRadius: 9, padding: "8px 10px" }}>
+          <span style={{ fontWeight: 800, fontSize: 13 }}>TOTAL ÉQUIPE</span>
+          <span style={{ fontWeight: 900, fontSize: 18, color: C.jauneFonce }}>{totalEq(j[cote])}</span>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <Modal title="Feuille défi jonglerie" onClose={onClose}
+      footer={<><Btn variant="ghost" full onClick={() => { enregistrer(); onClose(); }}><Save size={16} /> Enregistrer</Btn><Btn variant="accent" full onClick={telecharger}><FileDown size={16} /> Fiche PDF</Btn></>}>
+      <div style={{ fontSize: 12, color: C.gris, lineHeight: 1.5, marginBottom: 12, background: C.fond, borderRadius: 10, padding: 10 }}>
+        Feuille officielle District Doubs-Territoire de Belfort, à transmettre en annexe de la feuille de match. 2 essais par pied (droit et gauche), on garde le meilleur, total sur 100 par joueur. Le meilleur essai est surligné en vert.
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+        <Field label="Groupe"><Inp value={j.groupe} onChange={(e) => setJ((o) => ({ ...o, groupe: e.target.value }))} placeholder="Groupe 1" /></Field>
+        <Field label="N° du match"><Inp value={j.matchNum} onChange={(e) => setJ((o) => ({ ...o, matchNum: e.target.value }))} /></Field>
+      </div>
+      {tableau("dom", "ÉQUIPE RECEVANTE", "#F7BE8C")}
+      {tableau("vis", "ÉQUIPE VISITEUSE", "#F7BE8C")}
       {msgPdf && <div style={{ fontSize: 12.5, color: C.encre, background: C.fond, borderRadius: 10, padding: 10, marginTop: 4 }}>{msgPdf}</div>}
     </Modal>
   );
@@ -4704,7 +4951,7 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
       <div style={{ fontSize: 11.5, color: C.gris, marginTop: 4 }}>Aucune limite de longueur. Tu peux étirer la zone par le coin en bas à droite.</div>
 
       {["U9", "U10", "U11", "U12", "U13", "U11F", "U13F"].includes(match.cat) && (
-        <Btn variant="ghost" full style={{ marginTop: 10 }} onClick={() => setJong(true)}><ClipboardList size={16} /> Défi jonglage {/F$/.test(match.cat) ? match.cat : match.cat + "R"} (fiche ligue)</Btn>
+        <Btn variant="ghost" full style={{ marginTop: 10 }} onClick={() => setJong(true)}><ClipboardList size={16} /> {/^U13/.test(match.cat) ? `Défi jonglage ${match.cat}${/F$/.test(match.cat) ? "" : "R"} (Ligue)` : `Feuille défi jonglerie ${match.cat} (District)`}</Btn>
       )}
 
       <Btn variant="accent" full style={{ marginTop: 10 }} onClick={telechargerRapport}><FileDown size={16} /> Exporter le rapport en PDF</Btn>
@@ -4712,7 +4959,9 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
 
       {noteFor && <NoterJoueur match={match} player={noteFor} db={db} mutate={mutate} onClose={() => setNoteFor(null)} />}
       {orga && <OrgaMatch match={match} db={db} mutate={mutate} peutValider={peutValider} onClose={() => setOrga(false)} />}
-      {jong && <DefiJonglage match={match} players={players} db={db} mutate={mutate} onClose={() => setJong(false)} />}
+      {jong && (/^U13/.test(match.cat)
+        ? <DefiJonglageLigue match={match} players={players} db={db} mutate={mutate} onClose={() => setJong(false)} />
+        : <DefiJonglage match={match} players={players} db={db} mutate={mutate} onClose={() => setJong(false)} />)}
     </Modal>
   );
 }
@@ -5315,7 +5564,8 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
    Detection / scouting adverse
    ============================================================ */
 
-const CRENEAUX_DEFAUT = ["08h00", "09h00", "10h00", "11h00", "12h00", "13h00", "13h30", "14h00", "14h30", "15h30", "16h30", "17h30", "18h00", "19h00", "20h00"];
+const CRENEAUX_ANCIEN = ["08h00", "09h00", "10h00", "11h00", "12h00", "13h00", "13h30", "14h00", "14h30", "15h30", "16h30", "17h30", "18h00", "19h00", "20h00"];
+const CRENEAUX_DEFAUT = (() => { const a = []; for (let m = 8 * 60; m <= 21 * 60 + 30; m += 30) a.push(`${pad(Math.floor(m / 60))}h${pad(m % 60)}`); return a; })();
 
 function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValider, avecActivite, onClose, onSave, onDelete, onValider }) {
   const [occupants, setOccupants] = useState(actuel && actuel.equipe ? actuel.equipe.split(" + ").map((x) => x.trim()).filter(Boolean) : []);
@@ -5551,11 +5801,11 @@ function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
 
   const colonnes = type === "vestiaires" ? VESTIAIRES : TERRAINS;
   const typeLabel = type === "vestiaires" ? "Vestiaire" : "Terrain";
-  const creneaux = (db.planning && db.planning.creneaux) || CRENEAUX_DEFAUT;
+  const rawCreneaux = db.planning && db.planning.creneaux;
+  const creneaux = (!rawCreneaux || rawCreneaux.join() === CRENEAUX_ANCIEN.join()) ? CRENEAUX_DEFAUT : rawCreneaux;
   const data = (db.planning && db.planning[type] && db.planning[type][date]) || {};
   const cle = (cr, col) => `${cr}__${col}`;
   const moi = (profil && profil.nom) || "Éducateur";
-  const colSemActif = colonnes.includes(colSem) ? colSem : colonnes[0];
   const joursSem = useMemo(() => {
     const base = new Date(date + "T00:00:00");
     const isodow = (base.getDay() + 6) % 7;
@@ -5565,6 +5815,16 @@ function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
     return arr;
   }, [date, semOffset]);
   const labelSem = joursSem.length ? `${jjmm(joursSem[0])} au ${jjmm(joursSem[6])}` : "";
+  const colSemActif = colonnes.includes(colSem) ? colSem : (() => {
+    // à l'ouverture de la semaine, on sélectionne d'office une colonne qui a des réservations
+    for (const col of colonnes) {
+      for (const dstr of joursSem) {
+        const cj = (db.planning && db.planning[type] && db.planning[type][dstr]) || {};
+        if (creneaux.some((cr) => cj[cle(cr, col)])) return col;
+      }
+    }
+    return colonnes[0];
+  })();
 
   function ecrire(cr, col, valeur, dateCible) {
     const dt = dateCible || date;
@@ -5580,15 +5840,22 @@ function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
   function ecrirePlage(crDebut, col, valeur, fin, dateCible) {
     const dt = dateCible || date;
     const mins = (s) => { if (!s) return 0; const p = String(s).replace("h", ":").split(":"); return (+p[0]) * 60 + (+(p[1] || 0)); };
+    const toLabel = (m) => `${pad(Math.floor(m / 60))}h${pad(m % 60)}`;
     const debM = mins(crDebut);
-    const finM = mins(fin);
-    const crs = (fin && finM > debM) ? creneaux.filter((cr) => mins(cr) >= debM && mins(cr) < finM) : [crDebut];
-    const liste = crs.length ? crs : [crDebut];
+    const finM = fin ? mins(fin) : debM + 30;
+    // tous les créneaux de 30 min entre le début (inclus) et la fin (exclu)
+    const steps = [];
+    for (let m = debM; m < finM; m += 30) steps.push(toLabel(m));
+    if (!steps.length) steps.push(crDebut);
     mutate((d) => {
-      d.planning = d.planning || { creneaux: CRENEAUX_DEFAUT, vestiaires: {}, terrains: {} };
+      d.planning = d.planning || { creneaux: CRENEAUX_DEFAUT.slice(), vestiaires: {}, terrains: {} };
+      // on s'assure que les créneaux existent pour qu'ils s'affichent
+      const setCr = new Set((d.planning.creneaux && d.planning.creneaux.length && d.planning.creneaux.join() !== CRENEAUX_ANCIEN.join()) ? d.planning.creneaux : CRENEAUX_DEFAUT);
+      steps.forEach((s) => setCr.add(s));
+      d.planning.creneaux = [...setCr].sort();
       d.planning[type] = d.planning[type] || {};
       d.planning[type][dt] = d.planning[type][dt] || {};
-      liste.forEach((cr) => {
+      steps.forEach((cr) => {
         if (valeur === null) delete d.planning[type][dt][cle(cr, col)];
         else d.planning[type][dt][cle(cr, col)] = { ...valeur, debut: crDebut, fin: fin || undefined };
       });
