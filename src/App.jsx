@@ -4682,7 +4682,16 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
       <div style={{ padding: "8px 8px 10px", border: `1px solid ${C.grisClair}`, borderTop: "none", borderRadius: "0 0 10px 10px" }}>
         <Field label="Nom de l'équipe"><Inp value={j[cote === "dom" ? "domNom" : "visNom"]} onChange={(e) => setJ((o) => ({ ...o, [cote === "dom" ? "domNom" : "visNom"]: e.target.value }))} /></Field>
         <Btn variant="ghost" size="sm" full style={{ margin: "8px 0 2px" }} onClick={() => toutA50(cote)}><Check size={15} /> Tout à 50 (puis corriger si besoin)</Btn>
-        <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, marginTop: 8 }}>
+          <div style={{ textAlign: "center", fontSize: 11, fontWeight: 800, color: "#B87A2B", background: "#FBEAD9", borderRadius: 7, padding: "4px 0" }}>PIED DROIT (max 50)</div>
+          <div style={{ textAlign: "center", fontSize: 11, fontWeight: 800, color: C.bleu, background: "#EAF0F7", borderRadius: 7, padding: "4px 0" }}>PIED GAUCHE (max 50)</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 5, marginTop: 4 }}>
+          {["Essai 1", "Essai 2", "Essai 1", "Essai 2"].map((t, k) => (
+            <div key={k} style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: C.gris }}>{t}</div>
+          ))}
+        </div>
+        <div style={{ display: "grid", gap: 8, marginTop: 4 }}>
           {j[cote].map((r, i) => {
             const inp = { width: "100%", padding: "6px 4px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12.5, textAlign: "center", boxSizing: "border-box" };
             const bd = bestPD(r), bg = bestPG(r);
@@ -4695,10 +4704,10 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
                   <span style={{ fontWeight: 900, fontSize: 14, color: C.bleu }}>{totalJ(r) || ""}<span style={{ fontSize: 10, color: C.gris, fontWeight: 600 }}>/100</span></span>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 5 }}>
-                  <input value={r.pd1 ?? ""} placeholder="D e1" inputMode="numeric" onChange={(e) => setCell(cote, i, "pd1", e.target.value)} title="Pied droit essai 1" style={hi(r.pd1, bd)} />
-                  <input value={r.pd2 ?? ""} placeholder="D e2" inputMode="numeric" onChange={(e) => setCell(cote, i, "pd2", e.target.value)} title="Pied droit essai 2" style={hi(r.pd2, bd)} />
-                  <input value={r.pg1 ?? ""} placeholder="G e1" inputMode="numeric" onChange={(e) => setCell(cote, i, "pg1", e.target.value)} title="Pied gauche essai 1" style={hi(r.pg1, bg)} />
-                  <input value={r.pg2 ?? ""} placeholder="G e2" inputMode="numeric" onChange={(e) => setCell(cote, i, "pg2", e.target.value)} title="Pied gauche essai 2" style={hi(r.pg2, bg)} />
+                  <input value={r.pd1 ?? ""} placeholder="Essai 1" inputMode="numeric" onChange={(e) => setCell(cote, i, "pd1", e.target.value)} title="Pied droit essai 1" style={hi(r.pd1, bd)} />
+                  <input value={r.pd2 ?? ""} placeholder="Essai 2" inputMode="numeric" onChange={(e) => setCell(cote, i, "pd2", e.target.value)} title="Pied droit essai 2" style={hi(r.pd2, bd)} />
+                  <input value={r.pg1 ?? ""} placeholder="Essai 1" inputMode="numeric" onChange={(e) => setCell(cote, i, "pg1", e.target.value)} title="Pied gauche essai 1" style={hi(r.pg1, bg)} />
+                  <input value={r.pg2 ?? ""} placeholder="Essai 2" inputMode="numeric" onChange={(e) => setCell(cote, i, "pg2", e.target.value)} title="Pied gauche essai 2" style={hi(r.pg2, bg)} />
                 </div>
               </div>
             );
