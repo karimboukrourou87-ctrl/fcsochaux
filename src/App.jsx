@@ -4335,7 +4335,7 @@ function exporterDefiJonglagePDF(jsPDF, j, match) {
       doc.rect(M, y, W - 2 * M, h);
       colX.slice(1, 7).forEach((x) => doc.line(x, y, x, y + h));
       sc(ENCRE); doc.setFont("helvetica", "normal");
-      doc.text(String(r.num || (i + 1)), ctr(0), y + 10.5, { align: "center" });
+      doc.text(String(has(r.num) ? r.num : (i + 1)), ctr(0), y + 10.5, { align: "center" });
       if (has(r.nom)) { doc.setFont("helvetica", "bold"); doc.text(String(r.nom).toUpperCase(), colX[1] + 5, y + 10.5); }
       if (has(r.prenom)) { doc.setFont("helvetica", "bold"); doc.text(String(r.prenom), colX[2] + 5, y + 10.5); }
       doc.setFont("helvetica", "normal");
@@ -4379,10 +4379,16 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
       const ids = [...Object.values(lu.slots || {}), ...(lu.remplacants || [])];
       convoques = ids.map((id) => players.find((p) => p.id === id)).filter(Boolean);
     }
+    // tri croissant par numéro de maillot (feuille de match) ; les sans numéro en fin
+    convoques.sort((a, b) => {
+      const na = a.numero === "" || a.numero == null ? 999 : +a.numero;
+      const nb = b.numero === "" || b.numero == null ? 999 : +b.numero;
+      return na - nb;
+    });
     const rows = [];
     for (let i = 0; i < 12; i++) {
       const p = convoques[i];
-      rows.push(p ? { num: p.numero || (i + 1), nom: p.nom || "", prenom: p.prenom || "", pd: "", pg: "", alt: "" } : { num: i + 1, nom: "", prenom: "", pd: "", pg: "", alt: "" });
+      rows.push(p ? { num: (p.numero === "" || p.numero == null) ? "" : p.numero, nom: p.nom || "", prenom: p.prenom || "", pd: "", pg: "", alt: "" } : { num: "", nom: "", prenom: "", pd: "", pg: "", alt: "" });
     }
     return rows;
   }
@@ -4411,7 +4417,7 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
         <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
           {j[cote].map((r, i) => (
             <div key={i} style={{ display: "grid", gridTemplateColumns: "24px 1fr 46px 46px 46px 34px", gap: 4, alignItems: "center" }}>
-              <input value={r.num ?? ""} onChange={(e) => setCell(cote, i, "num", e.target.value)} style={{ width: "100%", padding: "5px 2px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12, textAlign: "center", boxSizing: "border-box" }} />
+              <input value={r.num ?? ""} inputMode="numeric" placeholder={String(i + 1)} onChange={(e) => setCell(cote, i, "num", e.target.value)} title="Numéro (feuille de match)" style={{ width: "100%", padding: "5px 2px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12, textAlign: "center", boxSizing: "border-box" }} />
               <input value={r.nom || ""} placeholder={`Nom ${i + 1}`} onChange={(e) => setCell(cote, i, "nom", e.target.value)} style={{ width: "100%", padding: "5px 6px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12, boxSizing: "border-box" }} />
               <input value={r.pd ?? ""} placeholder="D" inputMode="numeric" onChange={(e) => setCell(cote, i, "pd", e.target.value)} title="Pied droit" style={{ width: "100%", padding: "5px 2px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12, textAlign: "center", boxSizing: "border-box" }} />
               <input value={r.pg ?? ""} placeholder="G" inputMode="numeric" onChange={(e) => setCell(cote, i, "pg", e.target.value)} title="Pied gauche" style={{ width: "100%", padding: "5px 2px", borderRadius: 7, border: `1px solid ${C.grisClair}`, fontSize: 12, textAlign: "center", boxSizing: "border-box" }} />
