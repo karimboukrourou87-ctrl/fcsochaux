@@ -5281,7 +5281,7 @@ function Entrainements({ players, cat, db, mutate }) {
           <Btn variant="ghost" full style={{ marginBottom: 10 }} onClick={() => setHisto(true)}><CalendarDays size={16} /> Historique des présences (toutes dates)</Btn>
           <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "10px 16px", fontWeight: 700, fontSize: 13.5, color: C.encre, background: "#fff", marginBottom: 4 }}>
             <Upload size={16} /> Importer des séances (JSON)
-            <input type="file" accept="application/json,.json" onChange={importerSeances} style={{ display: "none" }} />
+            <input type="file" accept=".json,application/json,text/plain,text/json,*/*" onChange={importerSeances} style={{ display: "none" }} />
           </label>
           {importMsg && <div style={{ fontSize: 12.5, color: importMsg.includes("non valide") || importMsg.includes("impossible") ? C.rouge : C.vert, fontWeight: 700, marginBottom: 10, textAlign: "center" }}>{importMsg}</div>}
           <Btn variant="accent" full style={{ marginBottom: 12 }} onClick={() => setBlessure({ cat, circonstance: "entrainement", debut: hoyISO() })}><HeartPulse size={16} /> Signaler un joueur blessé à l'entraînement</Btn>
