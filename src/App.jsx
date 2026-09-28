@@ -5137,53 +5137,62 @@ function Entrainements({ players, cat, db, mutate }) {
   const [recap, setRecap] = useState(false);
   const [histo, setHisto] = useState(false);
   const [importMsg, setImportMsg] = useState(null);
+  const [coller, setColler] = useState(false);
+  const [texteColle, setTexteColle] = useState("");
+  const [nbMois, setNbMois] = useState(false);
 
+  function traiterImportSeances(texte) {
+    try {
+      // on isole le JSON même si le fichier contient d'autres caractères autour
+      let t = String(texte || "").trim();
+      const deb = t.indexOf("{") >= 0 ? t.indexOf("{") : t.indexOf("[");
+      const fin = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
+      if (deb >= 0 && fin > deb) t = t.slice(deb, fin + 1);
+      const parsed = JSON.parse(t);
+      const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.trainings) ? parsed.trainings : null);
+      if (!arr) throw new Error("format");
+      const norm = (s) => (s == null ? "" : String(s)).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+      const nonResolus = new Set();
+      function resoudrePresence(presence) {
+        if (!presence || typeof presence !== "object") return presence;
+        const out = {};
+        Object.entries(presence).forEach(([key, val]) => {
+          if (players.some((p) => p.id === key)) { out[key] = val; return; }
+          const kn = norm(key);
+          let m = players.filter((p) => norm(p.prenom) === kn);
+          if (m.length !== 1) {
+            const parts = kn.split(/\s+/);
+            if (parts.length >= 2) { const pn = parts[0], ini = parts.slice(1).join(" "); m = players.filter((p) => norm(p.prenom) === pn && norm(p.nom).startsWith(ini)); }
+          }
+          if (m.length !== 1) m = players.filter((p) => norm(p.prenom + " " + p.nom) === kn);
+          if (m.length === 1) out[m[0].id] = val; else nonResolus.add(key);
+        });
+        return out;
+      }
+      let maj = 0, add = 0;
+      mutate((d) => {
+        d.trainings = d.trainings || [];
+        arr.forEach((s) => {
+          if (!s || !s.date) return;
+          const seance = { ...s, cat: s.cat || cat, presence: resoudrePresence(s.presence) };
+          let idx = seance.id ? d.trainings.findIndex((x) => x.id === seance.id) : -1;
+          if (idx < 0) idx = d.trainings.findIndex((x) => x.cat === seance.cat && x.date === seance.date);
+          if (idx >= 0) { d.trainings[idx] = { ...d.trainings[idx], ...seance, id: d.trainings[idx].id }; maj++; }
+          else { d.trainings.push({ ...seance, id: seance.id || uid() }); add++; }
+        });
+        return d;
+      });
+      const nr = [...nonResolus];
+      setImportMsg(`Import terminé : ${add} séance(s) ajoutée(s), ${maj} mise(s) à jour.` + (nr.length ? ` Joueurs non reconnus (à vérifier) : ${nr.join(", ")}.` : ""));
+      return true;
+    } catch (e) { setImportMsg("Contenu non valide. Vérifie que c'est bien le JSON des séances."); return false; }
+  }
   function importerSeances(ev) {
     const f = ev.target.files && ev.target.files[0];
     ev.target.value = "";
     if (!f) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(reader.result);
-        const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.trainings) ? parsed.trainings : null);
-        if (!arr) throw new Error("format");
-        // résolution des présences par identifiant OU par prénom (avec initiale du nom si besoin)
-        const norm = (s) => (s == null ? "" : String(s)).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
-        const nonResolus = new Set();
-        function resoudrePresence(presence) {
-          if (!presence || typeof presence !== "object") return presence;
-          const out = {};
-          Object.entries(presence).forEach(([key, val]) => {
-            if (players.some((p) => p.id === key)) { out[key] = val; return; }
-            const kn = norm(key);
-            let m = players.filter((p) => norm(p.prenom) === kn);
-            if (m.length !== 1) {
-              const parts = kn.split(/\s+/);
-              if (parts.length >= 2) { const pn = parts[0], ini = parts.slice(1).join(" "); m = players.filter((p) => norm(p.prenom) === pn && norm(p.nom).startsWith(ini)); }
-            }
-            if (m.length !== 1) m = players.filter((p) => norm(p.prenom + " " + p.nom) === kn);
-            if (m.length === 1) out[m[0].id] = val; else nonResolus.add(key);
-          });
-          return out;
-        }
-        let maj = 0, add = 0;
-        mutate((d) => {
-          d.trainings = d.trainings || [];
-          arr.forEach((s) => {
-            if (!s || !s.date) return;
-            const seance = { ...s, cat: s.cat || cat, presence: resoudrePresence(s.presence) };
-            let idx = seance.id ? d.trainings.findIndex((x) => x.id === seance.id) : -1;
-            if (idx < 0) idx = d.trainings.findIndex((x) => x.cat === seance.cat && x.date === seance.date);
-            if (idx >= 0) { d.trainings[idx] = { ...d.trainings[idx], ...seance, id: d.trainings[idx].id }; maj++; }
-            else { d.trainings.push({ ...seance, id: seance.id || uid() }); add++; }
-          });
-          return d;
-        });
-        const nr = [...nonResolus];
-        setImportMsg(`Import terminé : ${add} séance(s) ajoutée(s), ${maj} mise(s) à jour.` + (nr.length ? ` Joueurs non reconnus (à vérifier) : ${nr.join(", ")}.` : ""));
-      } catch (e) { setImportMsg("Fichier non valide. Choisis un fichier JSON de séances (exporté par l'application)."); }
-    };
+    reader.onload = () => traiterImportSeances(reader.result);
     reader.onerror = () => setImportMsg("Lecture du fichier impossible.");
     reader.readAsText(f);
   }
@@ -5279,10 +5288,14 @@ function Entrainements({ players, cat, db, mutate }) {
             <Btn variant="ghost" size="sm" onClick={() => setEdit({ cat, presence: {} })}><Plus size={16} /> Séance ponctuelle</Btn>
           </div>
           <Btn variant="ghost" full style={{ marginBottom: 10 }} onClick={() => setHisto(true)}><CalendarDays size={16} /> Historique des présences (toutes dates)</Btn>
-          <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "10px 16px", fontWeight: 700, fontSize: 13.5, color: C.encre, background: "#fff", marginBottom: 4 }}>
-            <Upload size={16} /> Importer des séances (JSON)
-            <input type="file" accept=".json,application/json,text/plain,text/json,*/*" onChange={importerSeances} style={{ display: "none" }} />
-          </label>
+          <Btn variant="ghost" full style={{ marginBottom: 10 }} onClick={() => setNbMois(true)}><ClipboardList size={16} /> Nombre d'entraînements par mois</Btn>
+          <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+            <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "10px 12px", fontWeight: 700, fontSize: 13, color: C.encre, background: "#fff" }}>
+              <Upload size={16} /> Importer un fichier
+              <input type="file" accept=".json,application/json,text/plain,text/json,*/*" onChange={importerSeances} style={{ display: "none" }} />
+            </label>
+            <Btn variant="ghost" onClick={() => { setColler(true); setTexteColle(""); }}><ClipboardList size={16} /> Coller le JSON</Btn>
+          </div>
           {importMsg && <div style={{ fontSize: 12.5, color: importMsg.includes("non valide") || importMsg.includes("impossible") ? C.rouge : C.vert, fontWeight: 700, marginBottom: 10, textAlign: "center" }}>{importMsg}</div>}
           <Btn variant="accent" full style={{ marginBottom: 12 }} onClick={() => setBlessure({ cat, circonstance: "entrainement", debut: hoyISO() })}><HeartPulse size={16} /> Signaler un joueur blessé à l'entraînement</Btn>
 
@@ -5398,6 +5411,14 @@ function Entrainements({ players, cat, db, mutate }) {
         onSave={(b) => { mutate((d) => { b.id ? (d.injuries[d.injuries.findIndex((x) => x.id === b.id)] = b) : d.injuries.push({ ...b, id: uid() }); return d; }); setBlessure(null); }}
         onDelete={blessure.id ? () => { mutate((d) => { d.injuries = d.injuries.filter((x) => x.id !== blessure.id); return d; }); setBlessure(null); } : null} />}
 
+      {coller && (
+        <Modal title="Coller le JSON des séances" onClose={() => setColler(false)}
+          footer={<Btn variant="accent" full disabled={!texteColle.trim()} onClick={() => { if (traiterImportSeances(texteColle)) setColler(false); }}><Save size={16} /> Importer</Btn>}>
+          <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Colle ici le contenu du fichier JSON des séances, puis touche Importer. Utile si le téléchargement du fichier pose problème sur ton appareil.</div>
+          <textarea value={texteColle} onChange={(e) => setTexteColle(e.target.value)} rows={10} placeholder='{ "trainings": [ ... ] }' style={{ width: "100%", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 11, fontSize: 12.5, fontFamily: "monospace", resize: "vertical", boxSizing: "border-box" }} />
+        </Modal>
+      )}
+
       {recap && <RecapPresences players={players} db={db} cat={cat} annee={annee} mois={mois} onClose={() => setRecap(false)} />}
 
       {histo && (() => {
@@ -5425,6 +5446,55 @@ function Entrainements({ players, cat, db, mutate }) {
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </Modal>
+        );
+      })()}
+
+      {nbMois && (() => {
+        const parMois = {};
+        db.trainings.filter((t) => t.cat === cat && t.date).forEach((t) => {
+          const k = t.date.slice(0, 7);
+          const pres = Object.values(t.presence || {});
+          const pointee = pres.length > 0;
+          if (!parMois[k]) parMois[k] = { total: 0, pointees: 0 };
+          parMois[k].total += 1;
+          if (pointee) parMois[k].pointees += 1;
+        });
+        const cles = Object.keys(parMois).sort((a, b) => b.localeCompare(a));
+        const totalSaisons = {};
+        cles.forEach((k) => {
+          const sai = saisonDe(k + "-01");
+          if (!totalSaisons[sai]) totalSaisons[sai] = 0;
+          totalSaisons[sai] += parMois[k].total;
+        });
+        const libelleMois = (k) => {
+          const [a, m] = k.split("-");
+          return `${MOIS[+m - 1]} ${a}`;
+        };
+        return (
+          <Modal title="Nombre d'entraînements par mois" onClose={() => setNbMois(false)}>
+            <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Nombre de séances enregistrées pour la catégorie, mois par mois. Le chiffre entre parenthèses correspond aux séances déjà pointées.</div>
+            {cles.length === 0 ? (
+              <Empty icon={<CalendarDays size={24} color={C.gris} />} text="Aucune séance enregistrée" sub="Les séances apparaîtront ici une fois créées ou importées" />
+            ) : (
+              <div style={{ display: "grid", gap: 8 }}>
+                {cles.map((k) => (
+                  <div key={k} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "11px 13px", background: "#fff", borderRadius: 11, border: `1px solid ${C.grisClair}` }}>
+                    <div style={{ fontWeight: 800, fontSize: 13.5, textTransform: "capitalize" }}>{libelleMois(k)}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Pastille bg={C.bleu} color="#fff">{parMois[k].total} séance{parMois[k].total > 1 ? "s" : ""}</Pastille>
+                      <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>({parMois[k].pointees} pointée{parMois[k].pointees > 1 ? "s" : ""})</span>
+                    </div>
+                  </div>
+                ))}
+                {Object.keys(totalSaisons).sort((a, b) => b.localeCompare(a)).map((sai) => (
+                  <div key={"s" + sai} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "11px 13px", background: C.grisClair, borderRadius: 11, marginTop: 2 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13 }}>Total saison {sai}</div>
+                    <Pastille bg={C.bleuNuit} color="#fff">{totalSaisons[sai]} séance{totalSaisons[sai] > 1 ? "s" : ""}</Pastille>
+                  </div>
+                ))}
               </div>
             )}
           </Modal>
