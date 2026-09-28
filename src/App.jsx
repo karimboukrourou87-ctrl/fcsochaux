@@ -7030,6 +7030,378 @@ function couleurRang(place) {
   return "#8A93A0";
 }
 
+/* Organisation d'un plateau ou tournoi : equipes, poules, phases finales, classement automatique */
+function classementPoule(equipeIds, matchs, equipes, regle) {
+  const st = {};
+  (equipeIds || []).forEach((id) => { st[id] = { id, j: 0, g: 0, n: 0, p: 0, bp: 0, bc: 0, pts: 0 }; });
+  (matchs || []).forEach((m) => {
+    const sa = m.sa === "" || m.sa == null ? null : Number(m.sa);
+    const sb = m.sb === "" || m.sb == null ? null : Number(m.sb);
+    if (sa == null || sb == null || Number.isNaN(sa) || Number.isNaN(sb)) return;
+    const a = st[m.aId], b = st[m.bId];
+    if (!a || !b) return;
+    a.j++; b.j++; a.bp += sa; a.bc += sb; b.bp += sb; b.bc += sa;
+    if (sa > sb) { a.g++; b.p++; a.pts += regle.v; b.pts += regle.d; }
+    else if (sa < sb) { b.g++; a.p++; b.pts += regle.v; a.pts += regle.d; }
+    else { a.n++; b.n++; a.pts += regle.n; b.pts += regle.n; }
+  });
+  const nomDe = (id) => { const e = (equipes || []).find((x) => x.id === id); return e ? e.nom : ""; };
+  return Object.values(st).sort((x, y) => y.pts - x.pts || (y.bp - y.bc) - (x.bp - x.bc) || y.bp - x.bp || nomDe(x.id).localeCompare(nomDe(y.id)));
+}
+
+function addMinutesHM(hm, add) {
+  const [h, m] = String(hm || "09:00").split(":").map(Number);
+  let tot = (h * 60 + m) + add;
+  tot = ((tot % (24 * 60)) + 24 * 60) % (24 * 60);
+  return `${pad(Math.floor(tot / 60))}h${pad(tot % 60)}`;
+}
+function roundsRoundRobin(items) {
+  const arr = items.slice();
+  if (arr.length % 2 === 1) arr.push(null);
+  const n = arr.length;
+  if (n < 2) return [];
+  const half = n / 2;
+  let list = arr.slice(1);
+  const rounds = [];
+  for (let r = 0; r < n - 1; r++) {
+    const round = [];
+    const opp = list[list.length - 1];
+    if (arr[0] !== null && opp !== null) round.push([arr[0], opp]);
+    for (let i = 0; i < half - 1; i++) {
+      const a = list[i], b = list[list.length - 2 - i];
+      if (a !== null && b !== null) round.push([a, b]);
+    }
+    rounds.push(round);
+    list.unshift(list.pop());
+  }
+  return rounds;
+}
+
+function OrganiserPlateau({ tournoi, onClose, onSave }) {
+  const defaut = { regle: { v: 3, n: 1, d: 0 }, equipes: [], poules: [], finales: [], planningConf: { nbEquipes: "", nbTerrains: 2, debut: "09:00", duree: 10, pause: 2, retour: false }, planning: [] };
+  const [org, setOrg] = useState(() => ({ ...defaut, ...(tournoi.organisation || {}), regle: { ...defaut.regle, ...((tournoi.organisation || {}).regle || {}) }, planningConf: { ...defaut.planningConf, ...((tournoi.organisation || {}).planningConf || {}) } }));
+  const [nomEquipe, setNomEquipe] = useState("");
+  const commit = (next) => { setOrg(next); onSave(next); };
+  const nomDe = (id) => { const e = org.equipes.find((x) => x.id === id); return e ? e.nom : "?"; };
+
+  function ajouterEquipe() {
+    const n = nomEquipe.trim();
+    if (!n || org.equipes.length >= 20) return;
+    commit({ ...org, equipes: [...org.equipes, { id: uid(), nom: n }] });
+    setNomEquipe("");
+  }
+  function suppEquipe(id) {
+    commit({
+      ...org,
+      equipes: org.equipes.filter((e) => e.id !== id),
+      poules: org.poules.map((p) => ({ ...p, equipeIds: (p.equipeIds || []).filter((x) => x !== id), matchs: (p.matchs || []).filter((m) => m.aId !== id && m.bId !== id) })),
+      finales: org.finales.map((f) => ({ ...f, matchs: (f.matchs || []).map((m) => ({ ...m, aId: m.aId === id ? "" : m.aId, bId: m.bId === id ? "" : m.bId })) })),
+    });
+  }
+  function majPoule(pid, patch) { commit({ ...org, poules: org.poules.map((p) => p.id === pid ? { ...p, ...patch } : p) }); }
+  function ajouterPoule() { commit({ ...org, poules: [...org.poules, { id: uid(), nom: `Poule ${String.fromCharCode(65 + org.poules.length)}`, temps: 10, equipeIds: [], matchs: [] }] }); }
+  function suppPoule(pid) { commit({ ...org, poules: org.poules.filter((p) => p.id !== pid) }); }
+  function toggleEquipePoule(pid, eid) {
+    const p = org.poules.find((x) => x.id === pid);
+    const dedans = (p.equipeIds || []).includes(eid);
+    const ids = dedans ? p.equipeIds.filter((x) => x !== eid) : [...(p.equipeIds || []), eid];
+    const matchs = dedans ? (p.matchs || []).filter((m) => m.aId !== eid && m.bId !== eid) : (p.matchs || []);
+    majPoule(pid, { equipeIds: ids, matchs });
+  }
+  function genererMatchs(pid) {
+    const p = org.poules.find((x) => x.id === pid);
+    const ids = p.equipeIds || [];
+    const existants = {};
+    (p.matchs || []).forEach((m) => { existants[[m.aId, m.bId].sort().join("-")] = m; });
+    const ms = [];
+    for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+      const cle = [ids[i], ids[j]].sort().join("-");
+      ms.push(existants[cle] || { id: uid(), aId: ids[i], bId: ids[j], sa: "", sb: "" });
+    }
+    majPoule(pid, { matchs: ms });
+  }
+  function majMatchPoule(pid, mid, patch) {
+    const p = org.poules.find((x) => x.id === pid);
+    majPoule(pid, { matchs: (p.matchs || []).map((m) => m.id === mid ? { ...m, ...patch } : m) });
+  }
+  function suppMatchPoule(pid, mid) {
+    const p = org.poules.find((x) => x.id === pid);
+    majPoule(pid, { matchs: (p.matchs || []).filter((m) => m.id !== mid) });
+  }
+
+  function majFinale(fid, patch) { commit({ ...org, finales: org.finales.map((f) => f.id === fid ? { ...f, ...patch } : f) }); }
+  function ajouterFinale() { commit({ ...org, finales: [...org.finales, { id: uid(), nom: "Phase finale", temps: 12, matchs: [] }] }); }
+  function suppFinale(fid) { commit({ ...org, finales: org.finales.filter((f) => f.id !== fid) }); }
+  function ajouterMatchFinale(fid) { const f = org.finales.find((x) => x.id === fid); majFinale(fid, { matchs: [...(f.matchs || []), { id: uid(), aId: "", bId: "", sa: "", sb: "" }] }); }
+  function majMatchFinale(fid, mid, patch) { const f = org.finales.find((x) => x.id === fid); majFinale(fid, { matchs: (f.matchs || []).map((m) => m.id === mid ? { ...m, ...patch } : m) }); }
+  function suppMatchFinale(fid, mid) { const f = org.finales.find((x) => x.id === fid); majFinale(fid, { matchs: (f.matchs || []).filter((m) => m.id !== mid) }); }
+
+  function majPlanningConf(patch) { commit({ ...org, planningConf: { ...org.planningConf, ...patch } }); }
+  function genererPlanning() {
+    const conf = org.planningConf;
+    const nbT = Math.max(1, Number(conf.nbTerrains) || 1);
+    let nb = Number(conf.nbEquipes);
+    if (!nb || nb < 2) nb = org.equipes.length;
+    if (!nb || nb < 2) { commit({ ...org, planning: [] }); return; }
+    const labels = [];
+    for (let i = 0; i < nb; i++) labels.push(org.equipes[i] ? org.equipes[i].nom : `Équipe ${i + 1}`);
+    const allerRounds = roundsRoundRobin(labels);
+    const duree = Math.max(1, Number(conf.duree) || 10);
+    const pause = Math.max(0, Number(conf.pause) || 0);
+    const groupes = [{ phase: conf.retour ? "Aller" : "", rounds: allerRounds }];
+    if (conf.retour) groupes.push({ phase: "Retour", rounds: allerRounds.map((r) => r.map((p) => [p[1], p[0]])) });
+    const slots = [];
+    let idx = 0;
+    groupes.forEach((g) => g.rounds.forEach((round) => {
+      for (let i = 0; i < round.length; i += nbT) {
+        const chunk = round.slice(i, i + nbT);
+        slots.push({ heure: addMinutesHM(conf.debut, idx * (duree + pause)), phase: g.phase, matchs: chunk.map((pair, k) => ({ terrain: k + 1, a: pair[0], b: pair[1] })) });
+        idx++;
+      }
+    }));
+    commit({ ...org, planningConf: { ...conf, nbEquipes: nb }, planning: slots });
+  }
+  function effacerPlanning() { commit({ ...org, planning: [] }); }
+
+  const styleInputScore = { width: 42, textAlign: "center", border: `1px solid ${C.grisClair}`, borderRadius: 8, padding: "7px 0", fontSize: 15, fontWeight: 800, boxSizing: "border-box" };
+  const styleSelEq = { flex: 1, minWidth: 0, border: `1px solid ${C.grisClair}`, borderRadius: 8, padding: "7px 8px", fontSize: 13, background: "#fff" };
+  const titreSection = { fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "18px 0 8px" };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 70, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+      <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "16px 16px 14px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Plateau · {tournoi.nom || "Tournoi"}</div>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Équipes, poules, phases finales et classement</div>
+        </div>
+      </header>
+
+      <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+        {/* EQUIPES */}
+        <div style={titreSection}>Équipes ({org.equipes.length} / 20)</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          <Inp value={nomEquipe} onChange={(e) => setNomEquipe(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") ajouterEquipe(); }} placeholder="Nom de l'équipe" style={{ flex: 1 }} />
+          <Btn variant="accent" onClick={ajouterEquipe} disabled={!nomEquipe.trim() || org.equipes.length >= 20}><Plus size={16} /></Btn>
+        </div>
+        {org.equipes.length === 0 ? (
+          <div style={{ fontSize: 13, color: C.gris, marginBottom: 6 }}>Ajoute d'abord les équipes (jusqu'à 20), puis répartis-les en poules.</div>
+        ) : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 6 }}>
+            {org.equipes.map((e) => (
+              <span key={e.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 20, padding: "6px 10px", fontSize: 13, fontWeight: 700 }}>
+                {e.nom}
+                <button onClick={() => suppEquipe(e.id)} style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", display: "grid", placeItems: "center", padding: 0 }}><X size={14} /></button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* REGLE POINTS */}
+        <div style={titreSection}>Points attribués</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {[["v", "Victoire"], ["n", "Nul"], ["d", "Défaite"]].map(([k, lib]) => (
+            <div key={k} style={{ flex: 1 }}>
+              <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>{lib}</div>
+              <Inp type="number" value={org.regle[k]} onChange={(e) => commit({ ...org, regle: { ...org.regle, [k]: e.target.value === "" ? 0 : Number(e.target.value) } })} />
+            </div>
+          ))}
+        </div>
+
+        {/* PLANNING DES RENCONTRES */}
+        <div style={titreSection}>Planning des rencontres</div>
+        <Card style={{ marginBottom: 12, padding: 13 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Équipes participantes</div>
+              <Inp type="number" value={org.planningConf.nbEquipes} onChange={(e) => majPlanningConf({ nbEquipes: e.target.value })} placeholder={org.equipes.length ? String(org.equipes.length) : "8"} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Terrains disponibles</div>
+              <Inp type="number" value={org.planningConf.nbTerrains} onChange={(e) => majPlanningConf({ nbTerrains: e.target.value })} placeholder="2" />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Début</div>
+              <Inp type="time" value={org.planningConf.debut} onChange={(e) => majPlanningConf({ debut: e.target.value })} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Durée match (min)</div>
+              <Inp type="number" value={org.planningConf.duree} onChange={(e) => majPlanningConf({ duree: e.target.value })} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Pause (min)</div>
+              <Inp type="number" value={org.planningConf.pause} onChange={(e) => majPlanningConf({ pause: e.target.value })} />
+            </div>
+          </div>
+          <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Format des rencontres</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            {[[false, "Aller simple"], [true, "Aller-retour"]].map(([val, lib]) => {
+              const on = !!org.planningConf.retour === val;
+              return (
+                <button key={lib} onClick={() => majPlanningConf({ retour: val })} style={{ flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "10px 0", fontSize: 13, fontWeight: 800, background: on ? C.bleu : C.grisClair, color: on ? "#fff" : C.gris }}>{lib}</button>
+              );
+            })}
+          </div>
+          <Btn variant="accent" full onClick={genererPlanning}><ListOrdered size={16} /> Organiser le planning des rencontres</Btn>
+          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Toutes les équipes se rencontrent. Les matchs sont répartis sur les terrains, avec les horaires calculés, de façon qu'une même équipe ne joue jamais deux matchs en même temps.</div>
+        </Card>
+
+        {(org.planning || []).length > 0 && (
+          <Card style={{ marginBottom: 12, padding: 13 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 800 }}>{org.planning.length} créneau{org.planning.length > 1 ? "x" : ""} · {org.planningConf.duree} min par match</div>
+              <button onClick={effacerPlanning} style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}><Trash2 size={14} /> Effacer</button>
+            </div>
+            <div style={{ display: "grid", gap: 9 }}>
+              {org.planning.map((s, i) => (
+                <div key={i} style={{ border: `1px solid ${C.grisClair}`, borderRadius: 11, overflow: "hidden" }}>
+                  <div style={{ background: C.bleuNuit, color: "#fff", padding: "7px 11px", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}><Timer size={14} /> {s.heure}{s.phase ? <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,0.18)", borderRadius: 7, padding: "2px 8px" }}>{s.phase}</span> : null}</div>
+                  <div style={{ display: "grid", gap: 1, background: C.grisClair }}>
+                    {s.matchs.map((m, k) => (
+                      <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", padding: "9px 11px" }}>
+                        <span style={{ flex: "0 0 auto", fontSize: 11, fontWeight: 800, color: C.bleu, background: "#EAF0F8", borderRadius: 7, padding: "3px 7px" }}>Terrain {m.terrain}</span>
+                        <span style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.a}</span>
+                        <span style={{ color: C.gris, fontWeight: 800, fontSize: 12 }}>contre</span>
+                        <span style={{ flex: 1, fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.b}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* POULES */}
+        <div style={titreSection}>Poules</div>
+        <Btn variant="ghost" full style={{ marginBottom: 12 }} onClick={ajouterPoule}><Plus size={16} /> Ajouter une poule</Btn>
+        {org.poules.map((p) => {
+          const classement = classementPoule(p.equipeIds, p.matchs, org.equipes, org.regle);
+          return (
+            <Card key={p.id} style={{ marginBottom: 14, padding: 13 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+                <Inp value={p.nom} onChange={(e) => majPoule(p.id, { nom: e.target.value })} style={{ flex: 1, fontWeight: 800 }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 5, background: C.fond, borderRadius: 9, padding: "0 8px" }}>
+                  <Timer size={15} color={C.bleu} />
+                  <input type="number" value={p.temps} onChange={(e) => majPoule(p.id, { temps: e.target.value === "" ? "" : Number(e.target.value) })} style={{ width: 42, border: "none", background: "transparent", fontSize: 15, fontWeight: 800, textAlign: "center", padding: "9px 0", color: C.encre }} />
+                  <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>min</span>
+                </div>
+                <button onClick={() => suppPoule(p.id)} style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", display: "grid", placeItems: "center" }}><Trash2 size={17} /></button>
+              </div>
+
+              <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 6 }}>Équipes de la poule</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                {org.equipes.length === 0 ? <span style={{ fontSize: 12.5, color: C.gris }}>Ajoute des équipes plus haut.</span> : org.equipes.map((e) => {
+                  const on = (p.equipeIds || []).includes(e.id);
+                  return (
+                    <button key={e.id} onClick={() => toggleEquipePoule(p.id, e.id)} style={{ border: "none", cursor: "pointer", borderRadius: 18, padding: "6px 11px", fontSize: 12.5, fontWeight: 800, background: on ? C.bleu : C.grisClair, color: on ? "#fff" : C.gris }}>{e.nom}</button>
+                  );
+                })}
+              </div>
+
+              {(p.equipeIds || []).length >= 2 && (
+                <Btn variant="ghost" full size="sm" style={{ marginBottom: 10 }} onClick={() => genererMatchs(p.id)}><ListOrdered size={15} /> Générer les rencontres (toutes les équipes se rencontrent)</Btn>
+              )}
+
+              {(p.matchs || []).length > 0 && (
+                <div style={{ display: "grid", gap: 7, marginBottom: 12 }}>
+                  {p.matchs.map((m) => (
+                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                      <div style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.aId)}</div>
+                      <input type="number" value={m.sa} onChange={(e) => majMatchPoule(p.id, m.id, { sa: e.target.value })} style={styleInputScore} />
+                      <span style={{ color: C.gris, fontWeight: 800 }}>-</span>
+                      <input type="number" value={m.sb} onChange={(e) => majMatchPoule(p.id, m.id, { sb: e.target.value })} style={styleInputScore} />
+                      <div style={{ flex: 1, fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.bId)}</div>
+                      <button onClick={() => suppMatchPoule(p.id, m.id)} style={{ border: "none", background: "transparent", color: C.gris, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={15} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {classement.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 }}>Classement</div>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                      <thead>
+                        <tr style={{ color: C.gris, textAlign: "center" }}>
+                          <th style={{ textAlign: "left", padding: "4px 4px", fontWeight: 700 }}>Équipe</th>
+                          <th style={{ padding: "4px 3px", fontWeight: 700 }}>Pts</th>
+                          <th style={{ padding: "4px 3px", fontWeight: 700 }}>J</th>
+                          <th style={{ padding: "4px 3px", fontWeight: 700 }}>G</th>
+                          <th style={{ padding: "4px 3px", fontWeight: 700 }}>N</th>
+                          <th style={{ padding: "4px 3px", fontWeight: 700 }}>P</th>
+                          <th style={{ padding: "4px 3px", fontWeight: 700 }}>BP</th>
+                          <th style={{ padding: "4px 3px", fontWeight: 700 }}>BC</th>
+                          <th style={{ padding: "4px 3px", fontWeight: 700 }}>Diff</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {classement.map((r, i) => (
+                          <tr key={r.id} style={{ borderTop: `1px solid ${C.grisClair}`, textAlign: "center", background: i === 0 ? "#FBF6E6" : "transparent" }}>
+                            <td style={{ textAlign: "left", padding: "6px 4px", fontWeight: 800 }}><span style={{ color: C.gris, marginRight: 6 }}>{i + 1}.</span>{nomDe(r.id)}</td>
+                            <td style={{ padding: "6px 3px", fontWeight: 900, color: C.bleuNuit }}>{r.pts}</td>
+                            <td style={{ padding: "6px 3px" }}>{r.j}</td>
+                            <td style={{ padding: "6px 3px" }}>{r.g}</td>
+                            <td style={{ padding: "6px 3px" }}>{r.n}</td>
+                            <td style={{ padding: "6px 3px" }}>{r.p}</td>
+                            <td style={{ padding: "6px 3px" }}>{r.bp}</td>
+                            <td style={{ padding: "6px 3px" }}>{r.bc}</td>
+                            <td style={{ padding: "6px 3px", fontWeight: 700 }}>{r.bp - r.bc > 0 ? "+" : ""}{r.bp - r.bc}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </Card>
+          );
+        })}
+
+        {/* PHASES FINALES */}
+        <div style={titreSection}>Phases finales</div>
+        <Btn variant="ghost" full style={{ marginBottom: 12 }} onClick={ajouterFinale}><Plus size={16} /> Ajouter une phase finale</Btn>
+        {org.finales.map((f) => (
+          <Card key={f.id} style={{ marginBottom: 14, padding: 13 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+              <Inp value={f.nom} onChange={(e) => majFinale(f.id, { nom: e.target.value })} style={{ flex: 1, fontWeight: 800 }} placeholder="Demi-finales, Finale, Petite finale..." />
+              <div style={{ display: "flex", alignItems: "center", gap: 5, background: C.fond, borderRadius: 9, padding: "0 8px" }}>
+                <Timer size={15} color={C.bleu} />
+                <input type="number" value={f.temps} onChange={(e) => majFinale(f.id, { temps: e.target.value === "" ? "" : Number(e.target.value) })} style={{ width: 42, border: "none", background: "transparent", fontSize: 15, fontWeight: 800, textAlign: "center", padding: "9px 0", color: C.encre }} />
+                <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>min</span>
+              </div>
+              <button onClick={() => suppFinale(f.id)} style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", display: "grid", placeItems: "center" }}><Trash2 size={17} /></button>
+            </div>
+            <div style={{ display: "grid", gap: 7, marginBottom: 10 }}>
+              {(f.matchs || []).map((m) => (
+                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <select value={m.aId} onChange={(e) => majMatchFinale(f.id, m.id, { aId: e.target.value })} style={styleSelEq}>
+                    <option value="">Équipe A</option>
+                    {org.equipes.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
+                  </select>
+                  <input type="number" value={m.sa} onChange={(e) => majMatchFinale(f.id, m.id, { sa: e.target.value })} style={styleInputScore} />
+                  <span style={{ color: C.gris, fontWeight: 800 }}>-</span>
+                  <input type="number" value={m.sb} onChange={(e) => majMatchFinale(f.id, m.id, { sb: e.target.value })} style={styleInputScore} />
+                  <select value={m.bId} onChange={(e) => majMatchFinale(f.id, m.id, { bId: e.target.value })} style={styleSelEq}>
+                    <option value="">Équipe B</option>
+                    {org.equipes.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
+                  </select>
+                  <button onClick={() => suppMatchFinale(f.id, m.id)} style={{ border: "none", background: "transparent", color: C.gris, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={15} /></button>
+                </div>
+              ))}
+            </div>
+            <Btn variant="ghost" full size="sm" onClick={() => ajouterMatchFinale(f.id)}><Plus size={15} /> Ajouter une rencontre</Btn>
+          </Card>
+        ))}
+        <div style={{ height: 20 }} />
+      </div>
+    </div>
+  );
+}
+
 function EditTournoi({ tournoi, onClose, onSave, onDelete }) {
   const [f, setF] = useState({ nom: "", date: "", lieu: "", place: "", nbEquipes: "", commentaire: "", ...tournoi });
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
@@ -7050,6 +7422,7 @@ function EditTournoi({ tournoi, onClose, onSave, onDelete }) {
 
 function Tournois({ db, mutate, cat, onClose }) {
   const [edit, setEdit] = useState(null);
+  const [orga, setOrga] = useState(null);
   const saisons = useMemo(() => {
     const s = new Set([saisonCourante()]);
     (db.tournois || []).forEach((t) => { if (t.cat === cat) { const sa = saisonDe(t.date); if (sa) s.add(sa); } });
@@ -7069,6 +7442,9 @@ function Tournois({ db, mutate, cat, onClose }) {
     setEdit(null);
   }
   function supprimer(id) { mutate((d) => { d.tournois = (d.tournois || []).filter((x) => x.id !== id); return d; }); setEdit(null); }
+  function enregistrerOrga(tid, organisation) {
+    mutate((d) => { d.tournois = d.tournois || []; const i = d.tournois.findIndex((x) => x.id === tid); if (i >= 0) d.tournois[i] = { ...d.tournois[i], organisation }; return d; });
+  }
 
   return (
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
@@ -7107,6 +7483,9 @@ function Tournois({ db, mutate, cat, onClose }) {
                   ) : null}
                 </div>
                 {t.commentaire ? <div style={{ fontSize: 13, color: C.encre, marginTop: 8, background: C.fond, borderRadius: 9, padding: "8px 10px" }}>{t.commentaire}</div> : null}
+                <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 10 }}>
+                  <Btn variant="ghost" full size="sm" onClick={() => setOrga(t)}><ListOrdered size={15} /> Organiser le plateau et le classement{t.organisation && (t.organisation.equipes || []).length ? ` · ${t.organisation.equipes.length} équipe${t.organisation.equipes.length > 1 ? "s" : ""}` : ""}</Btn>
+                </div>
               </Card>
             ))}
           </div>
@@ -7114,6 +7493,7 @@ function Tournois({ db, mutate, cat, onClose }) {
       </div>
 
       {edit && <EditTournoi tournoi={edit} onClose={() => setEdit(null)} onSave={enregistrer} onDelete={edit.id ? () => supprimer(edit.id) : null} />}
+      {orga && <OrganiserPlateau tournoi={(db.tournois || []).find((x) => x.id === orga.id) || orga} onClose={() => setOrga(null)} onSave={(organisation) => enregistrerOrga(orga.id, organisation)} />}
     </div>
   );
 }
