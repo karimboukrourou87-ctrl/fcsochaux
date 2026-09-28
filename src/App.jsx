@@ -645,14 +645,18 @@ function Demandes({ demo, db, mutate, cat, session, onClose }) {
   }
 
   async function annuler(dem, raison) {
+    // on réutilise le statut "refusee" (déjà accepté par la base) avec un marqueur,
+    // pour afficher "Annulée" des deux côtés sans modifier la base
+    const causeMarquee = "ANNULATION::" + raison;
     if (demo) {
-      mutate((d) => { const x = (d.demandes || []).find((y) => y.id === dem.id); if (x) { x.statut = "annulee"; x.cause = raison; } return d; });
+      mutate((d) => { const x = (d.demandes || []).find((y) => y.id === dem.id); if (x) { x.statut = "refusee"; x.cause = causeMarquee; } return d; });
       setAnnulDem(null); setRaisonAnnul(""); return;
     }
     try {
       const sb = await getSupabase();
-      const { error } = await sb.from("demandes_joueur").update({ statut: "annulee", cause_refus: raison }).eq("id", dem.id);
+      const { data, error } = await sb.from("demandes_joueur").update({ statut: "refusee", cause_refus: causeMarquee }).eq("id", dem.id).select();
       if (error) throw error;
+      if (!data || data.length === 0) { setAnnulDem(null); setErr("Annulation bloquée par les droits de la base. Vérifie l'autorisation de mise à jour des demandes."); return; }
       try { await sb.functions.invoke("notifier-demande", { body: { demande_id: dem.id, reponse: true } }); } catch (e) {}
       await charger();
       setAnnulDem(null); setRaisonAnnul("");
@@ -660,6 +664,9 @@ function Demandes({ demo, db, mutate, cat, session, onClose }) {
   }
 
   function ligneDemande(dem, recue) {
+    const causeTxt = String(dem.cause || "");
+    const estAnnulee = dem.statut === "annulee" || (dem.statut === "refusee" && causeTxt.startsWith("ANNULATION::"));
+    const causeAff = causeTxt.replace(/^ANNULATION::\s*/, "");
     return (
       <Card key={dem.id} style={{ marginBottom: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
@@ -667,7 +674,7 @@ function Demandes({ demo, db, mutate, cat, session, onClose }) {
             {recue ? `Demandé par ${dem.demandeurCat}` : `Vers ${dem.joueurCat}`}{dem.date ? ` · ${fmtDate(dem.date)}` : ""}
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <StatutPastille statut={dem.statut} />
+            {estAnnulee ? <Pastille bg={C.grisClair} color={C.gris}>Annulée</Pastille> : <StatutPastille statut={dem.statut} />}
             <Trash2 size={15} color={C.gris} style={{ cursor: "pointer" }} onClick={() => setConfirmSuppr(dem)} />
           </div>
         </div>
@@ -675,8 +682,8 @@ function Demandes({ demo, db, mutate, cat, session, onClose }) {
         {dem.creeLe ? <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2 }}>Demande faite le {new Date(dem.creeLe).toLocaleDateString("fr-FR")} à {new Date(dem.creeLe).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }).replace(":", "h")}</div> : null}
         {dem.date ? <div style={{ fontSize: 11.5, color: C.gris, marginTop: 1 }}>Pour le match du {fmtDate(dem.date)}</div> : null}
         {dem.motif ? <div style={{ fontSize: 13, color: C.gris, marginTop: 3 }}>Motif : {dem.motif}</div> : null}
-        {dem.statut === "refusee" && dem.cause ? <div style={{ fontSize: 13, color: C.rouge, marginTop: 4 }}>Cause du refus : {dem.cause}</div> : null}
-        {dem.statut === "annulee" && dem.cause ? <div style={{ fontSize: 13, color: C.gris, marginTop: 4 }}>Demande annulée par le demandeur : {dem.cause}</div> : null}
+        {dem.statut === "refusee" && !estAnnulee && dem.cause ? <div style={{ fontSize: 13, color: C.rouge, marginTop: 4 }}>Cause du refus : {dem.cause}</div> : null}
+        {estAnnulee && causeAff ? <div style={{ fontSize: 13, color: C.gris, marginTop: 4 }}>Demande annulée par le demandeur : {causeAff}</div> : null}
         {recue && dem.statut === "en_attente" && (
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <Btn variant="accent" size="sm" onClick={() => repondre(dem, true)}><Check size={15} /> Accepter</Btn>
