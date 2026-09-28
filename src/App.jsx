@@ -5135,6 +5135,7 @@ function Entrainements({ players, cat, db, mutate }) {
   const [open, setOpen] = useState(null);
   const [blessure, setBlessure] = useState(null);
   const [recap, setRecap] = useState(false);
+  const [histo, setHisto] = useState(false);
 
   const config = db.config || { trainingDays: {}, breaks: {} };
   const jours = config.trainingDays?.[cat] || [];
@@ -5226,6 +5227,7 @@ function Entrainements({ players, cat, db, mutate }) {
             <Btn variant="primary" size="sm" onClick={() => setRecap(true)}><ClipboardList size={16} /> Récap présences</Btn>
             <Btn variant="ghost" size="sm" onClick={() => setEdit({ cat, presence: {} })}><Plus size={16} /> Séance ponctuelle</Btn>
           </div>
+          <Btn variant="ghost" full style={{ marginBottom: 10 }} onClick={() => setHisto(true)}><CalendarDays size={16} /> Historique des présences (toutes dates)</Btn>
           <Btn variant="accent" full style={{ marginBottom: 12 }} onClick={() => setBlessure({ cat, circonstance: "entrainement", debut: hoyISO() })}><HeartPulse size={16} /> Signaler un joueur blessé à l'entraînement</Btn>
 
           {entries.length === 0 ? (
@@ -5341,6 +5343,37 @@ function Entrainements({ players, cat, db, mutate }) {
         onDelete={blessure.id ? () => { mutate((d) => { d.injuries = d.injuries.filter((x) => x.id !== blessure.id); return d; }); setBlessure(null); } : null} />}
 
       {recap && <RecapPresences players={players} db={db} cat={cat} annee={annee} mois={mois} onClose={() => setRecap(false)} />}
+
+      {histo && (() => {
+        const toutes = db.trainings.filter((t) => t.cat === cat && t.date).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+        return (
+          <Modal title="Historique des présences" onClose={() => setHisto(false)}>
+            <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Toutes les séances pointées, toutes dates confondues. Rien n'est effacé quand tu changes de mois. Touche une séance pour revoir le détail.</div>
+            {toutes.length === 0 ? (
+              <Empty icon={<CalendarDays size={24} color={C.gris} />} text="Aucune séance pointée" sub="Les séances pointées apparaîtront ici" />
+            ) : (
+              <div style={{ display: "grid", gap: 8 }}>
+                {toutes.map((t) => {
+                  const pres = Object.values(t.presence || {});
+                  const nbPres = pres.filter((x) => x === "present" || x === "retard").length;
+                  const nbAbs = pres.filter((x) => x === "absent" || x === "malade").length;
+                  return (
+                    <div key={t.id} onClick={() => { setOpen(t); setHisto(false); }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "#fff", borderRadius: 11, border: `1px solid ${C.grisClair}`, cursor: "pointer" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 800, fontSize: 13.5, textTransform: "capitalize" }}>{jourLong(t.date)}</div>
+                        {t.theme ? <div style={{ fontSize: 12, color: C.gris, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.theme}</div> : null}
+                      </div>
+                      <Pastille bg="#E2F4E9" color={C.vert}>{nbPres}</Pastille>
+                      <Pastille bg="#FBE3E3" color={C.rouge}>{nbAbs}</Pastille>
+                      <ChevronLeft size={16} color={C.gris} style={{ transform: "rotate(180deg)" }} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Modal>
+        );
+      })()}
     </div>
   );
 }
