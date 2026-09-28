@@ -5136,6 +5136,57 @@ function Entrainements({ players, cat, db, mutate }) {
   const [blessure, setBlessure] = useState(null);
   const [recap, setRecap] = useState(false);
   const [histo, setHisto] = useState(false);
+  const [importMsg, setImportMsg] = useState(null);
+
+  function importerSeances(ev) {
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.trainings) ? parsed.trainings : null);
+        if (!arr) throw new Error("format");
+        // résolution des présences par identifiant OU par prénom (avec initiale du nom si besoin)
+        const norm = (s) => (s == null ? "" : String(s)).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+        const nonResolus = new Set();
+        function resoudrePresence(presence) {
+          if (!presence || typeof presence !== "object") return presence;
+          const out = {};
+          Object.entries(presence).forEach(([key, val]) => {
+            if (players.some((p) => p.id === key)) { out[key] = val; return; }
+            const kn = norm(key);
+            let m = players.filter((p) => norm(p.prenom) === kn);
+            if (m.length !== 1) {
+              const parts = kn.split(/\s+/);
+              if (parts.length >= 2) { const pn = parts[0], ini = parts.slice(1).join(" "); m = players.filter((p) => norm(p.prenom) === pn && norm(p.nom).startsWith(ini)); }
+            }
+            if (m.length !== 1) m = players.filter((p) => norm(p.prenom + " " + p.nom) === kn);
+            if (m.length === 1) out[m[0].id] = val; else nonResolus.add(key);
+          });
+          return out;
+        }
+        let maj = 0, add = 0;
+        mutate((d) => {
+          d.trainings = d.trainings || [];
+          arr.forEach((s) => {
+            if (!s || !s.date) return;
+            const seance = { ...s, cat: s.cat || cat, presence: resoudrePresence(s.presence) };
+            let idx = seance.id ? d.trainings.findIndex((x) => x.id === seance.id) : -1;
+            if (idx < 0) idx = d.trainings.findIndex((x) => x.cat === seance.cat && x.date === seance.date);
+            if (idx >= 0) { d.trainings[idx] = { ...d.trainings[idx], ...seance, id: d.trainings[idx].id }; maj++; }
+            else { d.trainings.push({ ...seance, id: seance.id || uid() }); add++; }
+          });
+          return d;
+        });
+        const nr = [...nonResolus];
+        setImportMsg(`Import terminé : ${add} séance(s) ajoutée(s), ${maj} mise(s) à jour.` + (nr.length ? ` Joueurs non reconnus (à vérifier) : ${nr.join(", ")}.` : ""));
+      } catch (e) { setImportMsg("Fichier non valide. Choisis un fichier JSON de séances (exporté par l'application)."); }
+    };
+    reader.onerror = () => setImportMsg("Lecture du fichier impossible.");
+    reader.readAsText(f);
+  }
 
   const config = db.config || { trainingDays: {}, breaks: {} };
   const jours = config.trainingDays?.[cat] || [];
@@ -5228,6 +5279,11 @@ function Entrainements({ players, cat, db, mutate }) {
             <Btn variant="ghost" size="sm" onClick={() => setEdit({ cat, presence: {} })}><Plus size={16} /> Séance ponctuelle</Btn>
           </div>
           <Btn variant="ghost" full style={{ marginBottom: 10 }} onClick={() => setHisto(true)}><CalendarDays size={16} /> Historique des présences (toutes dates)</Btn>
+          <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "10px 16px", fontWeight: 700, fontSize: 13.5, color: C.encre, background: "#fff", marginBottom: 4 }}>
+            <Upload size={16} /> Importer des séances (JSON)
+            <input type="file" accept="application/json,.json" onChange={importerSeances} style={{ display: "none" }} />
+          </label>
+          {importMsg && <div style={{ fontSize: 12.5, color: importMsg.includes("non valide") || importMsg.includes("impossible") ? C.rouge : C.vert, fontWeight: 700, marginBottom: 10, textAlign: "center" }}>{importMsg}</div>}
           <Btn variant="accent" full style={{ marginBottom: 12 }} onClick={() => setBlessure({ cat, circonstance: "entrainement", debut: hoyISO() })}><HeartPulse size={16} /> Signaler un joueur blessé à l'entraînement</Btn>
 
           {entries.length === 0 ? (
