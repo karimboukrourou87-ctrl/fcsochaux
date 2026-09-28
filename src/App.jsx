@@ -5268,6 +5268,27 @@ function Entrainements({ players, cat, db, mutate }) {
             </Sel>
           </div>
 
+          {(() => {
+            const prefixMois = `${annee}-${pad(mois + 1)}`;
+            const seancesDuMois = db.trainings.filter((t) => t.cat === cat && t.date && t.date.startsWith(prefixMois));
+            const realisees = seancesDuMois.filter((t) => t.presence && Object.keys(t.presence).length > 0).length;
+            const prevues = entries.filter((en) => en.type === "session").length;
+            return (
+              <Card style={{ marginBottom: 12, padding: 14, background: C.bleuNuit, borderColor: C.bleuNuit }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 11.5, fontWeight: 800, color: "rgba(255,255,255,0.7)", textTransform: "uppercase", letterSpacing: 0.4 }}>Entraînements réalisés</div>
+                    <div style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", marginTop: 2, textTransform: "capitalize" }}>{MOIS[mois]} {annee}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 30, fontWeight: 900, color: "#fff", lineHeight: 1 }}>{realisees}</div>
+                    <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)", marginTop: 3, fontWeight: 700 }}>séance{realisees > 1 ? "s" : ""} pointée{realisees > 1 ? "s" : ""}{prevues ? ` / ${prevues} prévue${prevues > 1 ? "s" : ""}` : ""}</div>
+                  </div>
+                </div>
+              </Card>
+            );
+          })()}
+
           <Card style={{ marginBottom: 12, padding: 13 }}>
             <div style={{ fontSize: 12, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 9 }}>Jours d'entraînement</div>
             <div style={{ display: "flex", gap: 6 }}>
