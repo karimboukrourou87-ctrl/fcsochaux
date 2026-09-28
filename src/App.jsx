@@ -500,6 +500,7 @@ function normDemande(r) {
 function StatutPastille({ statut }) {
   if (statut === "acceptee") return <Pastille bg="#E2F4E9" color={C.vert}>Acceptée</Pastille>;
   if (statut === "refusee") return <Pastille bg="#FBE3E3" color={C.rouge}>Refusée</Pastille>;
+  if (statut === "annulee") return <Pastille bg={C.grisClair} color={C.gris}>Annulée</Pastille>;
   return <Pastille bg={C.jaune} color={C.bleuNuit}>En attente</Pastille>;
 }
 
@@ -548,6 +549,8 @@ function Demandes({ demo, db, mutate, cat, session, onClose }) {
   const [refus, setRefus] = useState(null);
   const [cause, setCause] = useState("");
   const [confirmSuppr, setConfirmSuppr] = useState(null);
+  const [annulDem, setAnnulDem] = useState(null);
+  const [raisonAnnul, setRaisonAnnul] = useState("");
 
   async function charger() {
     if (demo) return;
@@ -641,6 +644,21 @@ function Demandes({ demo, db, mutate, cat, session, onClose }) {
     } catch (e) { setConfirmSuppr(null); setErr("Suppression impossible. Réessaie ou vérifie la connexion."); }
   }
 
+  async function annuler(dem, raison) {
+    if (demo) {
+      mutate((d) => { const x = (d.demandes || []).find((y) => y.id === dem.id); if (x) { x.statut = "annulee"; x.cause = raison; } return d; });
+      setAnnulDem(null); setRaisonAnnul(""); return;
+    }
+    try {
+      const sb = await getSupabase();
+      const { error } = await sb.from("demandes_joueur").update({ statut: "annulee", cause_refus: raison }).eq("id", dem.id);
+      if (error) throw error;
+      try { await sb.functions.invoke("notifier-demande", { body: { demande_id: dem.id, reponse: true } }); } catch (e) {}
+      await charger();
+      setAnnulDem(null); setRaisonAnnul("");
+    } catch (e) { setAnnulDem(null); setErr("Annulation impossible. Réessaie ou vérifie la connexion."); }
+  }
+
   function ligneDemande(dem, recue) {
     return (
       <Card key={dem.id} style={{ marginBottom: 0 }}>
@@ -654,12 +672,20 @@ function Demandes({ demo, db, mutate, cat, session, onClose }) {
           </div>
         </div>
         <div style={{ fontWeight: 800, fontSize: 15 }}>{dem.joueurNom} <span style={{ color: C.gris, fontWeight: 600, fontSize: 13 }}>({dem.joueurCat})</span></div>
+        {dem.creeLe ? <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2 }}>Demande faite le {new Date(dem.creeLe).toLocaleDateString("fr-FR")} à {new Date(dem.creeLe).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }).replace(":", "h")}</div> : null}
+        {dem.date ? <div style={{ fontSize: 11.5, color: C.gris, marginTop: 1 }}>Pour le match du {fmtDate(dem.date)}</div> : null}
         {dem.motif ? <div style={{ fontSize: 13, color: C.gris, marginTop: 3 }}>Motif : {dem.motif}</div> : null}
         {dem.statut === "refusee" && dem.cause ? <div style={{ fontSize: 13, color: C.rouge, marginTop: 4 }}>Cause du refus : {dem.cause}</div> : null}
+        {dem.statut === "annulee" && dem.cause ? <div style={{ fontSize: 13, color: C.gris, marginTop: 4 }}>Demande annulée par le demandeur : {dem.cause}</div> : null}
         {recue && dem.statut === "en_attente" && (
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <Btn variant="accent" size="sm" onClick={() => repondre(dem, true)}><Check size={15} /> Accepter</Btn>
             <Btn variant="danger" size="sm" onClick={() => { setRefus(dem); setCause(""); }}><X size={15} /> Refuser</Btn>
+          </div>
+        )}
+        {!recue && dem.statut === "en_attente" && (
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <Btn variant="danger" size="sm" onClick={() => { setAnnulDem(dem); setRaisonAnnul(""); }}><X size={15} /> Annuler ma demande</Btn>
           </div>
         )}
       </Card>
@@ -712,6 +738,26 @@ function Demandes({ demo, db, mutate, cat, session, onClose }) {
         <Modal title="Supprimer la demande" onClose={() => setConfirmSuppr(null)}
           footer={<><Btn variant="ghost" full onClick={() => setConfirmSuppr(null)}>Annuler</Btn><Btn variant="danger" full onClick={() => supprimer(confirmSuppr)}><Trash2 size={16} /> Supprimer</Btn></>}>
           <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.5 }}>Supprimer définitivement la demande concernant <strong>{confirmSuppr.joueurNom}</strong> ? Cette action est irréversible.</div>
+        </Modal>
+      )}
+
+      {annulDem && (
+        <Modal title="Annuler ma demande" onClose={() => setAnnulDem(null)}
+          footer={<Btn variant="danger" full disabled={!raisonAnnul.trim()} onClick={() => annuler(annulDem, raisonAnnul.trim())}><X size={16} /> Confirmer l'annulation</Btn>}>
+          <div style={{ fontSize: 13, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Annuler la demande concernant <strong>{annulDem.joueurNom}</strong>. Indique la raison, elle sera transmise à la catégorie sollicitée.</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
+            {["Erreur de saisie", "Plus besoin, effectif au complet", "Effectif réduit, je garde mes joueurs", "Joueur blessé ou indisponible", "Match reporté ou annulé"].map((r) => (
+              <button key={r} onClick={() => setRaisonAnnul(r)} style={{
+                border: `1px solid ${raisonAnnul === r ? C.bleu : C.grisClair}`, cursor: "pointer", borderRadius: 999, padding: "6px 12px",
+                fontSize: 12.5, fontWeight: 700, background: raisonAnnul === r ? "#EAF0F7" : "#fff", color: raisonAnnul === r ? C.bleu : C.gris,
+              }}>{r}</button>
+            ))}
+          </div>
+          <Field label="Raison de l'annulation">
+            <textarea value={raisonAnnul} onChange={(e) => setRaisonAnnul(e.target.value)} rows={3} placeholder="Précise la raison..." style={{
+              width: "100%", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 11, fontSize: 14, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box",
+            }} />
+          </Field>
         </Modal>
       )}
     </Modal>
@@ -804,10 +850,16 @@ function voisinsDemandables(cat) {
   }
   // voisins spéciaux (ex : U17 NAT peut aussi faire monter un U15)
   if (VOISINS_SPECIAUX[cat]) VOISINS_SPECIAUX[cat].forEach((v) => cibles.add(v));
-  // règle générale par âge pour les jeunes (deux ans en dessous)
+  // règle générale par âge pour les jeunes : surclassement des catégories juste en dessous
+  // (un et deux ans en dessous, ils peuvent jouer dans la catégorie supérieure)
   if (cibles.size === 0) {
     const m = /^U(\d+)(F?)$/.exec(cat || "");
-    if (m) { const cible = `U${+m[1] - 2}${m[2]}`; if (CATEGORIES.some((x) => x.id === cible)) cibles.add(cible); }
+    if (m) {
+      [1, 2].forEach((ecart) => {
+        const cible = `U${+m[1] - ecart}${m[2]}`;
+        if (CATEGORIES.some((x) => x.id === cible)) cibles.add(cible);
+      });
+    }
   }
   return [...cibles];
 }
@@ -5885,10 +5937,10 @@ function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
     const mins = (s) => { if (!s) return 0; const p = String(s).replace("h", ":").split(":"); return (+p[0]) * 60 + (+(p[1] || 0)); };
     const toLabel = (m) => `${pad(Math.floor(m / 60))}h${pad(m % 60)}`;
     const debM = mins(crDebut);
-    const finM = fin ? mins(fin) : debM + 30;
-    // tous les créneaux de 30 min entre le début (inclus) et la fin (exclu)
+    const finM = fin ? mins(fin) : debM;
+    // tous les créneaux de 30 min du début à la fin, créneau de fin inclus
     const steps = [];
-    for (let m = debM; m < finM; m += 30) steps.push(toLabel(m));
+    for (let m = debM; m <= finM; m += 30) steps.push(toLabel(m));
     if (!steps.length) steps.push(crDebut);
     mutate((d) => {
       d.planning = d.planning || { creneaux: CRENEAUX_DEFAUT.slice(), vestiaires: {}, terrains: {} };
