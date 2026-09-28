@@ -4810,8 +4810,13 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
   const [noteFor, setNoteFor] = useState(null);
   const [orga, setOrga] = useState(false);
   const [jong, setJong] = useState(false);
+  const [plateau, setPlateau] = useState(false);
   const [msgPdf, setMsgPdf] = useState(null);
   const joue = match.scorePour != null && match.scoreContre != null;
+  const estPlateau = ["Plateau", "Tournoi"].includes(match.type);
+  function enregistrerPlateau(organisation) {
+    mutate((d) => { const m = d.matches.find((x) => x.id === match.id); if (m) m.organisation = organisation; return d; });
+  }
 
   function compteur(champ, joueurId, delta) {
     mutate((d) => {
@@ -5037,6 +5042,30 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
         <ChevronLeft size={18} color={C.gris} style={{ transform: "rotate(180deg)" }} />
       </Card>
 
+      {estPlateau && (
+        <Card onClick={() => setPlateau(true)} style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: C.jaune, color: C.bleuNuit, display: "grid", placeItems: "center", flex: "0 0 auto" }}><Award size={18} /></div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800 }}>Organiser le {match.type === "Tournoi" ? "tournoi" : "plateau"} et le classement</div>
+            <div style={{ fontSize: 12, color: C.gris, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {(() => {
+                const o = cur.organisation || {};
+                const ne = (o.equipes || []).length;
+                const np = (o.poules || []).length;
+                const nc = (o.planning || []).length;
+                if (!ne && !np && !nc) return "Équipes, poules, terrains, planning et classement";
+                const parts = [];
+                if (ne) parts.push(`${ne} équipe${ne > 1 ? "s" : ""}`);
+                if (np) parts.push(`${np} poule${np > 1 ? "s" : ""}`);
+                if (nc) parts.push(`planning ${nc} créneau${nc > 1 ? "x" : ""}`);
+                return parts.join(" · ");
+              })()}
+            </div>
+          </div>
+          <ChevronLeft size={18} color={C.gris} style={{ transform: "rotate(180deg)" }} />
+        </Card>
+      )}
+
       <div style={{ fontWeight: 800, marginBottom: 8 }}>Feuille de match</div>
       {players.length === 0 ? <Empty icon={<Users size={22} color={C.gris} />} text="Aucun joueur" /> :
         <div style={{ display: "grid", gap: 9 }}>{players.map(ligne)}</div>}
@@ -5056,6 +5085,7 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
 
       {noteFor && <NoterJoueur match={match} player={noteFor} db={db} mutate={mutate} onClose={() => setNoteFor(null)} />}
       {orga && <OrgaMatch match={match} db={db} mutate={mutate} peutValider={peutValider} onClose={() => setOrga(false)} />}
+      {plateau && <OrganiserPlateau tournoi={{ nom: `${match.type}${match.date ? " du " + fmtDate(match.date) : ""}`, organisation: cur.organisation }} onClose={() => setPlateau(false)} onSave={enregistrerPlateau} />}
       {jong && (/^U13/.test(match.cat)
         ? <DefiJonglageLigue match={match} players={players} db={db} mutate={mutate} onClose={() => setJong(false)} />
         : <DefiJonglage match={match} players={players} db={db} mutate={mutate} onClose={() => setJong(false)} />)}
@@ -7082,6 +7112,9 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
   const defaut = { regle: { v: 3, n: 1, d: 0 }, equipes: [], poules: [], finales: [], planningConf: { nbEquipes: "", nbTerrains: 2, debut: "09:00", duree: 10, pause: 2, retour: false }, planning: [] };
   const [org, setOrg] = useState(() => ({ ...defaut, ...(tournoi.organisation || {}), regle: { ...defaut.regle, ...((tournoi.organisation || {}).regle || {}) }, planningConf: { ...defaut.planningConf, ...((tournoi.organisation || {}).planningConf || {}) } }));
   const [nomEquipe, setNomEquipe] = useState("");
+  const [importMsg, setImportMsg] = useState(null);
+  const [coller, setColler] = useState(false);
+  const [texteColle, setTexteColle] = useState("");
   const commit = (next) => { setOrg(next); onSave(next); };
   const nomDe = (id) => { const e = org.equipes.find((x) => x.id === id); return e ? e.nom : "?"; };
 
@@ -7090,6 +7123,40 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
     if (!n || org.equipes.length >= 20) return;
     commit({ ...org, equipes: [...org.equipes, { id: uid(), nom: n }] });
     setNomEquipe("");
+  }
+  function traiterImportEquipes(texte) {
+    try {
+      let t = String(texte || "").trim();
+      const deb = t.indexOf("{") >= 0 ? t.indexOf("{") : t.indexOf("[");
+      const fin = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
+      if (deb >= 0 && fin > deb) t = t.slice(deb, fin + 1);
+      const parsed = JSON.parse(t);
+      const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.equipes) ? parsed.equipes : null);
+      if (!arr) throw new Error("format");
+      const noms = arr.map((x) => (typeof x === "string" ? x : (x && x.nom) || "")).map((s) => String(s).trim()).filter(Boolean);
+      const existants = org.equipes.map((e) => e.nom.toLowerCase());
+      let ajout = 0, ignore = 0;
+      const nouvelles = [...org.equipes];
+      noms.forEach((n) => {
+        if (nouvelles.length >= 20) { ignore++; return; }
+        if (existants.includes(n.toLowerCase())) { ignore++; return; }
+        nouvelles.push({ id: uid(), nom: n });
+        existants.push(n.toLowerCase());
+        ajout++;
+      });
+      commit({ ...org, equipes: nouvelles });
+      setImportMsg(`${ajout} équipe(s) importée(s).` + (ignore ? ` ${ignore} ignorée(s) (doublons ou limite de 20 atteinte).` : ""));
+      return true;
+    } catch (e) { setImportMsg("Contenu non valide. Vérifie que c'est bien le JSON des équipes."); return false; }
+  }
+  function importerEquipes(ev) {
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => traiterImportEquipes(reader.result);
+    reader.onerror = () => setImportMsg("Lecture du fichier impossible.");
+    reader.readAsText(f);
   }
   function suppEquipe(id) {
     commit({
@@ -7181,10 +7248,18 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
         {/* EQUIPES */}
         <div style={titreSection}>Équipes ({org.equipes.length} / 20)</div>
-        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
           <Inp value={nomEquipe} onChange={(e) => setNomEquipe(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") ajouterEquipe(); }} placeholder="Nom de l'équipe" style={{ flex: 1 }} />
           <Btn variant="accent" onClick={ajouterEquipe} disabled={!nomEquipe.trim() || org.equipes.length >= 20}><Plus size={16} /></Btn>
         </div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "9px 12px", fontWeight: 700, fontSize: 13, color: C.encre, background: "#fff" }}>
+            <Upload size={16} /> Importer un fichier
+            <input type="file" accept=".json,application/json,text/plain,text/json,*/*" onChange={importerEquipes} style={{ display: "none" }} />
+          </label>
+          <Btn variant="ghost" onClick={() => { setColler(true); setTexteColle(""); }}><ClipboardList size={16} /> Coller le JSON</Btn>
+        </div>
+        {importMsg && <div style={{ fontSize: 12.5, color: importMsg.includes("non valide") || importMsg.includes("impossible") ? C.rouge : C.vert, fontWeight: 700, marginBottom: 10, textAlign: "center" }}>{importMsg}</div>}
         {org.equipes.length === 0 ? (
           <div style={{ fontSize: 13, color: C.gris, marginBottom: 6 }}>Ajoute d'abord les équipes (jusqu'à 20), puis répartis-les en poules.</div>
         ) : (
@@ -7399,6 +7474,14 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
         ))}
         <div style={{ height: 20 }} />
       </div>
+
+      {coller && (
+        <Modal title="Coller le JSON des équipes" onClose={() => setColler(false)}
+          footer={<Btn variant="accent" full disabled={!texteColle.trim()} onClick={() => { if (traiterImportEquipes(texteColle)) setColler(false); }}><Save size={16} /> Importer</Btn>}>
+          <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Colle ici le contenu du fichier JSON des équipes, puis touche Importer.</div>
+          <textarea value={texteColle} onChange={(e) => setTexteColle(e.target.value)} rows={10} placeholder='{ "equipes": [ "Equipe 1", "Equipe 2" ] }' style={{ width: "100%", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 11, fontSize: 12.5, fontFamily: "monospace", resize: "vertical", boxSizing: "border-box" }} />
+        </Modal>
+      )}
     </div>
   );
 }
