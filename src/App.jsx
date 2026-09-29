@@ -1801,7 +1801,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre}
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 29/09 PLATEAU
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3559,9 +3559,10 @@ function Compo({ players, cat, catInfo, db, mutate }) {
       {/* Remplaçants */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}><ArrowRightLeft size={17} color={C.bleu} /> Remplaçants ({remplacants.length}/{maxRempl})</div>
-        {remplacants.length < maxRempl
-          ? <Btn variant="accent" size="sm" onClick={() => setPickRempl(true)}><Plus size={15} /> Ajouter</Btn>
-          : <Btn variant="ghost" size="sm" onClick={() => setPickRempl(true)}><Users size={15} /> Effectif restant ({benchDispo.length})</Btn>}
+        <div style={{ display: "flex", gap: 8, flex: "0 0 auto" }}>
+          {remplacants.length < maxRempl && <Btn variant="accent" size="sm" onClick={() => setPickRempl(true)}><Plus size={15} /> Ajouter</Btn>}
+          <Btn variant="ghost" size="sm" onClick={() => setPickRempl(true)}><Users size={15} /> Effectif restant ({benchDispo.length})</Btn>
+        </div>
       </div>
       {remplacants.length === 0 ? (
         <div style={{ fontSize: 13, color: C.gris, marginBottom: 10 }}>Aucun remplaçant. Banc jusqu'à {maxRempl} joueurs.</div>
@@ -3679,6 +3680,15 @@ function Matchs({ players, cat, catInfo, db, mutate, peutValider, profil }) {
   const [open, setOpen] = useState(null);
   const [filtre, setFiltre] = useState("Tous");
   const [saisonSel, setSaisonSel] = useState(saisonCourante());
+  const [orgaMatch, setOrgaMatch] = useState(null);
+  function enregistrerOrgaMatch(mid, organisation) {
+    mutate((d) => { const m = d.matches.find((x) => x.id === mid); if (m) m.organisation = organisation; return d; });
+  }
+  function nouveauPlateau(type) {
+    const id = uid();
+    mutate((d) => { d.matches.push({ id, cat, type, lieu: "Domicile", buteurs: {}, passeurs: {}, tempsJeu: {}, notes: {} }); return d; });
+    setOrgaMatch(id);
+  }
   const tous = db.matches.filter((m) => m.cat === cat).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const saisons = (() => {
     const set = [...new Set(tous.map((m) => saisonDe(m.date)).filter(Boolean))];
@@ -3717,8 +3727,12 @@ function Matchs({ players, cat, catInfo, db, mutate, peutValider, profil }) {
         })}
       </div>
 
+      {(filtre === "Plateau" || filtre === "Tournoi") && (
+        <Btn variant="accent" full style={{ marginBottom: 12 }} onClick={() => nouveauPlateau(filtre)}><Award size={16} /> Nouveau {filtre === "Tournoi" ? "tournoi" : "plateau"} (équipes, poules, planning, classement)</Btn>
+      )}
+
       {matches.length === 0 ? (
-        <Empty icon={<CalendarDays size={26} color={C.gris} />} text="Aucun match" sub={filtre === "Tous" ? "Programme une rencontre au calendrier" : `Aucun match de type ${filtre}`} />
+        <Empty icon={<CalendarDays size={26} color={C.gris} />} text="Aucun match" sub={filtre === "Tous" ? "Programme une rencontre au calendrier" : (filtre === "Plateau" || filtre === "Tournoi") ? `Touche « Nouveau ${filtre === "Tournoi" ? "tournoi" : "plateau"} » ci-dessus pour l'organiser` : `Aucun match de type ${filtre}`} />
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
           {matches.map((m) => {
@@ -3739,6 +3753,11 @@ function Matchs({ players, cat, catInfo, db, mutate, peutValider, profil }) {
                   <div style={{ fontWeight: 800, fontSize: 15 }}>{m.lieu === "Domicile" ? CLUB : (m.adversaire || "Adversaire")} <span style={{ color: C.gris, fontWeight: 600 }}>contre</span> {m.lieu === "Domicile" ? (m.adversaire || "Adversaire") : CLUB}</div>
                   {joue && <div style={{ fontWeight: 900, fontSize: 18, color: C.bleu }}>{m.lieu === "Domicile" ? `${m.scorePour} - ${m.scoreContre}` : `${m.scoreContre} - ${m.scorePour}`}</div>}
                 </div>
+                {(m.type === "Plateau" || m.type === "Tournoi") && (
+                  <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 10 }}>
+                    <Btn variant="ghost" full size="sm" onClick={() => setOrgaMatch(m.id)}><Award size={15} /> Organiser le {m.type === "Tournoi" ? "tournoi" : "plateau"} et le classement{m.organisation && (m.organisation.equipes || []).length ? ` · ${m.organisation.equipes.length} équipe${m.organisation.equipes.length > 1 ? "s" : ""}` : ""}</Btn>
+                  </div>
+                )}
               </Card>
             );
           })}
@@ -3758,6 +3777,12 @@ function Matchs({ players, cat, catInfo, db, mutate, peutValider, profil }) {
         onClose={() => setOpen(null)}
         onEdit={() => { setEdit(open); setOpen(null); }}
         onDelete={() => { mutate((d) => { d.matches = d.matches.filter((x) => x.id !== open.id); return d; }); setOpen(null); }} />}
+
+      {orgaMatch && (() => {
+        const om = db.matches.find((x) => x.id === orgaMatch);
+        if (!om) return null;
+        return <OrganiserPlateau tournoi={{ nom: `${om.type}${om.date ? " du " + fmtDate(om.date) : ""}`, organisation: om.organisation }} onClose={() => setOrgaMatch(null)} onSave={(organisation) => enregistrerOrgaMatch(orgaMatch, organisation)} />;
+      })()}
     </div>
   );
 }
@@ -7108,11 +7133,105 @@ function roundsRoundRobin(items) {
   return rounds;
 }
 
+function exporterPlateauPDF(jsPDF, titre, org) {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const W = 595, H = 842, M = 40;
+  const navy = [14, 30, 51], bleu = [26, 53, 83], orr = [198, 162, 76], encre = [22, 32, 46], gris = [122, 130, 142], trait = [228, 232, 238], fond = [247, 248, 250];
+  const sc = (a) => doc.setTextColor(a[0], a[1], a[2]);
+  const sf = (a) => doc.setFillColor(a[0], a[1], a[2]);
+  const sd = (a) => doc.setDrawColor(a[0], a[1], a[2]);
+  const regle = { v: 3, n: 1, d: 0, ...(org.regle || {}) };
+  const nomDe = (id) => { const e = (org.equipes || []).find((x) => x.id === id); return e ? e.nom : "?"; };
+  try { doc.setProperties({ title: titre, author: CLUB_LONG, creator: CLUB_LONG }); } catch (e) {}
+
+  let y = 0;
+  function entete() {
+    sf(navy); doc.rect(0, 0, W, 4, "F");
+    if (typeof LOGO_CLUB === "string" && LOGO_CLUB) { try { doc.addImage(LOGO_CLUB, "PNG", W - M - 34, 8, 34, 41); } catch (e) {} }
+    sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("FC SOCHAUX-MONTBÉLIARD", M, 30);
+    sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.text(titre + " - Planning et classements", M, 44);
+    sd(orr); doc.setLineWidth(1); doc.line(M, 52, W - M, 52); doc.setLineWidth(0.5);
+    y = 74;
+  }
+  function place(h) { if (y + h > H - M) { doc.addPage(); entete(); } }
+  entete();
+
+  // Planning
+  const plan = org.planning || [];
+  if (plan.length) {
+    sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text("Planning des rencontres", M, y); y += 8;
+    sd(trait); doc.line(M, y, W - M, y); y += 14;
+    plan.forEach((s) => {
+      const hMatchs = (s.matchs || []).length;
+      place(22 + hMatchs * 15 + 8);
+      sf(navy); doc.rect(M, y - 11, W - 2 * M, 17, "F");
+      sc([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+      doc.text(String(s.heure || ""), M + 8, y + 1);
+      if (s.phase) { const pw = doc.getTextWidth(s.phase); doc.text(s.phase, W - M - 8 - pw, y + 1); }
+      y += 20;
+      (s.matchs || []).forEach((m) => {
+        sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(`Terrain ${m.terrain}`, M + 8, y);
+        sc(encre); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+        doc.text(`${m.a}   contre   ${m.b}`, M + 70, y);
+        y += 15;
+      });
+      y += 6;
+    });
+    y += 8;
+  }
+
+  // Classements des poules
+  const poules = (org.poules || []).filter((p) => classementPoule(p.equipeIds, p.matchs, org.equipes, regle).length);
+  poules.forEach((p) => {
+    const cl = classementPoule(p.equipeIds, p.matchs, org.equipes, regle);
+    place(40 + cl.length * 16);
+    sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(12);
+    doc.text(`${p.nom || "Poule"} - classement${p.temps ? ` (${p.temps} min par match)` : ""}`, M, y); y += 8;
+    sd(trait); doc.line(M, y, W - M, y); y += 14;
+    const cols = ["Pts", "J", "G", "N", "P", "BP", "BC", "Diff"];
+    const xEq = M + 22, xNumStart = 300, colW = (W - M - xNumStart) / cols.length;
+    const colRight = (i) => xNumStart + (i + 1) * colW - 4;
+    sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+    doc.text("Équipe", xEq, y);
+    cols.forEach((c, i) => { const w = doc.getTextWidth(c); doc.text(c, colRight(i) - w, y); });
+    y += 4; sd(trait); doc.line(M, y, W - M, y); y += 12;
+    cl.forEach((r, idx) => {
+      if (idx === 0) { sf([251, 246, 230]); doc.rect(M, y - 10, W - 2 * M, 15, "F"); }
+      sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(String(idx + 1), M, y);
+      sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+      const nom = doc.splitTextToSize(nomDe(r.id), xNumStart - xEq - 6)[0];
+      doc.text(nom, xEq, y);
+      const vals = [r.pts, r.j, r.g, r.n, r.p, r.bp, r.bc, (r.bp - r.bc > 0 ? "+" : "") + (r.bp - r.bc)];
+      doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
+      vals.forEach((v, i) => { sc(i === 0 ? navy : encre); if (i === 0) doc.setFont("helvetica", "bold"); else doc.setFont("helvetica", "normal"); const t = String(v); const w = doc.getTextWidth(t); doc.text(t, colRight(i) - w, y); });
+      y += 15;
+    });
+    y += 14;
+  });
+
+  if (!plan.length && !poules.length) {
+    sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(11);
+    doc.text("Rien a exporter pour le moment. Ajoute des equipes, genere le planning ou saisis des scores.", M, y);
+  }
+
+  const nomFichier = (titre || "Plateau").replace(/[^a-zA-Z0-9]+/g, "_") + ".pdf";
+  doc.save(nomFichier);
+}
+
 function OrganiserPlateau({ tournoi, onClose, onSave }) {
   const defaut = { regle: { v: 3, n: 1, d: 0 }, equipes: [], poules: [], finales: [], planningConf: { nbEquipes: "", nbTerrains: 2, debut: "09:00", duree: 10, pause: 2, retour: false }, planning: [] };
   const [org, setOrg] = useState(() => ({ ...defaut, ...(tournoi.organisation || {}), regle: { ...defaut.regle, ...((tournoi.organisation || {}).regle || {}) }, planningConf: { ...defaut.planningConf, ...((tournoi.organisation || {}).planningConf || {}) } }));
   const [nomEquipe, setNomEquipe] = useState("");
+  const [importMsg, setImportMsg] = useState(null);
+  const [coller, setColler] = useState(false);
+  const [texteColle, setTexteColle] = useState("");
+  const [msgPdf, setMsgPdf] = useState(null);
   const commit = (next) => { setOrg(next); onSave(next); };
+  async function exporterPDF() {
+    setMsgPdf("Préparation du PDF...");
+    try { const jsPDF = await chargerJsPDF(); exporterPlateauPDF(jsPDF, tournoi.nom || "Plateau", org); setMsgPdf(null); }
+    catch (e) { setMsgPdf("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
+  }
   const nomDe = (id) => { const e = org.equipes.find((x) => x.id === id); return e ? e.nom : "?"; };
 
   function ajouterEquipe() {
@@ -7120,6 +7239,40 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
     if (!n || org.equipes.length >= 20) return;
     commit({ ...org, equipes: [...org.equipes, { id: uid(), nom: n }] });
     setNomEquipe("");
+  }
+  function traiterImportEquipes(texte) {
+    try {
+      let t = String(texte || "").trim();
+      const deb = t.indexOf("{") >= 0 ? t.indexOf("{") : t.indexOf("[");
+      const fin = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
+      if (deb >= 0 && fin > deb) t = t.slice(deb, fin + 1);
+      const parsed = JSON.parse(t);
+      const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.equipes) ? parsed.equipes : null);
+      if (!arr) throw new Error("format");
+      const noms = arr.map((x) => (typeof x === "string" ? x : (x && x.nom) || "")).map((s) => String(s).trim()).filter(Boolean);
+      const existants = org.equipes.map((e) => e.nom.toLowerCase());
+      let ajout = 0, ignore = 0;
+      const nouvelles = [...org.equipes];
+      noms.forEach((n) => {
+        if (nouvelles.length >= 20) { ignore++; return; }
+        if (existants.includes(n.toLowerCase())) { ignore++; return; }
+        nouvelles.push({ id: uid(), nom: n });
+        existants.push(n.toLowerCase());
+        ajout++;
+      });
+      commit({ ...org, equipes: nouvelles });
+      setImportMsg(`${ajout} équipe(s) importée(s).` + (ignore ? ` ${ignore} ignorée(s) (doublons ou limite de 20 atteinte).` : ""));
+      return true;
+    } catch (e) { setImportMsg("Contenu non valide. Vérifie que c'est bien le JSON des équipes."); return false; }
+  }
+  function importerEquipes(ev) {
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => traiterImportEquipes(reader.result);
+    reader.onerror = () => setImportMsg("Lecture du fichier impossible.");
+    reader.readAsText(f);
   }
   function suppEquipe(id) {
     commit({
@@ -7209,12 +7362,24 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
       </header>
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+        <Btn variant="accent" full onClick={exporterPDF}><FileDown size={16} /> Exporter le planning et les classements en PDF</Btn>
+        {msgPdf && <div style={{ fontSize: 12.5, color: C.encre, background: C.fond, borderRadius: 10, padding: 10, marginTop: 8 }}>{msgPdf}</div>}
+        <div style={{ fontSize: 11.5, color: C.gris, margin: "8px 0 4px", lineHeight: 1.5 }}>Marche à suivre : 1) ajoutez les équipes, 2) réglez le planning et touchez « Organiser le planning », 3) saisissez les scores dans les poules. Le classement et le PDF se mettent à jour tout seuls.</div>
+
         {/* EQUIPES */}
         <div style={titreSection}>Équipes ({org.equipes.length} / 20)</div>
-        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
           <Inp value={nomEquipe} onChange={(e) => setNomEquipe(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") ajouterEquipe(); }} placeholder="Nom de l'équipe" style={{ flex: 1 }} />
           <Btn variant="accent" onClick={ajouterEquipe} disabled={!nomEquipe.trim() || org.equipes.length >= 20}><Plus size={16} /></Btn>
         </div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "9px 12px", fontWeight: 700, fontSize: 13, color: C.encre, background: "#fff" }}>
+            <Upload size={16} /> Importer un fichier
+            <input type="file" accept=".json,application/json,text/plain,text/json,*/*" onChange={importerEquipes} style={{ display: "none" }} />
+          </label>
+          <Btn variant="ghost" onClick={() => { setColler(true); setTexteColle(""); }}><ClipboardList size={16} /> Coller le JSON</Btn>
+        </div>
+        {importMsg && <div style={{ fontSize: 12.5, color: importMsg.includes("non valide") || importMsg.includes("impossible") ? C.rouge : C.vert, fontWeight: 700, marginBottom: 10, textAlign: "center" }}>{importMsg}</div>}
         {org.equipes.length === 0 ? (
           <div style={{ fontSize: 13, color: C.gris, marginBottom: 6 }}>Ajoute d'abord les équipes (jusqu'à 20), puis répartis-les en poules.</div>
         ) : (
@@ -7429,6 +7594,14 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
         ))}
         <div style={{ height: 20 }} />
       </div>
+
+      {coller && (
+        <Modal title="Coller le JSON des équipes" onClose={() => setColler(false)}
+          footer={<Btn variant="accent" full disabled={!texteColle.trim()} onClick={() => { if (traiterImportEquipes(texteColle)) setColler(false); }}><Save size={16} /> Importer</Btn>}>
+          <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Colle ici le contenu du fichier JSON des équipes, puis touche Importer.</div>
+          <textarea value={texteColle} onChange={(e) => setTexteColle(e.target.value)} rows={10} placeholder='{ "equipes": [ "Equipe 1", "Equipe 2" ] }' style={{ width: "100%", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 11, fontSize: 12.5, fontFamily: "monospace", resize: "vertical", boxSizing: "border-box" }} />
+        </Modal>
+      )}
     </div>
   );
 }
