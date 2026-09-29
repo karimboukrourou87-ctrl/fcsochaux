@@ -7253,14 +7253,16 @@ function exporterPlateauPDF(jsPDF, titre, org) {
 }
 
 function OrganiserPlateau({ tournoi, onClose, onSave }) {
-  const defaut = { regle: { v: 3, n: 1, d: 0 }, equipes: [], poules: [], finales: [], planningConf: { nbEquipes: "", nbTerrains: 2, debut: "09:00", duree: 10, pause: 2, retour: false }, planning: [] };
-  const [org, setOrg] = useState(() => ({ ...defaut, ...(tournoi.organisation || {}), regle: { ...defaut.regle, ...((tournoi.organisation || {}).regle || {}) }, planningConf: { ...defaut.planningConf, ...((tournoi.organisation || {}).planningConf || {}) } }));
+  const defaut = { regle: { v: 3, n: 1, d: 0 }, equipes: [], poules: [], finales: [], planningConf: { nbEquipes: "", nbTerrains: 2, debut: "09:00", duree: 10, pause: 2, retour: false }, planning: [], qualifConf: { nbFinale: 2 } };
+  const [org, setOrg] = useState(() => ({ ...defaut, ...(tournoi.organisation || {}), regle: { ...defaut.regle, ...((tournoi.organisation || {}).regle || {}) }, planningConf: { ...defaut.planningConf, ...((tournoi.organisation || {}).planningConf || {}) }, qualifConf: { ...defaut.qualifConf, ...((tournoi.organisation || {}).qualifConf || {}) } }));
   const [nomEquipe, setNomEquipe] = useState("");
   const [importMsg, setImportMsg] = useState(null);
   const [coller, setColler] = useState(false);
   const [texteColle, setTexteColle] = useState("");
   const [msgPdf, setMsgPdf] = useState(null);
+  const [msgSave, setMsgSave] = useState(null);
   const commit = (next) => { setOrg(next); onSave(next); };
+  function enregistrerManuel() { onSave(org); setMsgSave("Modifications enregistrées"); setTimeout(() => setMsgSave(null), 2500); }
   async function exporterPDF() {
     setMsgPdf("Préparation du PDF...");
     try { const jsPDF = await chargerJsPDF(); exporterPlateauPDF(jsPDF, tournoi.nom || "Plateau", org); setMsgPdf(null); }
@@ -7326,17 +7328,42 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
     const matchs = dedans ? (p.matchs || []).filter((m) => m.aId !== eid && m.bId !== eid) : (p.matchs || []);
     majPoule(pid, { equipeIds: ids, matchs });
   }
+  function rencontresEtalees(ids, existingMatchs) {
+    const existants = {};
+    (existingMatchs || []).forEach((m) => { existants[[m.aId, m.bId].sort().join("-")] = m; });
+    const rounds = roundsRoundRobin(ids || []);
+    let pairs = [];
+    rounds.forEach((round) => round.forEach((pr) => pairs.push(pr)));
+    const rest = pairs.slice(); const ordered = []; let last = [];
+    while (rest.length) {
+      let idx = rest.findIndex((pr) => !last.includes(pr[0]) && !last.includes(pr[1]));
+      if (idx < 0) idx = 0;
+      const pr = rest.splice(idx, 1)[0];
+      ordered.push(pr); last = pr;
+    }
+    return ordered.map((pr) => { const cle = [pr[0], pr[1]].sort().join("-"); return existants[cle] || { id: uid(), aId: pr[0], bId: pr[1], sa: "", sb: "" }; });
+  }
   function genererMatchs(pid) {
     const p = org.poules.find((x) => x.id === pid);
-    const ids = p.equipeIds || [];
-    const existants = {};
-    (p.matchs || []).forEach((m) => { existants[[m.aId, m.bId].sort().join("-")] = m; });
-    const ms = [];
-    for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
-      const cle = [ids[i], ids[j]].sort().join("-");
-      ms.push(existants[cle] || { id: uid(), aId: ids[i], bId: ids[j], sa: "", sb: "" });
-    }
-    majPoule(pid, { matchs: ms });
+    majPoule(pid, { matchs: rencontresEtalees(p.equipeIds || [], p.matchs) });
+  }
+  function repartirQualifies() {
+    const nb = Math.max(0, Number(org.qualifConf && org.qualifConf.nbFinale) || 0);
+    const base = org.poules.filter((p) => !p.phase);
+    const fin = [], clsmt = [];
+    base.forEach((p) => {
+      const cl = classementPoule(p.equipeIds, p.matchs, org.equipes, org.regle);
+      cl.forEach((r, idx) => { (idx < nb ? fin : clsmt).push(r.id); });
+    });
+    const build = (existing, ids, nom, tag) => ({ id: (existing && existing.id) || uid(), nom, temps: (existing && existing.temps) != null ? existing.temps : 10, equipeIds: ids, matchs: rencontresEtalees(ids, existing && existing.matchs), phase: tag });
+    const exF = org.poules.find((p) => p.phase === "finale");
+    const exC = org.poules.find((p) => p.phase === "classement");
+    const nouvelles = org.poules.filter((p) => !p.phase);
+    if (fin.length) nouvelles.push(build(exF, fin, "Poule phase finale", "finale"));
+    if (clsmt.length) nouvelles.push(build(exC, clsmt, "Poule phase de classement", "classement"));
+    commit({ ...org, poules: nouvelles });
+    setMsgSave(`Qualifiés répartis : ${fin.length} en phase finale, ${clsmt.length} en phase de classement.`);
+    setTimeout(() => setMsgSave(null), 3500);
   }
   function majMatchPoule(pid, mid, patch) {
     const p = org.poules.find((x) => x.id === pid);
@@ -7393,6 +7420,9 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
   })();
   const nomTeamPlan = (id) => { const t = (org.planningTeams || []).find((x) => x.id === id); return t ? t.nom : id; };
 
+  const boutonExport = (label) => (
+    <Btn variant="accent" full style={{ margin: "6px 0 14px" }} onClick={exporterPDF}><FileDown size={16} /> {label || "Exporter en PDF (planning et classements)"}</Btn>
+  );
   const styleInputScore = { width: 42, textAlign: "center", border: `1px solid ${C.grisClair}`, borderRadius: 8, padding: "7px 0", fontSize: 15, fontWeight: 800, boxSizing: "border-box" };
   const styleSelEq = { flex: 1, minWidth: 0, border: `1px solid ${C.grisClair}`, borderRadius: 8, padding: "7px 8px", fontSize: 13, background: "#fff" };
   const titreSection = { fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "18px 0 8px" };
@@ -7401,11 +7431,13 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 70, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "16px 16px 14px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontWeight: 800, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Plateau · {tournoi.nom || "Tournoi"}</div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Équipes, poules, phases finales et classement</div>
         </div>
+        <button onClick={enregistrerManuel} style={{ border: "none", background: C.jaune, color: C.bleuNuit, borderRadius: 10, padding: "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 800, flex: "0 0 auto" }}><Save size={16} /> Enregistrer</button>
       </header>
+      {msgSave && <div style={{ background: "#E2F4E9", color: C.vert, fontWeight: 700, fontSize: 13, textAlign: "center", padding: "8px 12px" }}>{msgSave}</div>}
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
         <Btn variant="accent" full onClick={exporterPDF}><FileDown size={16} /> Exporter le planning et les classements en PDF</Btn>
@@ -7557,10 +7589,12 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
           </Card>
         )}
 
+        {((org.planning || []).length > 0 || classementGeneral.length > 0) && boutonExport("Exporter le planning et le classement en PDF")}
+
         {/* POULES */}
         <div style={titreSection}>Poules</div>
         <Btn variant="ghost" full style={{ marginBottom: 12 }} onClick={ajouterPoule}><Plus size={16} /> Ajouter une poule</Btn>
-        {org.poules.map((p) => {
+        {org.poules.filter((p) => !p.phase).map((p) => {
           const classement = classementPoule(p.equipeIds, p.matchs, org.equipes, org.regle);
           return (
             <Card key={p.id} style={{ marginBottom: 14, padding: 13 }}>
@@ -7644,6 +7678,90 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
           );
         })}
 
+        {org.poules.filter((p) => !p.phase).length > 0 && boutonExport("Exporter en PDF")}
+
+        {/* PHASES SUIVANTES : QUALIFICATION */}
+        {org.poules.filter((p) => !p.phase).length > 0 && (
+          <>
+            <div style={titreSection}>Phases suivantes (qualification)</div>
+            <Card style={{ marginBottom: 12, padding: 13 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <div style={{ flex: 1, fontSize: 13, color: C.encre, fontWeight: 700 }}>Équipes qualifiées par poule pour la phase finale</div>
+                <Inp type="number" value={(org.qualifConf || {}).nbFinale} onChange={(e) => commit({ ...org, qualifConf: { ...(org.qualifConf || {}), nbFinale: e.target.value === "" ? "" : Number(e.target.value) } })} style={{ width: 64 }} />
+              </div>
+              <Btn variant="accent" full onClick={repartirQualifies}><ListOrdered size={16} /> Répartir les équipes qualifiées</Btn>
+              <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Les mieux classées de chaque poule vont dans la « Poule phase finale », les autres dans la « Poule phase de classement ». Les équipes sont reportées automatiquement depuis les classements, sans les ressaisir. Relance la répartition si les résultats des poules changent.</div>
+            </Card>
+
+            {org.poules.filter((p) => p.phase).map((p) => {
+              const classement = classementPoule(p.equipeIds, p.matchs, org.equipes, org.regle);
+              return (
+                <Card key={p.id} style={{ marginBottom: 14, padding: 13, borderColor: p.phase === "finale" ? C.jaune : C.grisClair }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+                    <div style={{ flex: 1, fontWeight: 800, fontSize: 15, color: p.phase === "finale" ? C.jauneFonce : C.encre }}>{p.nom}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, background: C.fond, borderRadius: 9, padding: "0 8px" }}>
+                      <Timer size={15} color={C.bleu} />
+                      <input type="number" value={p.temps} onChange={(e) => majPoule(p.id, { temps: e.target.value === "" ? "" : Number(e.target.value) })} style={{ width: 42, border: "none", background: "transparent", fontSize: 15, fontWeight: 800, textAlign: "center", padding: "9px 0", color: C.encre }} />
+                      <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>min</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 6 }}>Équipes qualifiées</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                    {(p.equipeIds || []).map((eid) => <span key={eid} style={{ background: "#EAF0F8", color: C.bleu, borderRadius: 18, padding: "6px 11px", fontSize: 12.5, fontWeight: 800 }}>{nomDe(eid)}</span>)}
+                  </div>
+                  {(p.equipeIds || []).length >= 2 && (
+                    <Btn variant="ghost" full size="sm" style={{ marginBottom: 10 }} onClick={() => genererMatchs(p.id)}><ListOrdered size={15} /> Régénérer les rencontres</Btn>
+                  )}
+                  {(p.matchs || []).length > 0 && (
+                    <div style={{ display: "grid", gap: 7, marginBottom: 12 }}>
+                      {p.matchs.map((m) => (
+                        <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                          <div style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.aId)}</div>
+                          <input type="number" value={m.sa} onChange={(e) => majMatchPoule(p.id, m.id, { sa: e.target.value })} style={styleInputScore} />
+                          <span style={{ color: C.gris, fontWeight: 800 }}>-</span>
+                          <input type="number" value={m.sb} onChange={(e) => majMatchPoule(p.id, m.id, { sb: e.target.value })} style={styleInputScore} />
+                          <div style={{ flex: 1, fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.bId)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {classement.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 }}>Classement</div>
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                          <thead>
+                            <tr style={{ color: C.gris, textAlign: "center" }}>
+                              <th style={{ textAlign: "left", padding: "4px 4px", fontWeight: 700 }}>Équipe</th>
+                              {["Pts", "J", "G", "N", "P", "BP", "BC", "Diff"].map((c) => <th key={c} style={{ padding: "4px 3px", fontWeight: 700 }}>{c}</th>)}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {classement.map((r, i) => (
+                              <tr key={r.id} style={{ borderTop: `1px solid ${C.grisClair}`, textAlign: "center", background: i === 0 ? "#FBF6E6" : "transparent" }}>
+                                <td style={{ textAlign: "left", padding: "6px 4px", fontWeight: 800 }}><span style={{ color: C.gris, marginRight: 6 }}>{i + 1}.</span>{nomDe(r.id)}</td>
+                                <td style={{ padding: "6px 3px", fontWeight: 900, color: C.bleuNuit }}>{r.pts}</td>
+                                <td style={{ padding: "6px 3px" }}>{r.j}</td>
+                                <td style={{ padding: "6px 3px" }}>{r.g}</td>
+                                <td style={{ padding: "6px 3px" }}>{r.n}</td>
+                                <td style={{ padding: "6px 3px" }}>{r.p}</td>
+                                <td style={{ padding: "6px 3px" }}>{r.bp}</td>
+                                <td style={{ padding: "6px 3px" }}>{r.bc}</td>
+                                <td style={{ padding: "6px 3px", fontWeight: 700 }}>{r.bp - r.bc > 0 ? "+" : ""}{r.bp - r.bc}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+            {org.poules.filter((p) => p.phase).length > 0 && boutonExport("Exporter en PDF")}
+          </>
+        )}
+
         {/* PHASES FINALES */}
         <div style={titreSection}>Phases finales</div>
         <Btn variant="ghost" full style={{ marginBottom: 12 }} onClick={ajouterFinale}><Plus size={16} /> Ajouter une phase finale</Btn>
@@ -7679,6 +7797,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
             <Btn variant="ghost" full size="sm" onClick={() => ajouterMatchFinale(f.id)}><Plus size={15} /> Ajouter une rencontre</Btn>
           </Card>
         ))}
+        {boutonExport("Exporter le tout en PDF")}
         <div style={{ height: 20 }} />
       </div>
 
