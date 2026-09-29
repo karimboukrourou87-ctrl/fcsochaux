@@ -3686,7 +3686,7 @@ function Matchs({ players, cat, catInfo, db, mutate, peutValider, profil }) {
   }
   function nouveauPlateau(type) {
     const id = uid();
-    mutate((d) => { d.matches.push({ id, cat, type, lieu: "Domicile", buteurs: {}, passeurs: {}, tempsJeu: {}, notes: {} }); return d; });
+    mutate((d) => { d.matches.push({ id, cat, type, lieu: "Domicile", date: hoyISO(), buteurs: {}, passeurs: {}, tempsJeu: {}, notes: {} }); return d; });
     setOrgaMatch(id);
   }
   const tous = db.matches.filter((m) => m.cat === cat).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -3695,7 +3695,8 @@ function Matchs({ players, cat, catInfo, db, mutate, peutValider, profil }) {
     if (!set.includes(saisonCourante())) set.push(saisonCourante());
     return set.sort().reverse();
   })();
-  const parSaison = tous.filter((m) => saisonDe(m.date) === saisonSel);
+  // un match sans date reste visible dans la saison en cours pour ne jamais disparaître
+  const parSaison = tous.filter((m) => { const s = saisonDe(m.date); return s ? s === saisonSel : saisonSel === saisonCourante(); });
   const matches = filtre === "Tous" ? parSaison : parSaison.filter((m) => (m.type || "Championnat") === filtre);
 
   return (
