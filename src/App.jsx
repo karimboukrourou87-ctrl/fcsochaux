@@ -7350,11 +7350,13 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
   function repartirQualifies() {
     const nb = Math.max(0, Number(org.qualifConf && org.qualifConf.nbFinale) || 0);
     const base = org.poules.filter((p) => !p.phase);
+    // on qualifie depuis les poules manuelles si elles existent, sinon depuis le classement général du planning
+    const groupes = base.length
+      ? base.map((p) => classementPoule(p.equipeIds, p.matchs, org.equipes, org.regle))
+      : (classementGeneral.length ? [classementGeneral] : []);
+    if (!groupes.length) { setMsgSave("Saisis d'abord des scores (dans le planning ou dans des poules)."); setTimeout(() => setMsgSave(null), 3500); return; }
     const fin = [], clsmt = [];
-    base.forEach((p) => {
-      const cl = classementPoule(p.equipeIds, p.matchs, org.equipes, org.regle);
-      cl.forEach((r, idx) => { (idx < nb ? fin : clsmt).push(r.id); });
-    });
+    groupes.forEach((cl) => cl.forEach((r, idx) => { (idx < nb ? fin : clsmt).push(r.id); }));
     const build = (existing, ids, nom, tag) => ({ id: (existing && existing.id) || uid(), nom, temps: (existing && existing.temps) != null ? existing.temps : 10, equipeIds: ids, matchs: rencontresEtalees(ids, existing && existing.matchs), phase: tag });
     const exF = org.poules.find((p) => p.phase === "finale");
     const exC = org.poules.find((p) => p.phase === "classement");
@@ -7681,16 +7683,16 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
         {org.poules.filter((p) => !p.phase).length > 0 && boutonExport("Exporter en PDF")}
 
         {/* PHASES SUIVANTES : QUALIFICATION */}
-        {org.poules.filter((p) => !p.phase).length > 0 && (
+        {(org.poules.filter((p) => !p.phase).length > 0 || classementGeneral.length > 0) && (
           <>
             <div style={titreSection}>Phases suivantes (qualification)</div>
             <Card style={{ marginBottom: 12, padding: 13 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                <div style={{ flex: 1, fontSize: 13, color: C.encre, fontWeight: 700 }}>Équipes qualifiées par poule pour la phase finale</div>
+                <div style={{ flex: 1, fontSize: 13, color: C.encre, fontWeight: 700 }}>Équipes qualifiées pour la phase finale{org.poules.filter((p) => !p.phase).length > 0 ? " (par poule)" : ""}</div>
                 <Inp type="number" value={(org.qualifConf || {}).nbFinale} onChange={(e) => commit({ ...org, qualifConf: { ...(org.qualifConf || {}), nbFinale: e.target.value === "" ? "" : Number(e.target.value) } })} style={{ width: 64 }} />
               </div>
               <Btn variant="accent" full onClick={repartirQualifies}><ListOrdered size={16} /> Répartir les équipes qualifiées</Btn>
-              <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Les mieux classées de chaque poule vont dans la « Poule phase finale », les autres dans la « Poule phase de classement ». Les équipes sont reportées automatiquement depuis les classements, sans les ressaisir. Relance la répartition si les résultats des poules changent.</div>
+              <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Les mieux classées vont dans la « Poule phase finale », les autres dans la « Poule phase de classement ». Les équipes sont reportées automatiquement depuis le classement (celui du planning, ou celui des poules si vous en avez créé), sans les ressaisir. Relance la répartition si les résultats changent.</div>
             </Card>
 
             {org.poules.filter((p) => p.phase).map((p) => {
