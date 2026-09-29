@@ -7172,12 +7172,46 @@ function exporterPlateauPDF(jsPDF, titre, org) {
       (s.matchs || []).forEach((m) => {
         sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(`Terrain ${m.terrain}`, M + 8, y);
         sc(encre); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
-        doc.text(`${m.a}   contre   ${m.b}`, M + 70, y);
+        const aScore = m.sa !== "" && m.sa != null, bScore = m.sb !== "" && m.sb != null;
+        const milieu = (aScore || bScore) ? `   ${aScore ? m.sa : "-"}  -  ${bScore ? m.sb : "-"}   ` : "   contre   ";
+        doc.text(`${m.a}${milieu}${m.b}`, M + 70, y);
         y += 15;
       });
       y += 6;
     });
     y += 8;
+  }
+
+  // Classement général (à partir du planning)
+  const teamsPlan = org.planningTeams || [];
+  if (teamsPlan.length) {
+    const matchsPlan = [];
+    (org.planning || []).forEach((s) => (s.matchs || []).forEach((m) => { if (m.aId && m.bId) matchsPlan.push(m); }));
+    const cg = classementPoule(teamsPlan.map((t) => t.id), matchsPlan, teamsPlan, regle);
+    const nomTeam = (id) => { const t = teamsPlan.find((x) => x.id === id); return t ? t.nom : "?"; };
+    if (cg.length) {
+      place(40 + cg.length * 16);
+      sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text("Classement général", M, y); y += 8;
+      sd(trait); doc.line(M, y, W - M, y); y += 14;
+      const cols = ["Pts", "J", "G", "N", "P", "BP", "BC", "Diff"];
+      const xEq = M + 22, xNumStart = 300, colW = (W - M - xNumStart) / cols.length;
+      const colRight = (i) => xNumStart + (i + 1) * colW - 4;
+      sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+      doc.text("Équipe", xEq, y);
+      cols.forEach((c, i) => { const w = doc.getTextWidth(c); doc.text(c, colRight(i) - w, y); });
+      y += 4; sd(trait); doc.line(M, y, W - M, y); y += 12;
+      cg.forEach((r, idx) => {
+        if (idx === 0) { sf([251, 246, 230]); doc.rect(M, y - 10, W - 2 * M, 15, "F"); }
+        sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(String(idx + 1), M, y);
+        sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+        const nom = doc.splitTextToSize(nomTeam(r.id), xNumStart - xEq - 6)[0];
+        doc.text(nom, xEq, y);
+        const vals = [r.pts, r.j, r.g, r.n, r.p, r.bp, r.bc, (r.bp - r.bc > 0 ? "+" : "") + (r.bp - r.bc)];
+        vals.forEach((v, i) => { sc(i === 0 ? navy : encre); doc.setFont("helvetica", i === 0 ? "bold" : "normal"); doc.setFontSize(9.5); const t = String(v); const w = doc.getTextWidth(t); doc.text(t, colRight(i) - w, y); });
+        y += 15;
+      });
+      y += 14;
+    }
   }
 
   // Classements des poules
@@ -7327,9 +7361,9 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
     let nb = Number(conf.nbEquipes);
     if (!nb || nb < 2) nb = org.equipes.length;
     if (!nb || nb < 2) { commit({ ...org, planning: [] }); return; }
-    const labels = [];
-    for (let i = 0; i < nb; i++) labels.push(org.equipes[i] ? org.equipes[i].nom : `Équipe ${i + 1}`);
-    const allerRounds = roundsRoundRobin(labels);
+    const teams = [];
+    for (let i = 0; i < nb; i++) teams.push(org.equipes[i] ? { id: org.equipes[i].id, nom: org.equipes[i].nom } : { id: "g" + (i + 1), nom: `Équipe ${i + 1}` });
+    const allerRounds = roundsRoundRobin(teams);
     const duree = Math.max(1, Number(conf.duree) || 10);
     const pause = Math.max(0, Number(conf.pause) || 0);
     const groupes = [{ phase: conf.retour ? "Aller" : "", rounds: allerRounds }];
@@ -7339,13 +7373,25 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
     groupes.forEach((g) => g.rounds.forEach((round) => {
       for (let i = 0; i < round.length; i += nbT) {
         const chunk = round.slice(i, i + nbT);
-        slots.push({ heure: addMinutesHM(conf.debut, idx * (duree + pause)), phase: g.phase, matchs: chunk.map((pair, k) => ({ terrain: k + 1, a: pair[0], b: pair[1] })) });
+        slots.push({ heure: addMinutesHM(conf.debut, idx * (duree + pause)), phase: g.phase, matchs: chunk.map((pair, k) => ({ id: uid(), terrain: k + 1, aId: pair[0].id, bId: pair[1].id, a: pair[0].nom, b: pair[1].nom, sa: "", sb: "" })) });
         idx++;
       }
     }));
-    commit({ ...org, planningConf: { ...conf, nbEquipes: nb }, planning: slots });
+    commit({ ...org, planningConf: { ...conf, nbEquipes: nb }, planning: slots, planningTeams: teams });
   }
-  function effacerPlanning() { commit({ ...org, planning: [] }); }
+  function effacerPlanning() { commit({ ...org, planning: [], planningTeams: [] }); }
+  function majScorePlanning(si, mid, patch) {
+    const slots = (org.planning || []).map((s, i) => i === si ? { ...s, matchs: (s.matchs || []).map((m) => m.id === mid ? { ...m, ...patch } : m) } : s);
+    commit({ ...org, planning: slots });
+  }
+  const classementGeneral = (() => {
+    const teams = org.planningTeams || [];
+    if (!teams.length) return [];
+    const matchs = [];
+    (org.planning || []).forEach((s) => (s.matchs || []).forEach((m) => { if (m.aId && m.bId) matchs.push(m); }));
+    return classementPoule(teams.map((t) => t.id), matchs, teams, org.regle);
+  })();
+  const nomTeamPlan = (id) => { const t = (org.planningTeams || []).find((x) => x.id === id); return t ? t.nom : id; };
 
   const styleInputScore = { width: 42, textAlign: "center", border: `1px solid ${C.grisClair}`, borderRadius: 8, padding: "7px 0", fontSize: 15, fontWeight: 800, boxSizing: "border-box" };
   const styleSelEq = { flex: 1, minWidth: 0, border: `1px solid ${C.grisClair}`, borderRadius: 8, padding: "7px 8px", fontSize: 13, background: "#fff" };
@@ -7456,17 +7502,58 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
                   <div style={{ background: C.bleuNuit, color: "#fff", padding: "7px 11px", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}><Timer size={14} /> {s.heure}{s.phase ? <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,0.18)", borderRadius: 7, padding: "2px 8px" }}>{s.phase}</span> : null}</div>
                   <div style={{ display: "grid", gap: 1, background: C.grisClair }}>
                     {s.matchs.map((m, k) => (
-                      <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", padding: "9px 11px" }}>
-                        <span style={{ flex: "0 0 auto", fontSize: 11, fontWeight: 800, color: C.bleu, background: "#EAF0F8", borderRadius: 7, padding: "3px 7px" }}>Terrain {m.terrain}</span>
-                        <span style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.a}</span>
-                        <span style={{ color: C.gris, fontWeight: 800, fontSize: 12 }}>contre</span>
-                        <span style={{ flex: 1, fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.b}</span>
+                      <div key={m.id || k} style={{ background: "#fff", padding: "9px 11px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: m.aId ? 7 : 0 }}>
+                          <span style={{ flex: "0 0 auto", fontSize: 11, fontWeight: 800, color: C.bleu, background: "#EAF0F8", borderRadius: 7, padding: "3px 7px" }}>Terrain {m.terrain}</span>
+                          <span style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.a}</span>
+                          <span style={{ color: C.gris, fontWeight: 800, fontSize: 12 }}>contre</span>
+                          <span style={{ flex: 1, fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.b}</span>
+                        </div>
+                        {m.aId && (
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                            <input type="number" inputMode="numeric" value={m.sa ?? ""} onChange={(e) => majScorePlanning(i, m.id, { sa: e.target.value })} placeholder="-" style={styleInputScore} />
+                            <span style={{ color: C.gris, fontWeight: 800 }}>-</span>
+                            <input type="number" inputMode="numeric" value={m.sb ?? ""} onChange={(e) => majScorePlanning(i, m.id, { sb: e.target.value })} placeholder="-" style={styleInputScore} />
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
                 </div>
               ))}
             </div>
+          </Card>
+        )}
+
+        {classementGeneral.length > 0 && (
+          <Card style={{ marginBottom: 12, padding: 13 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8 }}>Classement général</div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                <thead>
+                  <tr style={{ color: C.gris, textAlign: "center" }}>
+                    <th style={{ textAlign: "left", padding: "4px 4px", fontWeight: 700 }}>Équipe</th>
+                    {["Pts", "J", "G", "N", "P", "BP", "BC", "Diff"].map((c) => <th key={c} style={{ padding: "4px 3px", fontWeight: 700 }}>{c}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {classementGeneral.map((r, i) => (
+                    <tr key={r.id} style={{ borderTop: `1px solid ${C.grisClair}`, textAlign: "center", background: i === 0 ? "#FBF6E6" : "transparent" }}>
+                      <td style={{ textAlign: "left", padding: "6px 4px", fontWeight: 800 }}><span style={{ color: C.gris, marginRight: 6 }}>{i + 1}.</span>{nomTeamPlan(r.id)}</td>
+                      <td style={{ padding: "6px 3px", fontWeight: 900, color: C.bleuNuit }}>{r.pts}</td>
+                      <td style={{ padding: "6px 3px" }}>{r.j}</td>
+                      <td style={{ padding: "6px 3px" }}>{r.g}</td>
+                      <td style={{ padding: "6px 3px" }}>{r.n}</td>
+                      <td style={{ padding: "6px 3px" }}>{r.p}</td>
+                      <td style={{ padding: "6px 3px" }}>{r.bp}</td>
+                      <td style={{ padding: "6px 3px" }}>{r.bc}</td>
+                      <td style={{ padding: "6px 3px", fontWeight: 700 }}>{r.bp - r.bc > 0 ? "+" : ""}{r.bp - r.bc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Ce classement se calcule tout seul à partir des scores saisis sur le planning ci-dessus.</div>
           </Card>
         )}
 
