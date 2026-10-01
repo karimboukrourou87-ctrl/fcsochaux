@@ -5413,7 +5413,7 @@ function Entrainements({ players, cat, db, mutate }) {
                 const t = en.training;
                 const pres = Object.values(t?.presence || {});
                 const nbPres = pres.filter((x) => x === "present" || x === "retard").length;
-                const nbAbs = pres.filter((x) => x === "absent" || x === "malade").length;
+                const nbAbs = pres.filter((x) => x === "absent" || x === "malade" || x === "blesse").length;
                 const nbBl = pres.filter((x) => x === "blesse").length;
                 return (
                   <Card key={en.date} onClick={() => t ? setOpen(t) : setEdit({ cat, date: en.date, presence: {} })}>
@@ -5511,7 +5511,7 @@ function Entrainements({ players, cat, db, mutate }) {
                 {toutes.map((t) => {
                   const pres = Object.values(t.presence || {});
                   const nbPres = pres.filter((x) => x === "present" || x === "retard").length;
-                  const nbAbs = pres.filter((x) => x === "absent" || x === "malade").length;
+                  const nbAbs = pres.filter((x) => x === "absent" || x === "malade" || x === "blesse").length;
                   return (
                     <div key={t.id} onClick={() => { setOpen(t); setHisto(false); }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "#fff", borderRadius: 11, border: `1px solid ${C.grisClair}`, cursor: "pointer" }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
