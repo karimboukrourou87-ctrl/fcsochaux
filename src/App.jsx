@@ -7254,7 +7254,7 @@ function exporterPlateauPDF(jsPDF, titre, org) {
 }
 
 function OrganiserPlateau({ tournoi, onClose, onSave }) {
-  const defaut = { regle: { v: 3, n: 1, d: 0 }, equipes: [], poules: [], finales: [], planningConf: { nbEquipes: "", nbTerrains: 2, debut: "09:00", duree: 10, pause: 2, retour: false }, planning: [], qualifConf: { nbFinale: 2 } };
+  const defaut = { regle: { v: 3, n: 1, d: 0 }, equipes: [], poules: [], finales: [], planningConf: { nbEquipes: "", nbTerrains: 2, debut: "09:00", duree: 10, pause: 2, retour: false }, planning: [], qualifConf: { nbFinale: 2 }, format: "simple" };
   const [org, setOrg] = useState(() => ({ ...defaut, ...(tournoi.organisation || {}), regle: { ...defaut.regle, ...((tournoi.organisation || {}).regle || {}) }, planningConf: { ...defaut.planningConf, ...((tournoi.organisation || {}).planningConf || {}) }, qualifConf: { ...defaut.qualifConf, ...((tournoi.organisation || {}).qualifConf || {}) } }));
   const [nomEquipe, setNomEquipe] = useState("");
   const [importMsg, setImportMsg] = useState(null);
@@ -7350,8 +7350,8 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
   }
   function repartirQualifies() {
     const nb = Math.max(0, Number(org.qualifConf && org.qualifConf.nbFinale) || 0);
-    const base = org.poules.filter((p) => !p.phase);
-    // on qualifie depuis les poules manuelles si elles existent, sinon depuis le classement général du planning
+    const base = org.poules.filter((p) => !p.phase && (p.equipeIds || []).length > 0);
+    // on qualifie depuis les poules manuelles non vides si elles existent, sinon depuis le classement général du planning
     const groupes = base.length
       ? base.map((p) => classementPoule(p.equipeIds, p.matchs, org.equipes, org.regle))
       : (classementGeneral.length ? [classementGeneral] : []);
@@ -7362,8 +7362,8 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
     const exF = org.poules.find((p) => p.phase === "finale");
     const exC = org.poules.find((p) => p.phase === "classement");
     const nouvelles = org.poules.filter((p) => !p.phase);
-    if (fin.length) nouvelles.push(build(exF, fin, "Poule phase finale", "finale"));
-    if (clsmt.length) nouvelles.push(build(exC, clsmt, "Poule phase de classement", "classement"));
+    if (fin.length) nouvelles.push(build(exF, fin, "Groupe fort (poule A)", "finale"));
+    if (clsmt.length) nouvelles.push(build(exC, clsmt, "Groupe de classement (poule B)", "classement"));
     commit({ ...org, poules: nouvelles });
     setMsgSave(`Qualifiés répartis : ${fin.length} en phase finale, ${clsmt.length} en phase de classement.`);
     setTimeout(() => setMsgSave(null), 3500);
@@ -7594,10 +7594,24 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
 
         {((org.planning || []).length > 0 || classementGeneral.length > 0) && boutonExport("Exporter le planning et le classement en PDF")}
 
-        {/* POULES */}
-        <div style={titreSection}>Poules</div>
-        <Btn variant="ghost" full style={{ marginBottom: 12 }} onClick={ajouterPoule}><Plus size={16} /> Ajouter une poule</Btn>
-        {org.poules.filter((p) => !p.phase).map((p) => {
+        {/* FORMAT DU TOURNOI */}
+        {((org.planning || []).length > 0 || classementGeneral.length > 0) && (
+          <>
+            <div style={titreSection}>Format du tournoi</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              {[["simple", "Classement simple"], ["groupes", "Deux groupes (qualification)"]].map(([val, lib]) => {
+                const on = (org.format || "simple") === val;
+                return <button key={val} onClick={() => commit({ ...org, format: val })} style={{ flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "11px 6px", fontSize: 12.5, fontWeight: 800, background: on ? C.bleu : C.grisClair, color: on ? "#fff" : C.gris }}>{lib}</button>;
+              })}
+            </div>
+            <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 14, lineHeight: 1.5 }}>{(org.format || "simple") === "groupes" ? "Après la phase de planning ci-dessus, les mieux classées forment un groupe fort (poule A), les autres un groupe de classement (poule B)." : "Un seul classement final, calculé depuis le planning ci-dessus. Rien d'autre à faire."}</div>
+          </>
+        )}
+
+        {/* POULES MANUELLES (optionnel, masquées par défaut) */}
+        {org.format === "manuel" && <div style={titreSection}>Poules</div>}
+        {org.format === "manuel" && <Btn variant="ghost" full style={{ marginBottom: 12 }} onClick={ajouterPoule}><Plus size={16} /> Ajouter une poule</Btn>}
+        {org.format === "manuel" && org.poules.filter((p) => !p.phase).map((p) => {
           const classement = classementPoule(p.equipeIds, p.matchs, org.equipes, org.regle);
           return (
             <Card key={p.id} style={{ marginBottom: 14, padding: 13 }}>
@@ -7681,19 +7695,19 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
           );
         })}
 
-        {org.poules.filter((p) => !p.phase).length > 0 && boutonExport("Exporter en PDF")}
+        {org.format === "manuel" && org.poules.filter((p) => !p.phase).length > 0 && boutonExport("Exporter en PDF")}
 
-        {/* PHASES SUIVANTES : QUALIFICATION */}
-        {(org.poules.filter((p) => !p.phase).length > 0 || classementGeneral.length > 0) && (
+        {/* GROUPES PAR QUALIFICATION */}
+        {org.format === "groupes" && (
           <>
-            <div style={titreSection}>Phases suivantes (qualification)</div>
+            <div style={titreSection}>Groupes par qualification</div>
             <Card style={{ marginBottom: 12, padding: 13 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                <div style={{ flex: 1, fontSize: 13, color: C.encre, fontWeight: 700 }}>Équipes qualifiées pour la phase finale{org.poules.filter((p) => !p.phase).length > 0 ? " (par poule)" : ""}</div>
+                <div style={{ flex: 1, fontSize: 13, color: C.encre, fontWeight: 700 }}>Équipes qualifiées pour le groupe fort (poule A)</div>
                 <Inp type="number" value={(org.qualifConf || {}).nbFinale} onChange={(e) => commit({ ...org, qualifConf: { ...(org.qualifConf || {}), nbFinale: e.target.value === "" ? "" : Number(e.target.value) } })} style={{ width: 64 }} />
               </div>
-              <Btn variant="accent" full onClick={repartirQualifies}><ListOrdered size={16} /> Répartir les équipes qualifiées</Btn>
-              <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Les mieux classées vont dans la « Poule phase finale », les autres dans la « Poule phase de classement ». Les équipes sont reportées automatiquement depuis le classement (celui du planning, ou celui des poules si vous en avez créé), sans les ressaisir. Relance la répartition si les résultats changent.</div>
+              <Btn variant="accent" full disabled={!classementGeneral.length} onClick={repartirQualifies}><ListOrdered size={16} /> Répartir automatiquement selon le classement</Btn>
+              <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>{classementGeneral.length ? "Les mieux classées du classement général vont dans le groupe fort (poule A), les autres dans le groupe de classement (poule B). Tout est reporté automatiquement, sans ressaisie. Relancez si les résultats changent." : "Saisissez d'abord les scores du planning pour obtenir un classement."}</div>
             </Card>
 
             {org.poules.filter((p) => p.phase).map((p) => {
