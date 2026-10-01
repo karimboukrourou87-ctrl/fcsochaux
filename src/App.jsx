@@ -7163,6 +7163,14 @@ function exporterPlateauPDF(jsPDF, titre, org) {
     sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text("Planning des rencontres", M, y); y += 8;
     sd(trait); doc.line(M, y, W - M, y); y += 14;
     plan.forEach((s) => {
+      if (s.repas) {
+        place(24);
+        sf([255, 248, 230]); doc.rect(M, y - 11, W - 2 * M, 17, "F");
+        sc([184, 122, 43]); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+        doc.text(`${s.heure || ""}  -  Pause repas${s.duree ? ` (${s.duree} min)` : ""}`, M + 8, y + 1);
+        y += 26;
+        return;
+      }
       const hMatchs = (s.matchs || []).length;
       place(22 + hMatchs * 15 + 8);
       sf(navy); doc.rect(M, y - 11, W - 2 * M, 17, "F");
@@ -7254,7 +7262,7 @@ function exporterPlateauPDF(jsPDF, titre, org) {
 }
 
 function OrganiserPlateau({ tournoi, onClose, onSave }) {
-  const defaut = { regle: { v: 3, n: 1, d: 0 }, equipes: [], poules: [], finales: [], planningConf: { nbEquipes: "", nbTerrains: 2, debut: "09:00", duree: 10, pause: 2, retour: false }, planning: [], qualifConf: { nbFinale: 2 }, format: "simple" };
+  const defaut = { regle: { v: 3, n: 1, d: 0 }, equipes: [], poules: [], finales: [], planningConf: { nbEquipes: "", nbTerrains: 2, debut: "09:00", fin: "", duree: 10, pause: 2, repas: 0, retour: false, auto: false }, planning: [], qualifConf: { nbFinale: 2 }, format: "simple" };
   const [org, setOrg] = useState(() => ({ ...defaut, ...(tournoi.organisation || {}), regle: { ...defaut.regle, ...((tournoi.organisation || {}).regle || {}) }, planningConf: { ...defaut.planningConf, ...((tournoi.organisation || {}).planningConf || {}) }, qualifConf: { ...defaut.qualifConf, ...((tournoi.organisation || {}).qualifConf || {}) } }));
   const [nomEquipe, setNomEquipe] = useState("");
   const [importMsg, setImportMsg] = useState(null);
@@ -7365,7 +7373,30 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
     if (fin.length) nouvelles.push(build(exF, fin, "Groupe fort (poule A)", "finale"));
     if (clsmt.length) nouvelles.push(build(exC, clsmt, "Groupe de classement (poule B)", "classement"));
     commit({ ...org, poules: nouvelles });
-    setMsgSave(`Qualifiés répartis : ${fin.length} en phase finale, ${clsmt.length} en phase de classement.`);
+    setMsgSave(`Qualifiés répartis : ${fin.length} dans le groupe fort, ${clsmt.length} dans le groupe de classement.`);
+    setTimeout(() => setMsgSave(null), 3500);
+  }
+  function genererFinales() {
+    const nouvelles = [...(org.finales || [])];
+    const upsert = (nom, tempsDefaut, aId, bId, tag) => {
+      const i = nouvelles.findIndex((f) => f.auto === tag);
+      if (i >= 0) {
+        const old = nouvelles[i];
+        const oldM = (old.matchs || [])[0] || {};
+        const memesEquipes = oldM.aId === aId && oldM.bId === bId;
+        const m = memesEquipes ? oldM : { id: uid(), aId, bId, sa: "", sb: "" };
+        nouvelles[i] = { ...old, nom, matchs: [m] };
+      } else {
+        nouvelles.push({ id: uid(), nom, temps: tempsDefaut || 12, auto: tag, matchs: [{ id: uid(), aId, bId, sa: "", sb: "" }] });
+      }
+    };
+    const fort = org.poules.find((p) => p.phase === "finale");
+    const clsmt = org.poules.find((p) => p.phase === "classement");
+    let n = 0;
+    if (fort) { const cl = classementPoule(fort.equipeIds, fort.matchs, org.equipes, org.regle); if (cl.length >= 2) { upsert("Finale groupe fort (poule A)", fort.temps, cl[0].id, cl[1].id, "finaleA"); n++; } }
+    if (clsmt) { const cl = classementPoule(clsmt.equipeIds, clsmt.matchs, org.equipes, org.regle); if (cl.length >= 2) { upsert("Finale groupe de classement (poule B)", clsmt.temps, cl[0].id, cl[1].id, "finaleB"); n++; } }
+    commit({ ...org, finales: nouvelles });
+    setMsgSave(n ? "Finales générées : 1er contre 2e de chaque groupe." : "Il faut au moins 2 équipes classées par groupe.");
     setTimeout(() => setMsgSave(null), 3500);
   }
   function majMatchPoule(pid, mid, patch) {
@@ -7394,20 +7425,46 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
     const teams = [];
     for (let i = 0; i < nb; i++) teams.push(org.equipes[i] ? { id: org.equipes[i].id, nom: org.equipes[i].nom } : { id: "g" + (i + 1), nom: `Équipe ${i + 1}` });
     const allerRounds = roundsRoundRobin(teams);
-    const duree = Math.max(1, Number(conf.duree) || 10);
     const pause = Math.max(0, Number(conf.pause) || 0);
+    const repas = Math.max(0, Number(conf.repas) || 0);
     const groupes = [{ phase: conf.retour ? "Aller" : "", rounds: allerRounds }];
     if (conf.retour) groupes.push({ phase: "Retour", rounds: allerRounds.map((r) => r.map((p) => [p[1], p[0]])) });
-    const slots = [];
-    let idx = 0;
+    // d'abord on construit la liste des créneaux (sans horaire) pour en connaître le nombre
+    const chunks = [];
     groupes.forEach((g) => g.rounds.forEach((round) => {
-      for (let i = 0; i < round.length; i += nbT) {
-        const chunk = round.slice(i, i + nbT);
-        slots.push({ heure: addMinutesHM(conf.debut, idx * (duree + pause)), phase: g.phase, matchs: chunk.map((pair, k) => ({ id: uid(), terrain: k + 1, aId: pair[0].id, bId: pair[1].id, a: pair[0].nom, b: pair[1].nom, sa: "", sb: "" })) });
-        idx++;
-      }
+      for (let i = 0; i < round.length; i += nbT) chunks.push({ phase: g.phase, paires: round.slice(i, i + nbT) });
     }));
-    commit({ ...org, planningConf: { ...conf, nbEquipes: nb }, planning: slots, planningTeams: teams });
+    const nbSlots = chunks.length;
+    // durée des matchs : calculée sur la plage horaire, ou fixe
+    let duree = Math.max(1, Number(conf.duree) || 10);
+    let msgCalc = "";
+    const toMin = (hm) => { const [h, m] = String(hm || "").split(":").map(Number); return (h || 0) * 60 + (m || 0); };
+    if (conf.auto && conf.fin && conf.debut && nbSlots > 0) {
+      const fenetre = toMin(conf.fin) - toMin(conf.debut) - repas;
+      if (fenetre > 0) {
+        const parCreneau = Math.floor(fenetre / nbSlots);
+        duree = Math.max(1, parCreneau - pause);
+        msgCalc = `Durée calculée : ${duree} min par match (${nbSlots} créneaux pour tenir de ${conf.debut.replace(":", "h")} à ${conf.fin.replace(":", "h")}).`;
+      } else {
+        msgCalc = "La plage horaire est trop courte pour le nombre de rencontres.";
+      }
+    }
+    const repasIdx = repas > 0 ? Math.ceil(nbSlots / 2) : -1;
+    const slots = [];
+    let elapsed = 0;
+    chunks.forEach((ch, idx) => {
+      if (idx === repasIdx) { slots.push({ heure: addMinutesHM(conf.debut, elapsed), repas: true, duree: repas }); elapsed += repas; }
+      slots.push({ heure: addMinutesHM(conf.debut, elapsed), phase: ch.phase, matchs: ch.paires.map((pair, k) => ({ id: uid(), terrain: k + 1, aId: pair[0].id, bId: pair[1].id, a: pair[0].nom, b: pair[1].nom, sa: "", sb: "" })) });
+      elapsed += duree + pause;
+    });
+    const totalMin = Math.max(0, elapsed - pause);
+    const finPrevue = addMinutesHM(conf.debut, totalMin);
+    commit({ ...org, planningConf: { ...conf, nbEquipes: nb, duree }, planning: slots, planningTeams: teams });
+    let msg = msgCalc ? msgCalc + " " : `Durée ${duree} min par match. `;
+    msg += `Fin estimée vers ${finPrevue}.`;
+    if (conf.fin && (toMin(conf.debut) + totalMin) > toMin(conf.fin)) msg += " Attention : cela dépasse l'heure de fin prévue, réduisez la durée ou ajoutez un terrain.";
+    setMsgSave(msg);
+    setTimeout(() => setMsgSave(null), 6000);
   }
   function effacerPlanning() { commit({ ...org, planning: [], planningTeams: [] }); }
   function majScorePlanning(si, mid, patch) {
@@ -7504,11 +7561,28 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
               <Inp type="time" value={org.planningConf.debut} onChange={(e) => majPlanningConf({ debut: e.target.value })} />
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Durée match (min)</div>
-              <Inp type="number" value={org.planningConf.duree} onChange={(e) => majPlanningConf({ duree: e.target.value })} />
+              <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Fin</div>
+              <Inp type="time" value={org.planningConf.fin || ""} onChange={(e) => majPlanningConf({ fin: e.target.value })} />
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Pause (min)</div>
+              <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Pause repas (min)</div>
+              <Inp type="number" value={org.planningConf.repas ?? 0} onChange={(e) => majPlanningConf({ repas: e.target.value })} />
+            </div>
+          </div>
+          <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Durée des matchs</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            {[[true, "Caler sur l'horaire (auto)"], [false, "Durée fixe"]].map(([val, lib]) => {
+              const on = !!org.planningConf.auto === val;
+              return <button key={lib} onClick={() => majPlanningConf({ auto: val })} style={{ flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "10px 0", fontSize: 12.5, fontWeight: 800, background: on ? C.bleu : C.grisClair, color: on ? "#fff" : C.gris }}>{lib}</button>;
+            })}
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Durée match (min){org.planningConf.auto ? " · calculée" : ""}</div>
+              <Inp type="number" value={org.planningConf.duree} onChange={(e) => majPlanningConf({ duree: e.target.value })} disabled={!!org.planningConf.auto} style={org.planningConf.auto ? { background: C.grisClair, color: C.gris } : undefined} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Pause entre matchs (min)</div>
               <Inp type="number" value={org.planningConf.pause} onChange={(e) => majPlanningConf({ pause: e.target.value })} />
             </div>
           </div>
@@ -7525,6 +7599,24 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
           <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Toutes les équipes se rencontrent. Les matchs sont répartis sur les terrains, avec les horaires calculés, de façon qu'une même équipe ne joue jamais deux matchs en même temps.</div>
         </Card>
 
+        {/* FORMAT DU TOURNOI (configuration en haut) */}
+        <div style={titreSection}>Format du tournoi</div>
+        <Card style={{ marginBottom: 12, padding: 13 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            {[["simple", "Classement simple"], ["groupes", "Deux groupes (qualification)"]].map(([val, lib]) => {
+              const on = (org.format || "simple") === val;
+              return <button key={val} onClick={() => commit({ ...org, format: val })} style={{ flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "11px 6px", fontSize: 12.5, fontWeight: 800, background: on ? C.bleu : C.grisClair, color: on ? "#fff" : C.gris }}>{lib}</button>;
+            })}
+          </div>
+          {org.format === "groupes" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <div style={{ flex: 1, fontSize: 13, color: C.encre, fontWeight: 700 }}>Équipes qualifiées pour le groupe fort (poule A)</div>
+              <Inp type="number" value={(org.qualifConf || {}).nbFinale} onChange={(e) => commit({ ...org, qualifConf: { ...(org.qualifConf || {}), nbFinale: e.target.value === "" ? "" : Number(e.target.value) } })} style={{ width: 64 }} />
+            </div>
+          )}
+          <div style={{ fontSize: 11.5, color: C.gris, lineHeight: 1.5 }}>{org.format === "groupes" ? "Après la phase de planning, les mieux classées formeront le groupe fort (poule A), les autres le groupe de classement (poule B). Les groupes et finales apparaîtront plus bas au fil du tournoi. Vous pouvez changer ce réglage en cours : les scores et classements ne sont pas effacés." : "Un seul classement final, calculé depuis le planning. Vous pouvez passer en deux groupes à tout moment sans perdre les scores."}</div>
+        </Card>
+
         {(org.planning || []).length > 0 && (
           <Card style={{ marginBottom: 12, padding: 13 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -7532,11 +7624,15 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
               <button onClick={effacerPlanning} style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}><Trash2 size={14} /> Effacer</button>
             </div>
             <div style={{ display: "grid", gap: 9 }}>
-              {org.planning.map((s, i) => (
+              {org.planning.map((s, i) => s.repas ? (
+                <div key={i} style={{ border: `1px solid #F0DBA8`, background: "#FFF8E6", borderRadius: 11, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: C.jauneFonce }}>
+                  <Timer size={15} /> {s.heure} · Pause repas{s.duree ? ` (${s.duree} min)` : ""}
+                </div>
+              ) : (
                 <div key={i} style={{ border: `1px solid ${C.grisClair}`, borderRadius: 11, overflow: "hidden" }}>
                   <div style={{ background: C.bleuNuit, color: "#fff", padding: "7px 11px", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}><Timer size={14} /> {s.heure}{s.phase ? <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,0.18)", borderRadius: 7, padding: "2px 8px" }}>{s.phase}</span> : null}</div>
                   <div style={{ display: "grid", gap: 1, background: C.grisClair }}>
-                    {s.matchs.map((m, k) => (
+                    {(s.matchs || []).map((m, k) => (
                       <div key={m.id || k} style={{ background: "#fff", padding: "9px 11px" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: m.aId ? 7 : 0 }}>
                           <span style={{ flex: "0 0 auto", fontSize: 11, fontWeight: 800, color: C.bleu, background: "#EAF0F8", borderRadius: 7, padding: "3px 7px" }}>Terrain {m.terrain}</span>
@@ -7593,20 +7689,6 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
         )}
 
         {((org.planning || []).length > 0 || classementGeneral.length > 0) && boutonExport("Exporter le planning et le classement en PDF")}
-
-        {/* FORMAT DU TOURNOI */}
-        {((org.planning || []).length > 0 || classementGeneral.length > 0) && (
-          <>
-            <div style={titreSection}>Format du tournoi</div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-              {[["simple", "Classement simple"], ["groupes", "Deux groupes (qualification)"]].map(([val, lib]) => {
-                const on = (org.format || "simple") === val;
-                return <button key={val} onClick={() => commit({ ...org, format: val })} style={{ flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "11px 6px", fontSize: 12.5, fontWeight: 800, background: on ? C.bleu : C.grisClair, color: on ? "#fff" : C.gris }}>{lib}</button>;
-              })}
-            </div>
-            <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 14, lineHeight: 1.5 }}>{(org.format || "simple") === "groupes" ? "Après la phase de planning ci-dessus, les mieux classées forment un groupe fort (poule A), les autres un groupe de classement (poule B)." : "Un seul classement final, calculé depuis le planning ci-dessus. Rien d'autre à faire."}</div>
-          </>
-        )}
 
         {/* POULES MANUELLES (optionnel, masquées par défaut) */}
         {org.format === "manuel" && <div style={titreSection}>Poules</div>}
@@ -7702,12 +7784,8 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
           <>
             <div style={titreSection}>Groupes par qualification</div>
             <Card style={{ marginBottom: 12, padding: 13 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                <div style={{ flex: 1, fontSize: 13, color: C.encre, fontWeight: 700 }}>Équipes qualifiées pour le groupe fort (poule A)</div>
-                <Inp type="number" value={(org.qualifConf || {}).nbFinale} onChange={(e) => commit({ ...org, qualifConf: { ...(org.qualifConf || {}), nbFinale: e.target.value === "" ? "" : Number(e.target.value) } })} style={{ width: 64 }} />
-              </div>
-              <Btn variant="accent" full disabled={!classementGeneral.length} onClick={repartirQualifies}><ListOrdered size={16} /> Répartir automatiquement selon le classement</Btn>
-              <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>{classementGeneral.length ? "Les mieux classées du classement général vont dans le groupe fort (poule A), les autres dans le groupe de classement (poule B). Tout est reporté automatiquement, sans ressaisie. Relancez si les résultats changent." : "Saisissez d'abord les scores du planning pour obtenir un classement."}</div>
+              <Btn variant="accent" full disabled={!classementGeneral.length} onClick={repartirQualifies}><ListOrdered size={16} /> Répartir les {(org.qualifConf || {}).nbFinale || 0} premiers dans le groupe fort</Btn>
+              <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>{classementGeneral.length ? "Les mieux classées du classement général vont dans le groupe fort (poule A), les autres dans le groupe de classement (poule B). Tout est reporté automatiquement, sans ressaisie. Le nombre de qualifiés se règle en haut, dans « Format du tournoi ». Relancez si les résultats changent." : "Saisissez d'abord les scores du planning pour obtenir un classement."}</div>
             </Card>
 
             {org.poules.filter((p) => p.phase).map((p) => {
@@ -7775,6 +7853,9 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
                 </Card>
               );
             })}
+            {org.poules.filter((p) => p.phase).length > 0 && (
+              <Btn variant="accent" full style={{ marginBottom: 12 }} onClick={genererFinales}><Trophy size={16} /> Générer les finales (1er contre 2e de chaque groupe)</Btn>
+            )}
             {org.poules.filter((p) => p.phase).length > 0 && boutonExport("Exporter en PDF")}
           </>
         )}
