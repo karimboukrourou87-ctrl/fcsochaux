@@ -7480,6 +7480,33 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
   })();
   const nomTeamPlan = (id) => { const t = (org.planningTeams || []).find((x) => x.id === id); return t ? t.nom : id; };
 
+  // estimation en temps réel (durée des matchs et heure de fin) selon les réglages
+  const estim = (() => {
+    const conf = org.planningConf || {};
+    const nbT = Math.max(1, Number(conf.nbTerrains) || 1);
+    let nb = Number(conf.nbEquipes); if (!nb || nb < 2) nb = org.equipes.length;
+    if (!nb || nb < 2) return null;
+    const teams = [...Array(nb)].map((_, i) => i);
+    const rounds = roundsRoundRobin(teams);
+    let nbSlots = 0;
+    rounds.forEach((r) => { nbSlots += Math.ceil(r.length / nbT); });
+    if (conf.retour) rounds.forEach((r) => { nbSlots += Math.ceil(r.length / nbT); });
+    if (!nbSlots) return null;
+    const pause = Math.max(0, Number(conf.pause) || 0);
+    const repas = Math.max(0, Number(conf.repas) || 0);
+    const toMin = (hm) => { const [h, m] = String(hm || "").split(":").map(Number); return (h || 0) * 60 + (m || 0); };
+    let duree = Math.max(1, Number(conf.duree) || 10);
+    let impossible = false;
+    if (conf.auto && conf.fin && conf.debut) {
+      const fen = toMin(conf.fin) - toMin(conf.debut) - repas;
+      if (fen > 0) duree = Math.max(1, Math.floor(fen / nbSlots) - pause); else impossible = true;
+    }
+    const total = Math.max(0, nbSlots * (duree + pause) + repas - pause);
+    const finStr = addMinutesHM(conf.debut, total);
+    const depasse = conf.fin && (toMin(conf.debut) + total) > toMin(conf.fin);
+    return { nbSlots, nbT, duree, finStr, depasse, impossible, nbMatchs: nbSlots };
+  })();
+
   const boutonExport = (label) => (
     <Btn variant="accent" full style={{ margin: "6px 0 14px" }} onClick={exporterPDF}><FileDown size={16} /> {label || "Exporter en PDF (planning et classements)"}</Btn>
   );
@@ -7579,7 +7606,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Durée match (min){org.planningConf.auto ? " · calculée" : ""}</div>
-              <Inp type="number" value={org.planningConf.duree} onChange={(e) => majPlanningConf({ duree: e.target.value })} disabled={!!org.planningConf.auto} style={org.planningConf.auto ? { background: C.grisClair, color: C.gris } : undefined} />
+              <Inp type="number" value={org.planningConf.auto && estim ? estim.duree : org.planningConf.duree} onChange={(e) => majPlanningConf({ duree: e.target.value })} disabled={!!org.planningConf.auto} style={org.planningConf.auto ? { background: C.grisClair, color: C.gris } : undefined} />
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Pause entre matchs (min)</div>
@@ -7598,6 +7625,21 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
           <Btn variant="accent" full onClick={genererPlanning}><ListOrdered size={16} /> Organiser le planning des rencontres</Btn>
           <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Toutes les équipes se rencontrent. Les matchs sont répartis sur les terrains, avec les horaires calculés, de façon qu'une même équipe ne joue jamais deux matchs en même temps.</div>
         </Card>
+
+        {/* ESTIMATION EN TEMPS RÉEL */}
+        {estim && (
+          <Card style={{ marginBottom: 12, padding: 14, background: estim.depasse || estim.impossible ? "#FBE3E3" : C.bleuNuit, borderColor: estim.depasse || estim.impossible ? "#F3C9C9" : C.bleuNuit }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 11.5, fontWeight: 800, color: estim.depasse || estim.impossible ? C.rouge : "rgba(255,255,255,0.7)", textTransform: "uppercase", letterSpacing: 0.4 }}>Fin estimée du tournoi</div>
+                <div style={{ fontSize: 13, color: estim.depasse || estim.impossible ? C.encre : "rgba(255,255,255,0.85)", marginTop: 3 }}>{estim.duree} min par match · {estim.nbMatchs} créneaux · {estim.nbT} terrain{estim.nbT > 1 ? "s" : ""} · {org.planningConf.retour ? "aller-retour" : "aller simple"}</div>
+              </div>
+              <div style={{ fontSize: 30, fontWeight: 900, color: estim.depasse || estim.impossible ? C.rouge : "#fff", lineHeight: 1 }}>{estim.impossible ? "—" : estim.finStr}</div>
+            </div>
+            {estim.impossible && <div style={{ fontSize: 12, color: C.rouge, fontWeight: 700, marginTop: 8 }}>La plage horaire est trop courte. Repoussez l'heure de fin, ajoutez un terrain ou réduisez la pause repas.</div>}
+            {!estim.impossible && estim.depasse && <div style={{ fontSize: 12, color: C.rouge, fontWeight: 700, marginTop: 8 }}>Cela dépasse l'heure de fin prévue ({org.planningConf.fin && org.planningConf.fin.replace(":", "h")}). Réduisez la durée des matchs ou ajoutez un terrain.</div>}
+          </Card>
+        )}
 
         {/* FORMAT DU TOURNOI (configuration en haut) */}
         <div style={titreSection}>Format du tournoi</div>
