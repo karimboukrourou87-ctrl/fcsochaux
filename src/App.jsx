@@ -7350,6 +7350,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
   const [texteColle, setTexteColle] = useState("");
   const [msgPdf, setMsgPdf] = useState(null);
   const [msgSave, setMsgSave] = useState(null);
+  const [retardMin, setRetardMin] = useState("");
   const commit = (next) => { setOrg(next); onSave(next); };
   function enregistrerManuel() { onSave(org); setMsgSave("Modifications enregistrées"); setTimeout(() => setMsgSave(null), 2500); }
   async function exporterPDF() {
@@ -7775,10 +7776,12 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
           <Card style={{ marginBottom: 12, padding: 13 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
               <div style={{ fontSize: 13, fontWeight: 800 }}>{org.planning.filter((s) => !s.repas).length} créneau{org.planning.filter((s) => !s.repas).length > 1 ? "x" : ""} · {org.planningConf.duree} min par match</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: 11.5, color: C.gris, fontWeight: 700 }}>Retard :</span>
-                <button onClick={() => decalerPlanning(-5)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, cursor: "pointer", fontSize: 12.5, fontWeight: 800, borderRadius: 8, padding: "4px 9px" }}>-5 min</button>
-                <button onClick={() => decalerPlanning(5)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, cursor: "pointer", fontSize: 12.5, fontWeight: 800, borderRadius: 8, padding: "4px 9px" }}>+5 min</button>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11.5, color: C.gris, fontWeight: 700 }}>Décaler :</span>
+                <button onClick={() => decalerPlanning(-5)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, cursor: "pointer", fontSize: 12.5, fontWeight: 800, borderRadius: 8, padding: "4px 9px" }}>-5</button>
+                <button onClick={() => decalerPlanning(5)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, cursor: "pointer", fontSize: 12.5, fontWeight: 800, borderRadius: 8, padding: "4px 9px" }}>+5</button>
+                <input type="number" value={retardMin} onChange={(e) => setRetardMin(e.target.value)} placeholder="min" style={{ width: 54, textAlign: "center", border: `1px solid ${C.grisClair}`, borderRadius: 8, padding: "5px 4px", fontSize: 12.5, fontWeight: 700, boxSizing: "border-box" }} />
+                <button onClick={() => { const v = Number(retardMin); if (v) { decalerPlanning(v); setRetardMin(""); } }} disabled={!Number(retardMin)} style={{ border: "none", background: Number(retardMin) ? C.bleu : C.grisClair, color: Number(retardMin) ? "#fff" : C.gris, cursor: Number(retardMin) ? "pointer" : "default", fontSize: 12.5, fontWeight: 800, borderRadius: 8, padding: "5px 10px" }}>Appliquer</button>
                 <button onClick={effacerPlanning} style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}><Trash2 size={14} /> Effacer</button>
               </div>
             </div>
