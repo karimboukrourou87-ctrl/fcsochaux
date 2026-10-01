@@ -7103,7 +7103,19 @@ function classementPoule(equipeIds, matchs, equipes, regle) {
     else { a.n++; b.n++; a.pts += regle.n; b.pts += regle.n; }
   });
   const nomDe = (id) => { const e = (equipes || []).find((x) => x.id === id); return e ? e.nom : ""; };
-  return Object.values(st).sort((x, y) => y.pts - x.pts || (y.bp - y.bc) - (x.bp - x.bc) || y.bp - x.bp || nomDe(x.id).localeCompare(nomDe(y.id)));
+  // confrontation directe entre deux équipes à égalité de points
+  const h2h = (idA, idB) => {
+    let pa = 0, pb = 0;
+    (matchs || []).forEach((m) => {
+      const sa = m.sa === "" || m.sa == null ? null : Number(m.sa);
+      const sb = m.sb === "" || m.sb == null ? null : Number(m.sb);
+      if (sa == null || sb == null || Number.isNaN(sa) || Number.isNaN(sb)) return;
+      if (m.aId === idA && m.bId === idB) { if (sa > sb) pa += regle.v; else if (sa < sb) pb += regle.v; else { pa += regle.n; pb += regle.n; } }
+      else if (m.aId === idB && m.bId === idA) { if (sa > sb) pb += regle.v; else if (sa < sb) pa += regle.v; else { pa += regle.n; pb += regle.n; } }
+    });
+    return pa - pb;
+  };
+  return Object.values(st).sort((x, y) => y.pts - x.pts || h2h(y.id, x.id) || (y.bp - y.bc) - (x.bp - x.bc) || y.bp - x.bp || nomDe(x.id).localeCompare(nomDe(y.id)));
 }
 
 function addMinutesHM(hm, add) {
@@ -7143,6 +7155,8 @@ function exporterPlateauPDF(jsPDF, titre, org) {
   const sd = (a) => doc.setDrawColor(a[0], a[1], a[2]);
   const regle = { v: 3, n: 1, d: 0, ...(org.regle || {}) };
   const nomDe = (id) => { const e = (org.equipes || []).find((x) => x.id === id); return e ? e.nom : "?"; };
+  const nomsTerr = (Array.isArray((org.planningConf || {}).terrains) ? org.planningConf.terrains : String((org.planningConf || {}).terrains || "").split(",")).map((s) => String(s || "").trim());
+  const nomTerr = (k) => nomsTerr[k - 1] || `Terrain ${k}`;
   try { doc.setProperties({ title: titre, author: CLUB_LONG, creator: CLUB_LONG }); } catch (e) {}
 
   let y = 0;
@@ -7179,16 +7193,53 @@ function exporterPlateauPDF(jsPDF, titre, org) {
       if (s.phase) { const pw = doc.getTextWidth(s.phase); doc.text(s.phase, W - M - 8 - pw, y + 1); }
       y += 20;
       (s.matchs || []).forEach((m) => {
-        sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(`Terrain ${m.terrain}`, M + 8, y);
+        sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(nomTerr(m.terrain), M + 8, y);
         sc(encre); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
         const aScore = m.sa !== "" && m.sa != null, bScore = m.sb !== "" && m.sb != null;
         const milieu = (aScore || bScore) ? `   ${aScore ? m.sa : "-"}  -  ${bScore ? m.sb : "-"}   ` : "   contre   ";
-        doc.text(`${m.a}${milieu}${m.b}`, M + 70, y);
+        doc.text(`${m.a}${milieu}${m.b}`, M + 90, y);
         y += 15;
       });
       y += 6;
     });
     y += 8;
+
+    // Feuille par terrain
+    const parTerrain = {};
+    plan.forEach((s) => { if (s.repas) return; (s.matchs || []).forEach((m) => { (parTerrain[m.terrain] = parTerrain[m.terrain] || []).push({ heure: s.heure, a: m.a, b: m.b }); }); });
+    const terrains = Object.keys(parTerrain).sort((a, b) => a - b);
+    if (terrains.length) {
+      place(30);
+      sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text("Planning par terrain", M, y); y += 8;
+      sd(trait); doc.line(M, y, W - M, y); y += 14;
+      terrains.forEach((t) => {
+        place(20 + parTerrain[t].length * 13 + 6);
+        sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); doc.text(nomTerr(Number(t)), M, y); y += 14;
+        parTerrain[t].forEach((r) => { sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(r.heure, M + 8, y); sc(encre); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.text(`${r.a}  -  ${r.b}`, M + 55, y); y += 13; });
+        y += 6;
+      });
+      y += 8;
+    }
+
+    // Feuille par équipe
+    const parEquipe = {};
+    plan.forEach((s) => { if (s.repas) return; (s.matchs || []).forEach((m) => {
+      (parEquipe[m.a] = parEquipe[m.a] || []).push({ heure: s.heure, terrain: m.terrain, adv: m.b });
+      (parEquipe[m.b] = parEquipe[m.b] || []).push({ heure: s.heure, terrain: m.terrain, adv: m.a });
+    }); });
+    const equipesNoms = Object.keys(parEquipe).sort((a, b) => a.localeCompare(b));
+    if (equipesNoms.length) {
+      place(30);
+      sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text("Planning par équipe", M, y); y += 8;
+      sd(trait); doc.line(M, y, W - M, y); y += 14;
+      equipesNoms.forEach((eq) => {
+        place(20 + parEquipe[eq].length * 13 + 6);
+        sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); doc.text(eq, M, y); y += 14;
+        parEquipe[eq].forEach((r) => { sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(r.heure, M + 8, y); sc(encre); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.text(`${nomTerr(r.terrain)} · contre ${r.adv}`, M + 55, y); y += 13; });
+        y += 6;
+      });
+      y += 8;
+    }
   }
 
   // Classement général (à partir du planning)
@@ -7252,6 +7303,35 @@ function exporterPlateauPDF(jsPDF, titre, org) {
     y += 14;
   });
 
+  // Podium
+  const podiums = [];
+  const teamsP = org.planningTeams || [];
+  if (teamsP.length) {
+    const matchsP = [];
+    (org.planning || []).forEach((s) => (s.matchs || []).forEach((m) => { if (m.aId && m.bId) matchsP.push(m); }));
+    const cg = classementPoule(teamsP.map((t) => t.id), matchsP, teamsP, regle);
+    if (cg.some((r) => r.j > 0)) podiums.push({ nom: "Classement général", cl: cg, nomF: (id) => { const t = teamsP.find((x) => x.id === id); return t ? t.nom : "?"; } });
+  }
+  (org.poules || []).forEach((p) => { const cl = classementPoule(p.equipeIds, p.matchs, org.equipes, regle); if (cl.some((r) => r.j > 0)) podiums.push({ nom: p.nom || "Poule", cl, nomF: nomDe }); });
+  if (podiums.length) {
+    place(30);
+    sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text("Podium", M, y); y += 8;
+    sd(trait); doc.line(M, y, W - M, y); y += 16;
+    const medailles = [[198, 162, 76], [154, 163, 173], [176, 141, 87]];
+    podiums.forEach((pod) => {
+      place(18 + Math.min(3, pod.cl.length) * 15 + 8);
+      sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); doc.text(pod.nom, M, y); y += 15;
+      pod.cl.slice(0, 3).forEach((r, i) => {
+        sf(medailles[i]); doc.circle(M + 7, y - 3, 6, "F");
+        sc([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.text(String(i + 1), M + 5, y - 1);
+        sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text(`${pod.nomF(r.id)}`, M + 20, y);
+        sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text(`${r.pts} pts`, M + 200, y);
+        y += 15;
+      });
+      y += 8;
+    });
+  }
+
   if (!plan.length && !poules.length) {
     sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(11);
     doc.text("Rien a exporter pour le moment. Ajoute des equipes, genere le planning ou saisis des scores.", M, y);
@@ -7262,7 +7342,7 @@ function exporterPlateauPDF(jsPDF, titre, org) {
 }
 
 function OrganiserPlateau({ tournoi, onClose, onSave }) {
-  const defaut = { regle: { v: 3, n: 1, d: 0 }, equipes: [], poules: [], finales: [], planningConf: { nbEquipes: "", nbTerrains: 2, debut: "09:00", fin: "", duree: 10, pause: 2, repas: 0, retour: false, auto: false }, planning: [], qualifConf: { nbFinale: 2 }, format: "simple" };
+  const defaut = { regle: { v: 3, n: 1, d: 0 }, equipes: [], poules: [], finales: [], planningConf: { nbEquipes: "", nbTerrains: 2, debut: "09:00", fin: "", duree: 10, pause: 2, repas: 0, retour: false, auto: false, terrains: "" }, planning: [], qualifConf: { nbFinale: 2 }, format: "simple" };
   const [org, setOrg] = useState(() => ({ ...defaut, ...(tournoi.organisation || {}), regle: { ...defaut.regle, ...((tournoi.organisation || {}).regle || {}) }, planningConf: { ...defaut.planningConf, ...((tournoi.organisation || {}).planningConf || {}) }, qualifConf: { ...defaut.qualifConf, ...((tournoi.organisation || {}).qualifConf || {}) } }));
   const [nomEquipe, setNomEquipe] = useState("");
   const [importMsg, setImportMsg] = useState(null);
@@ -7467,6 +7547,30 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
     setTimeout(() => setMsgSave(null), 6000);
   }
   function effacerPlanning() { commit({ ...org, planning: [], planningTeams: [] }); }
+  const nomsTerrains = (Array.isArray(org.planningConf.terrains) ? org.planningConf.terrains : String(org.planningConf.terrains || "").split(",")).map((s) => String(s || "").trim());
+  const nomTerrain = (k) => nomsTerrains[k - 1] || `Terrain ${k}`;
+  function setNomTerrain(i, val) {
+    const nbT = Math.max(1, Number(org.planningConf.nbTerrains) || 1);
+    const a = [...nomsTerrains];
+    while (a.length < nbT) a.push("");
+    a[i] = val;
+    majPlanningConf({ terrains: a });
+  }
+  function decalerPlanning(delta) {
+    const parse = (hm) => { const [h, m] = String(hm).split("h").map(Number); return (h || 0) * 60 + (m || 0); };
+    const fmt = (t) => { t = ((t % 1440) + 1440) % 1440; return `${pad(Math.floor(t / 60))}h${pad(t % 60)}`; };
+    const slots = (org.planning || []).map((s) => ({ ...s, heure: fmt(parse(s.heure) + delta) }));
+    commit({ ...org, planning: slots });
+  }
+  const slotActifIdx = (() => {
+    if (!(org.planning || []).length) return -1;
+    const now = new Date(); const nowMin = now.getHours() * 60 + now.getMinutes();
+    const parse = (hm) => { const [h, m] = String(hm).split("h").map(Number); return (h || 0) * 60 + (m || 0); };
+    const dur = Math.max(1, Number(org.planningConf.duree) || 10) + Math.max(0, Number(org.planningConf.pause) || 0);
+    let idx = -1;
+    (org.planning || []).forEach((s, i) => { if (s.repas) return; const st = parse(s.heure); if (nowMin >= st && nowMin < st + dur) idx = i; });
+    return idx;
+  })();
   function majScorePlanning(si, mid, patch) {
     const slots = (org.planning || []).map((s, i) => i === si ? { ...s, matchs: (s.matchs || []).map((m) => m.id === mid ? { ...m, ...patch } : m) } : s);
     commit({ ...org, planning: slots });
@@ -7582,6 +7686,14 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
               <Inp type="number" value={org.planningConf.nbTerrains} onChange={(e) => majPlanningConf({ nbTerrains: e.target.value })} placeholder="2" />
             </div>
           </div>
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Noms des terrains (optionnel)</div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {[...Array(Math.max(1, Number(org.planningConf.nbTerrains) || 1))].map((_, i) => (
+                <Inp key={i} value={nomsTerrains[i] || ""} onChange={(e) => setNomTerrain(i, e.target.value)} placeholder={`Terrain ${i + 1}`} />
+              ))}
+            </div>
+          </div>
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, marginBottom: 4 }}>Début</div>
@@ -7661,9 +7773,14 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
 
         {(org.planning || []).length > 0 && (
           <Card style={{ marginBottom: 12, padding: 13 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <div style={{ fontSize: 13, fontWeight: 800 }}>{org.planning.length} créneau{org.planning.length > 1 ? "x" : ""} · {org.planningConf.duree} min par match</div>
-              <button onClick={effacerPlanning} style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}><Trash2 size={14} /> Effacer</button>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 800 }}>{org.planning.filter((s) => !s.repas).length} créneau{org.planning.filter((s) => !s.repas).length > 1 ? "x" : ""} · {org.planningConf.duree} min par match</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 11.5, color: C.gris, fontWeight: 700 }}>Retard :</span>
+                <button onClick={() => decalerPlanning(-5)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, cursor: "pointer", fontSize: 12.5, fontWeight: 800, borderRadius: 8, padding: "4px 9px" }}>-5 min</button>
+                <button onClick={() => decalerPlanning(5)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, cursor: "pointer", fontSize: 12.5, fontWeight: 800, borderRadius: 8, padding: "4px 9px" }}>+5 min</button>
+                <button onClick={effacerPlanning} style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}><Trash2 size={14} /> Effacer</button>
+              </div>
             </div>
             <div style={{ display: "grid", gap: 9 }}>
               {org.planning.map((s, i) => s.repas ? (
@@ -7671,13 +7788,13 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
                   <Timer size={15} /> {s.heure} · Pause repas{s.duree ? ` (${s.duree} min)` : ""}
                 </div>
               ) : (
-                <div key={i} style={{ border: `1px solid ${C.grisClair}`, borderRadius: 11, overflow: "hidden" }}>
-                  <div style={{ background: C.bleuNuit, color: "#fff", padding: "7px 11px", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}><Timer size={14} /> {s.heure}{s.phase ? <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,0.18)", borderRadius: 7, padding: "2px 8px" }}>{s.phase}</span> : null}</div>
+                <div key={i} style={{ border: i === slotActifIdx ? `2px solid ${C.vert}` : `1px solid ${C.grisClair}`, borderRadius: 11, overflow: "hidden" }}>
+                  <div style={{ background: i === slotActifIdx ? C.vert : C.bleuNuit, color: "#fff", padding: "7px 11px", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}><Timer size={14} /> {s.heure}{i === slotActifIdx ? <span style={{ fontSize: 10.5, fontWeight: 800, background: "rgba(255,255,255,0.25)", borderRadius: 7, padding: "2px 7px" }}>EN COURS</span> : null}{s.phase ? <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,0.18)", borderRadius: 7, padding: "2px 8px" }}>{s.phase}</span> : null}</div>
                   <div style={{ display: "grid", gap: 1, background: C.grisClair }}>
                     {(s.matchs || []).map((m, k) => (
                       <div key={m.id || k} style={{ background: "#fff", padding: "9px 11px" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: m.aId ? 7 : 0 }}>
-                          <span style={{ flex: "0 0 auto", fontSize: 11, fontWeight: 800, color: C.bleu, background: "#EAF0F8", borderRadius: 7, padding: "3px 7px" }}>Terrain {m.terrain}</span>
+                          <span style={{ flex: "0 0 auto", fontSize: 11, fontWeight: 800, color: C.bleu, background: "#EAF0F8", borderRadius: 7, padding: "3px 7px" }}>{nomTerrain(m.terrain)}</span>
                           <span style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.a}</span>
                           <span style={{ color: C.gris, fontWeight: 800, fontSize: 12 }}>contre</span>
                           <span style={{ flex: 1, fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.b}</span>
