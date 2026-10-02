@@ -4127,6 +4127,7 @@ function RosterEncadrement({ db, mutate, onClose }) {
   const [importMsg, setImportMsg] = useState(null);
   const [coller, setColler] = useState(false);
   const [texteColle, setTexteColle] = useState("");
+  const [filtre, setFiltre] = useState("Tous");
   function ajouter() {
     const n = nom.trim(); if (!n) return;
     mutate((d) => { d.encadrement = d.encadrement || []; d.encadrement.push({ id: uid(), nom: n, role, licence: licence.trim() }); return d; });
@@ -4198,9 +4199,23 @@ function RosterEncadrement({ db, mutate, onClose }) {
           <textarea value={texteColle} onChange={(e) => setTexteColle(e.target.value)} rows={10} placeholder='{ "encadrement": [ { "nom": "...", "role": "Éducateur", "licence": "..." } ] }' style={{ width: "100%", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 11, fontSize: 12.5, fontFamily: "monospace", resize: "vertical", boxSizing: "border-box" }} />
         </Modal>
       )}
-      <div style={{ marginTop: 14, display: "grid", gap: 4 }}>
+      {liste.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <Field label="Afficher par rôle">
+            <Sel value={filtre} onChange={(e) => setFiltre(e.target.value)}>
+              <option value="Tous">Tous les rôles ({liste.length})</option>
+              {ROLES_ENCADREMENT.map((r) => {
+                const n = liste.filter((x) => x.role === r).length;
+                if (n === 0) return null;
+                return <option key={r} value={r}>{r}s ({n})</option>;
+              })}
+            </Sel>
+          </Field>
+        </div>
+      )}
+      <div style={{ marginTop: 8, display: "grid", gap: 4 }}>
         {liste.length === 0 ? <Empty icon={<Users size={22} color={C.gris} />} text="Aucun nom enregistré" /> :
-          ROLES_ENCADREMENT.map((r) => {
+          ROLES_ENCADREMENT.filter((r) => filtre === "Tous" || filtre === r).map((r) => {
             const gens = liste.filter((x) => x.role === r);
             if (gens.length === 0) return null;
             return (
