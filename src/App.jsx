@@ -837,6 +837,17 @@ const CATEGORIES = [
   { id: "Foot santé", type: 6, groupe: "Foot santé" },
 ];
 
+/* Surclassement : catégories du dessous dans lesquelles une catégorie peut piocher un joueur */
+const SURCLASSEMENT = {
+  "U8": ["U7"], "U9": ["U8"], "U10": ["U9"], "U11": ["U10"], "U12": ["U11"],
+  "U13": ["U12", "U11"], "U14": ["U13"], "U15": ["U14"],
+  "4e/3e": ["6e/5e"],
+  "U19 NAT": ["U17 NAT"],
+  "N2": ["U19 NAT", "U17 NAT"],
+  "Ligue 2": ["N2", "U19 NAT", "U17 NAT"],
+  "U13F": ["U11F"], "U15F": ["U13F"], "U18F": ["U15F"], "U19F NAT": ["U18F"], "SENIORS F": ["U19F NAT"],
+};
+
 // Catégories qu'une catégorie peut demander (joueur surclassé de deux ans en dessous)
 const VOISINS_SPECIAUX = {
   "U17 NAT": ["U15"],
@@ -3551,6 +3562,26 @@ function Compo({ players, cat, catInfo, db, mutate }) {
   const formation = FORMATIONS[typeFoot][lineup.formation] || FORMATIONS[typeFoot][formationsDispo[0]];
   const remplacants = lineup.remplacants || [];
   const capitaine = lineup.capitaine || null;
+  // joueurs disponibles au surclassement (catégories du dessous autorisées)
+  const catsBas = SURCLASSEMENT[cat] || [];
+  const [surclasses, setSurclasses] = useState([]);
+  useEffect(() => {
+    let annule = false;
+    if (!catsBas.length) { setSurclasses([]); return; }
+    (async () => {
+      try {
+        const res = await Promise.all(catsBas.map((c) => loadCat(c).then((d) => ({ c, d })).catch(() => ({ c, d: null }))));
+        if (annule) return;
+        const arr = [];
+        // on ne récupère que l'identité du joueur pour la composition, rien d'autre de la catégorie du dessous
+        res.forEach(({ c, d }) => { if (d && Array.isArray(d.players)) d.players.forEach((p) => arr.push({ id: p.id, prenom: p.prenom, nom: p.nom, poste: p.poste, numero: p.numero, photo: p.photo, dob: p.dob, suspension: p.suspension, suspensionFin: p.suspensionFin, discDate: p.discDate, cat: c, surclasse: true })); });
+        setSurclasses(arr);
+      } catch (e) { if (!annule) setSurclasses([]); }
+    })();
+    return () => { annule = true; };
+  }, [cat]);
+  const pool = [...players, ...surclasses];
+  const trouve = (id) => pool.find((x) => x.id === id);
   const GK_COL = "#2FA36B"; // couleur distincte du gardien
   const [pick, setPick] = useState(null);       // index de slot à remplir
   const [pickRempl, setPickRempl] = useState(false);
@@ -3564,10 +3595,10 @@ function Compo({ players, cat, catInfo, db, mutate }) {
       const dObj = match && match.date ? new Date(match.date + "T00:00:00") : new Date();
       const titulaires = formation.map((slot, idx) => {
         const pid = (lineup.slots || {})[idx];
-        const p = pid ? players.find((x) => x.id === pid) : null;
+        const p = pid ? trouve(pid) : null;
         return { x: slot.x, y: slot.y, pos: slot.l, gk: slot.l === "G", vide: !p, num: p ? p.numero : "", nom: p ? p.nom : "", prenom: p ? p.prenom : "", cap: !!(p && capitaine === p.id), photo: p ? p.photo : "" };
       });
-      const subs = (remplacants || []).map((pid) => { const p = players.find((x) => x.id === pid); return p ? { num: p.numero, nom: p.nom, prenom: p.prenom } : null; }).filter(Boolean);
+      const subs = (remplacants || []).map((pid) => { const p = trouve(pid); return p ? { num: p.numero, nom: p.nom, prenom: p.prenom } : null; }).filter(Boolean);
       const sousTitre = match ? (match.adversaire ? `Contre ${match.adversaire}` : (match.competition || match.type || "Match")) : "Composition";
       await exporterCompositionPDF(jsPDF, fmt, {
         ligne1: `${CLUB} · Foot à ${typeFoot}`,
@@ -3671,6 +3702,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
   const used = Object.values(lineup.slots || {});
   const convoques = used.length + remplacants.length;
   const benchDispo = players.filter((p) => !used.includes(p.id) && !remplacants.includes(p.id));
+  const benchDispoTous = [...benchDispo, ...surclasses.filter((p) => !used.includes(p.id) && !remplacants.includes(p.id))];
 
   return (
     <div>
@@ -3743,7 +3775,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
 
         {formation.map((slot, i) => {
           const pid = lineup.slots?.[i];
-          const p = pid ? players.find((x) => x.id === pid) : null;
+          const p = pid ? trouve(pid) : null;
           const isGK = slot.l === "G";
           const estCap = p && capitaine === p.id;
           const couleurCercle = isGK ? GK_COL : C.jaune;
@@ -3795,7 +3827,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
       ) : (
         <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
           {remplacants.map((pid) => {
-            const p = players.find((x) => x.id === pid);
+            const p = trouve(pid);
             if (!p) return null;
             return (
               <div key={pid} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", background: "#fff", borderRadius: 11, border: `1px solid ${C.grisClair}` }}>
@@ -3837,20 +3869,21 @@ function Compo({ players, cat, catInfo, db, mutate }) {
                 <Star size={16} /> {capitaine === lineup.slots[pick] ? "Retirer le brassard" : "Désigner capitaine"}
               </Btn>
               <Field label={`Numéro de maillot (1 à ${maxNumero(cat)})`}>
-                <Inp type="number" inputMode="numeric" min={1} max={maxNumero(cat)} value={(players.find((x) => x.id === lineup.slots[pick]) || {}).numero ?? ""} onChange={(e) => setNumero(lineup.slots[pick], e.target.value)} placeholder="Numéro" />
+                <Inp type="number" inputMode="numeric" min={1} max={maxNumero(cat)} value={(trouve(lineup.slots[pick]) || {}).numero ?? ""} onChange={(e) => setNumero(lineup.slots[pick], e.target.value)} placeholder="Numéro" />
               </Field>
               <Btn variant="danger" full style={{ marginTop: 10, marginBottom: 12 }} onClick={() => assign(pick, null)}>
                 <X size={16} /> Retirer le joueur de ce poste
               </Btn>
             </>
           )}
-          {players.length === 0 ? (
+          {pool.length === 0 ? (
             <Empty icon={<Users size={24} color={C.gris} />} text="Aucun joueur dans l'effectif" />
           ) : (
             <div style={{ display: "grid", gap: 8 }}>
-              {players.map((p) => {
+              {[...players, ...surclasses].map((p) => {
                 const placeAilleurs = used.includes(p.id) && lineup.slots?.[pick] !== p.id;
                 const estRempl = remplacants.includes(p.id);
+                const estSurcl = p.cat !== cat;
                 const susp = estSuspendu(p);
                 const rge = !susp && rougeDirectActif(p, db);
                 const bloque = susp || rge;
@@ -3864,6 +3897,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
                       <div style={{ fontWeight: 800 }}>{p.prenom} {p.nom}</div>
                       <div style={{ fontSize: 12, color: bloque ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(p.suspensionFin)}` : "")) : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
                     </div>
+                    {estSurcl ? <Pastille bg="#E7EEF6" color={C.bleu}>{p.cat}</Pastille> : null}
                     {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : rge ? <Pastille bg="#FBE3E3" color={C.rouge}>Rouge</Pastille> : placeAilleurs ? <Pastille bg={C.grisClair} color={C.gris}>déjà placé</Pastille> : estRempl ? <Pastille bg="#FFF3DA" color={C.jauneFonce}>banc</Pastille> : null}
                   </button>
                 );
@@ -3878,11 +3912,12 @@ function Compo({ players, cat, catInfo, db, mutate }) {
           {remplacants.length >= maxRempl
             ? <div style={{ fontSize: 12.5, color: "#B87A2B", fontWeight: 700, marginBottom: 10, lineHeight: 1.5, background: "#FFF7E6", border: "1px solid #F0DBA8", borderRadius: 10, padding: 10 }}>Banc complet ({maxRempl}). Voici les joueurs non convoqués. Pour en ajouter un, retire d'abord un remplaçant.</div>
             : <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>Banc jusqu'à {maxRempl} joueurs (convoqués {convoques}/{maxConvoques}).</div>}
-          {benchDispo.length === 0 ? (
+          {benchDispoTous.length === 0 ? (
             <Empty icon={<Users size={24} color={C.gris} />} text="Aucun joueur disponible" sub="Tous les joueurs sont déjà titulaires ou sur le banc" />
           ) : (
             <div style={{ display: "grid", gap: 8 }}>
-              {benchDispo.map((p) => {
+              {benchDispoTous.map((p) => {
+                const estSurcl = p.cat !== cat;
                 const susp = estSuspendu(p);
                 const rge = !susp && rougeDirectActif(p, db);
                 const bancPlein = remplacants.length >= maxRempl;
@@ -3897,6 +3932,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
                     <div style={{ fontWeight: 800 }}>{p.prenom} {p.nom}</div>
                     <div style={{ fontSize: 12, color: (susp || rge) ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(p.suspensionFin)}` : "")) : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
                   </div>
+                  {estSurcl ? <Pastille bg="#E7EEF6" color={C.bleu}>{p.cat}</Pastille> : null}
                   {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : rge ? <Pastille bg="#FBE3E3" color={C.rouge}>Rouge</Pastille> : null}
                 </button>
                 );
