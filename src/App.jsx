@@ -3582,6 +3582,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
   }, [cat]);
   const pool = [...players, ...surclasses];
   const trouve = (id) => pool.find((x) => x.id === id);
+  const numeroDe = (p) => { if (!p) return ""; const o = lineup.numeros && lineup.numeros[p.id]; return (o != null && o !== "") ? o : (p.numero ?? ""); };
   const GK_COL = "#2FA36B"; // couleur distincte du gardien
   const [pick, setPick] = useState(null);       // index de slot à remplir
   const [pickRempl, setPickRempl] = useState(false);
@@ -3596,9 +3597,9 @@ function Compo({ players, cat, catInfo, db, mutate }) {
       const titulaires = formation.map((slot, idx) => {
         const pid = (lineup.slots || {})[idx];
         const p = pid ? trouve(pid) : null;
-        return { x: slot.x, y: slot.y, pos: slot.l, gk: slot.l === "G", vide: !p, num: p ? p.numero : "", nom: p ? p.nom : "", prenom: p ? p.prenom : "", cap: !!(p && capitaine === p.id), photo: p ? p.photo : "" };
+        return { x: slot.x, y: slot.y, pos: slot.l, gk: slot.l === "G", vide: !p, num: p ? numeroDe(p) : "", nom: p ? p.nom : "", prenom: p ? p.prenom : "", cap: !!(p && capitaine === p.id), photo: p ? p.photo : "" };
       });
-      const subs = (remplacants || []).map((pid) => { const p = trouve(pid); return p ? { num: p.numero, nom: p.nom, prenom: p.prenom } : null; }).filter(Boolean);
+      const subs = (remplacants || []).map((pid) => { const p = trouve(pid); return p ? { num: numeroDe(p), nom: p.nom, prenom: p.prenom } : null; }).filter(Boolean);
       const sousTitre = match ? (match.adversaire ? `Contre ${match.adversaire}` : (match.competition || match.type || "Match")) : "Composition";
       await exporterCompositionPDF(jsPDF, fmt, {
         ligne1: `${CLUB} · Foot à ${typeFoot}`,
@@ -3687,7 +3688,12 @@ function Compo({ players, cat, catInfo, db, mutate }) {
   function setNumero(pid, val) {
     const mx = maxNumero(cat);
     const n = val === "" ? "" : Math.max(1, Math.min(mx, parseInt(val, 10) || 1));
-    mutate((d) => { const pl = (d.players || []).find((x) => x.id === pid); if (pl) pl.numero = n; return d; });
+    const estOwn = players.some((x) => x.id === pid);
+    mutate((d) => {
+      if (estOwn) { const pl = (d.players || []).find((x) => x.id === pid); if (pl) pl.numero = n; }
+      else { const lu = d.lineups[key] || { slots: {}, remplacants: [] }; lu.numeros = lu.numeros || {}; if (n === "") delete lu.numeros[pid]; else lu.numeros[pid] = n; d.lineups[key] = lu; }
+      return d;
+    });
   }
   const compoVide = Object.keys(lineup.slots || {}).length === 0;
   const derniereCompo = (() => {
@@ -3802,11 +3808,11 @@ function Compo({ players, cat, catInfo, db, mutate }) {
                 {estCap && (
                   <div style={{ position: "absolute", top: -4, right: -4, width: 18, height: 18, borderRadius: "50%", background: C.bleuNuit, color: C.jaune, border: `2px solid ${C.jaune}`, display: "grid", placeItems: "center", fontSize: 9.5, fontWeight: 900 }}>C</div>
                 )}
-                {p && p.numero != null && p.numero !== "" && (
-                  <div style={{ position: "absolute", bottom: -4, right: -4, minWidth: 18, height: 18, padding: "0 3px", borderRadius: 9, background: C.bleuNuit, color: "#fff", border: "2px solid #fff", display: "grid", placeItems: "center", fontSize: 9.5, fontWeight: 900 }}>{p.numero}</div>
+                {p && numeroDe(p) !== "" && numeroDe(p) != null && (
+                  <div style={{ position: "absolute", bottom: -4, right: -4, minWidth: 18, height: 18, padding: "0 3px", borderRadius: 9, background: C.bleuNuit, color: "#fff", border: "2px solid #fff", display: "grid", placeItems: "center", fontSize: 9.5, fontWeight: 900 }}>{numeroDe(p)}</div>
                 )}
               </div>
-              <span style={{ fontSize: 10.5, color: "#fff", fontWeight: 700, textShadow: "0 1px 2px rgba(0,0,0,0.55)", maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: p && p.numero != null && p.numero !== "" ? 7 : 0 }}>
+              <span style={{ fontSize: 10.5, color: "#fff", fontWeight: 700, textShadow: "0 1px 2px rgba(0,0,0,0.55)", maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: p && numeroDe(p) !== "" && numeroDe(p) != null ? 7 : 0 }}>
                 {p ? (p.prenom && p.nom ? `${p.prenom[0]}. ${p.nom}` : (p.nom || p.prenom)) : slot.l}
               </span>
             </button>
@@ -3836,7 +3842,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
                   <div style={{ fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.prenom} {p.nom}</div>
                   {p.poste ? <div style={{ fontSize: 11.5, color: C.gris }}>{p.poste}</div> : null}
                 </div>
-                <input type="number" inputMode="numeric" min={1} max={maxNumero(cat)} value={p.numero ?? ""} onChange={(e) => setNumero(pid, e.target.value)} placeholder="N°" style={{ width: 48, padding: "6px 6px", borderRadius: 8, border: `1px solid ${C.grisClair}`, fontSize: 13, textAlign: "center", flex: "0 0 auto" }} />
+                <input type="number" inputMode="numeric" min={1} max={maxNumero(cat)} value={numeroDe(p)} onChange={(e) => setNumero(pid, e.target.value)} placeholder="N°" style={{ width: 48, padding: "6px 6px", borderRadius: 8, border: `1px solid ${C.grisClair}`, fontSize: 13, textAlign: "center", flex: "0 0 auto" }} />
                 <X size={16} color={C.gris} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => retirerRemplacant(pid)} />
               </div>
             );
@@ -3869,7 +3875,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
                 <Star size={16} /> {capitaine === lineup.slots[pick] ? "Retirer le brassard" : "Désigner capitaine"}
               </Btn>
               <Field label={`Numéro de maillot (1 à ${maxNumero(cat)})`}>
-                <Inp type="number" inputMode="numeric" min={1} max={maxNumero(cat)} value={(trouve(lineup.slots[pick]) || {}).numero ?? ""} onChange={(e) => setNumero(lineup.slots[pick], e.target.value)} placeholder="Numéro" />
+                <Inp type="number" inputMode="numeric" min={1} max={maxNumero(cat)} value={numeroDe(trouve(lineup.slots[pick]))} onChange={(e) => setNumero(lineup.slots[pick], e.target.value)} placeholder="Numéro" />
               </Field>
               <Btn variant="danger" full style={{ marginTop: 10, marginBottom: 12 }} onClick={() => assign(pick, null)}>
                 <X size={16} /> Retirer le joueur de ce poste
