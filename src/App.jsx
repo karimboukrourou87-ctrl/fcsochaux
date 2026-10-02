@@ -845,7 +845,7 @@ const SURCLASSEMENT = {
   "U19 NAT": ["U17 NAT"],
   "N2": ["U19 NAT", "U17 NAT"],
   "Ligue 2": ["N2", "U19 NAT", "U17 NAT"],
-  "U13F": ["U11F"], "U15F": ["U13F"], "U18F": ["U15F"], "U19F NAT": ["U18F"], "SENIORS F": ["U19F NAT"],
+  "U13F": ["U11F"], "U15F": ["U13F"], "U18F": ["U15F"], "U19F NAT": ["U18F"], "SENIORS F": ["U19F NAT", "U18F"],
 };
 
 // Catégories qu'une catégorie peut demander (joueur surclassé de deux ans en dessous)
