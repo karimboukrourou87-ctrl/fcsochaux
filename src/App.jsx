@@ -4128,6 +4128,7 @@ function RosterEncadrement({ db, mutate, onClose }) {
   const [coller, setColler] = useState(false);
   const [texteColle, setTexteColle] = useState("");
   const [filtre, setFiltre] = useState("Tous");
+  const [edit, setEdit] = useState(null);
   function ajouter() {
     const n = nom.trim(); if (!n) return;
     mutate((d) => { d.encadrement = d.encadrement || []; d.encadrement.push({ id: uid(), nom: n, role, licence: licence.trim() }); return d; });
@@ -4135,6 +4136,17 @@ function RosterEncadrement({ db, mutate, onClose }) {
   }
   function retirer(id) {
     mutate((d) => { d.encadrement = (d.encadrement || []).filter((x) => x.id !== id); return d; });
+  }
+  function enregistrerEdit() {
+    if (!edit) return;
+    const n = (edit.nom || "").trim(); if (!n) return;
+    mutate((d) => {
+      d.encadrement = d.encadrement || [];
+      const p = d.encadrement.find((x) => x.id === edit.id);
+      if (p) { p.nom = n; p.role = edit.role; p.licence = (edit.licence || "").trim(); }
+      return d;
+    });
+    setEdit(null);
   }
   function traiterImport(texte) {
     try {
@@ -4227,6 +4239,7 @@ function RosterEncadrement({ db, mutate, onClose }) {
                       <div style={{ fontWeight: 700 }}>{x.nom}</div>
                       {x.licence ? <div style={{ fontSize: 12, color: C.gris }}>Licence {x.licence}</div> : null}
                     </div>
+                    <Edit3 size={16} color={C.bleu} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setEdit({ id: x.id, nom: x.nom, role: ROLES_ENCADREMENT.includes(x.role) ? x.role : "Éducateur", licence: x.licence || "" })} />
                     <X size={16} color={C.gris} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => retirer(x.id)} />
                   </div>
                 ))}
@@ -4234,6 +4247,20 @@ function RosterEncadrement({ db, mutate, onClose }) {
             );
           })}
       </div>
+      {edit && (
+        <Modal title="Modifier la personne" onClose={() => setEdit(null)}
+          footer={<Btn variant="accent" full disabled={!(edit.nom || "").trim()} onClick={enregistrerEdit}><Save size={16} /> Enregistrer</Btn>}>
+          <Field label="Nom et prénom"><Inp value={edit.nom} onChange={(e) => setEdit({ ...edit, nom: e.target.value })} placeholder="Nom et prénom" /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <Field label="Rôle">
+              <Sel value={edit.role} onChange={(e) => setEdit({ ...edit, role: e.target.value })}>
+                {ROLES_ENCADREMENT.map((r) => <option key={r}>{r}</option>)}
+              </Sel>
+            </Field>
+            <Field label="N° de licence"><Inp value={edit.licence} onChange={(e) => setEdit({ ...edit, licence: e.target.value })} placeholder="Optionnel" /></Field>
+          </div>
+        </Modal>
+      )}
     </Modal>
   );
 }
