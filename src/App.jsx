@@ -3396,6 +3396,145 @@ function EditJoueur({ joueur, cat, onClose, onSave }) {
 /* ============================================================
    Composition d'équipe
    ============================================================ */
+const JOURS_PDF = ["DIMANCHE", "LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"];
+const MOIS_PDF = ["JANV.", "FÉVR.", "MARS", "AVRIL", "MAI", "JUIN", "JUIL.", "AOÛT", "SEPT.", "OCT.", "NOV.", "DÉC."];
+function cropCercle(src, px) {
+  return new Promise((res) => {
+    try {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const c = document.createElement("canvas"); c.width = px; c.height = px;
+          const g = c.getContext("2d");
+          g.save(); g.beginPath(); g.arc(px / 2, px / 2, px / 2, 0, Math.PI * 2); g.closePath(); g.clip();
+          const iw = img.width, ih = img.height, sc = Math.max(px / iw, px / ih), dw = iw * sc, dh = ih * sc;
+          g.drawImage(img, (px - dw) / 2, (px - dh) * 0.2, dw, dh); g.restore();
+          res(c.toDataURL("image/png"));
+        } catch (e) { res(null); }
+      };
+      img.onerror = () => res(null);
+      img.src = src;
+    } catch (e) { res(null); }
+  });
+}
+async function exporterCompositionPDF(jsPDF, fmt, data) {
+  if (data.avecPhotos) {
+    for (const j of (data.titulaires || [])) { if (j.photo && !j.vide) j._crop = await cropCercle(j.photo, 240); }
+  }
+  const dim = fmt === "a3" ? { W: 841.89, H: 1190.55 } : { W: 595.28, H: 841.89 };
+  const doc = new jsPDF({ unit: "pt", format: fmt === "a3" ? "a3" : "a4", orientation: "portrait" });
+  const W = dim.W, H = dim.H;
+  const navy = [15, 33, 74], bleu = [19, 45, 94], gris = [125, 134, 148], traitC = [222, 227, 235], bande = [244, 246, 250], or = [201, 164, 74], jaune = [245, 197, 0], blanc = [255, 255, 255];
+  const sc = (a) => doc.setTextColor(a[0], a[1], a[2]);
+  const sf = (a) => doc.setFillColor(a[0], a[1], a[2]);
+  const sd = (a) => doc.setDrawColor(a[0], a[1], a[2]);
+  try { doc.setProperties({ title: data.titre || "Composition", author: CLUB_LONG, creator: CLUB_LONG }); } catch (e) {}
+  const M = W * 0.06;
+
+  // ---------- EN-TETE ----------
+  const yl1 = H * 0.052;
+  sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(W * 0.016);
+  doc.text(String(data.ligne1 || "").toUpperCase(), M, yl1, { charSpace: 1.6 });
+  const jour = String(data.jour || "").toUpperCase();
+  doc.text(jour, W - M - doc.getTextWidth(jour) - (jour.length - 1) * 1.2, yl1, { charSpace: 1.2 });
+  const yBig = yl1 + W * 0.072;
+  sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(W * 0.07);
+  doc.text(String(data.titre || "").toUpperCase(), M, yBig);
+  const jn = String(data.jnum || "");
+  doc.setFontSize(W * 0.072); doc.text(jn, W - M - doc.getTextWidth(jn), yBig);
+  // sous-titre : pastille + texte
+  const ySub = yBig + W * 0.04;
+  const tag = String(data.tag || "").toUpperCase();
+  doc.setFont("helvetica", "bold"); doc.setFontSize(W * 0.019);
+  const tagW = doc.getTextWidth(tag) + W * 0.028;
+  if (tag) { sf(jaune); doc.rect(M, ySub - W * 0.019, tagW, W * 0.032, "F"); sc(navy); doc.text(tag, M + W * 0.014, ySub + W * 0.004); }
+  sc(bleu); doc.setFontSize(W * 0.028); doc.text(String(data.sousTitre || "").toUpperCase(), M + (tag ? tagW + W * 0.02 : 0), ySub + W * 0.007);
+  const moisAn = `${(data.mois || "")} ${(data.annee || "")}`.trim().toUpperCase();
+  sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(W * 0.02); doc.text(moisAn, W - M - doc.getTextWidth(moisAn), ySub + W * 0.004);
+
+  // ---------- TERRAIN ----------
+  const pX = M, pW = W - 2 * M;
+  const pY = H * 0.155, pH = H * 0.62;
+  sf(blanc); sd(or); doc.setLineWidth(2.2); doc.roundedRect(pX, pY, pW, pH, 10, 10, "FD"); doc.setLineWidth(1);
+  // bandes horizontales
+  const nb = 6, bh = pH / nb;
+  for (let i = 0; i < nb; i++) { if (i % 2 === 1) { sf(bande); doc.rect(pX + 2, pY + i * bh, pW - 4, bh, "F"); } }
+  sd(traitC); doc.setLineWidth(1.3);
+  // surfaces haut/bas
+  const sfw = pW * 0.42, sfh = pH * 0.1;
+  doc.rect(pX + pW / 2 - sfw / 2, pY - 2, sfw, sfh);
+  doc.rect(pX + pW / 2 - sfw / 2, pY + pH - sfh + 2, sfw, sfh);
+  // ligne médiane + rond central
+  doc.line(pX, pY + pH / 2, pX + pW, pY + pH / 2);
+  doc.circle(pX + pW / 2, pY + pH / 2, pW * 0.11);
+  sf(traitC); doc.circle(pX + pW / 2, pY + pH / 2, 2.5, "F");
+  // systeme
+  sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(W * 0.014); doc.text("SYSTÈME", pX + W * 0.025, pY + H * 0.03, { charSpace: 1.4 });
+  sc(bleu); doc.setFontSize(W * 0.03); doc.text(String(data.systeme || "").replace(/-/g, " · "), pX + W * 0.025, pY + H * 0.058);
+
+  // joueurs titulaires
+  const r = W * 0.033;
+  (data.titulaires || []).forEach((j) => {
+    const cx = pX + (j.x / 100) * pW, cy = pY + (j.y / 100) * pH;
+    const num = String(j.num != null && j.num !== "" ? j.num : "");
+    if (j._crop) {
+      try { doc.addImage(j._crop, "PNG", cx - r, cy - r, 2 * r, 2 * r); } catch (e) {}
+      sd(j.gk ? jaune : navy); doc.setLineWidth(2.6); doc.circle(cx, cy, r, "S"); doc.setLineWidth(1);
+      if (num) { sf(j.gk ? jaune : navy); doc.circle(cx + r * 0.72, cy + r * 0.72, r * 0.44, "F"); sc(j.gk ? navy : blanc); doc.setFont("helvetica", "bold"); doc.setFontSize(r * 0.55); doc.text(num, cx + r * 0.72 - doc.getTextWidth(num) / 2, cy + r * 0.72 + r * 0.2); }
+    } else {
+      if (j.gk) { sf(jaune); sd(jaune); doc.setLineWidth(2); doc.circle(cx, cy, r, "FD"); sc(navy); }
+      else { sf(blanc); sd(navy); doc.setLineWidth(2.4); doc.circle(cx, cy, r, "FD"); sc(navy); }
+      doc.setLineWidth(1);
+      const inCircle = num || (j.vide ? String(j.pos || "") : "");
+      doc.setFont("helvetica", "bold"); doc.setFontSize(num ? (num.length > 1 ? r * 0.95 : r * 1.1) : r * 0.55);
+      if (j.vide && !num) sc(gris);
+      doc.text(inCircle, cx - doc.getTextWidth(inCircle) / 2, cy + (num ? r * 0.38 : r * 0.2));
+    }
+    if (j.vide) return;
+    // nom
+    sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(W * 0.019);
+    const nom = String(j.nom || "").toUpperCase();
+    const ini = j.prenom ? " " + String(j.prenom)[0].toUpperCase() + "." : "";
+    const nomW = doc.getTextWidth(nom);
+    const iniW = (() => { doc.setFontSize(W * 0.014); const w = doc.getTextWidth(ini); doc.setFontSize(W * 0.019); return w; })();
+    const totalW = nomW + iniW;
+    const startX = cx - totalW / 2;
+    doc.setFontSize(W * 0.019); doc.text(nom, startX, cy + r + W * 0.028);
+    if (ini) { sc(gris); doc.setFontSize(W * 0.014); doc.text(ini, startX + nomW, cy + r + W * 0.028); }
+    if (j.cap) { sf(navy); doc.circle(cx + r * 0.75, cy - r * 0.75, r * 0.3, "F"); sc(jaune); doc.setFont("helvetica", "bold"); doc.setFontSize(r * 0.5); doc.text("C", cx + r * 0.75 - doc.getTextWidth("C") / 2, cy - r * 0.6); }
+  });
+
+  // ---------- REMPLACANTS ----------
+  const subs = data.remplacants || [];
+  const rbY = pY + pH + H * 0.02, rbH = H * 0.085;
+  sf(blanc); sd(or); doc.setLineWidth(1.6); doc.roundedRect(pX, rbY, pW, rbH, 9, 9, "FD"); doc.setLineWidth(1);
+  sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(W * 0.014); doc.text("REMPLAÇANTS", pX + W * 0.025, rbY + H * 0.022, { charSpace: 1.4 });
+  const rr = W * 0.018;
+  const perRow = Math.max(1, Math.min(subs.length, 4));
+  const cellW = pW / perRow;
+  subs.forEach((s, i) => {
+    const col = i % perRow, row = Math.floor(i / perRow);
+    const cx = pX + col * cellW + W * 0.045, cy = rbY + H * 0.045 + row * (rr * 2.4);
+    sf(blanc); sd(navy); doc.setLineWidth(1.8); doc.circle(cx, cy, rr, "FD"); doc.setLineWidth(1);
+    sc(navy); doc.setFont("helvetica", "bold"); doc.setFontSize(rr * 0.95);
+    const num = String(s.num != null && s.num !== "" ? s.num : "");
+    doc.text(num, cx - doc.getTextWidth(num) / 2, cy + rr * 0.35);
+    sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(W * 0.017);
+    const nom = String(s.nom || "").toUpperCase();
+    const nx = cx + rr + W * 0.012;
+    doc.text(nom, nx, cy + rr * 0.1);
+    const nomW = doc.getTextWidth(nom);
+    if (s.prenom) { sc(gris); doc.setFontSize(W * 0.013); doc.text(" " + String(s.prenom)[0].toUpperCase() + ".", nx + nomW, cy + rr * 0.1); }
+  });
+
+  // ---------- PIED ----------
+  sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(W * 0.013);
+  const pied = String(data.pied || "").toUpperCase();
+  doc.text(pied, W / 2 - (doc.getTextWidth(pied) + (pied.length - 1) * 1.4) / 2, H * 0.965, { charSpace: 1.4 });
+
+  doc.save(`${(data.titre || "Composition").replace(/[^a-zA-Z0-9]+/g, "_")}_${fmt.toUpperCase()}.pdf`);
+}
+
 const FORMATS_MULTI = { U13: [8, 10, 11], "Foot loisirs": [11, 9, 8], "Foot santé": [6, 5] };
 function Compo({ players, cat, catInfo, db, mutate }) {
   const matchsCat = (db.matches || []).filter((m) => m.cat === cat).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
@@ -3415,6 +3554,30 @@ function Compo({ players, cat, catInfo, db, mutate }) {
   const GK_COL = "#2FA36B"; // couleur distincte du gardien
   const [pick, setPick] = useState(null);       // index de slot à remplir
   const [pickRempl, setPickRempl] = useState(false);
+  const [pdfCompoMsg, setPdfCompoMsg] = useState(null);
+  const [avecPhotos, setAvecPhotos] = useState(false);
+  async function exportCompo(fmt) {
+    setPdfCompoMsg("Préparation du PDF...");
+    try {
+      const jsPDF = await chargerJsPDF();
+      const match = (db.matches || []).find((m) => m.id === matchSel);
+      const dObj = match && match.date ? new Date(match.date + "T00:00:00") : new Date();
+      const titulaires = formation.map((slot, idx) => {
+        const pid = (lineup.slots || {})[idx];
+        const p = pid ? players.find((x) => x.id === pid) : null;
+        return { x: slot.x, y: slot.y, pos: slot.l, gk: slot.l === "G", vide: !p, num: p ? p.numero : "", nom: p ? p.nom : "", prenom: p ? p.prenom : "", cap: !!(p && capitaine === p.id), photo: p ? p.photo : "" };
+      });
+      const subs = (remplacants || []).map((pid) => { const p = players.find((x) => x.id === pid); return p ? { num: p.numero, nom: p.nom, prenom: p.prenom } : null; }).filter(Boolean);
+      const sousTitre = match ? (match.adversaire ? `Contre ${match.adversaire}` : (match.competition || match.type || "Match")) : "Composition";
+      await exporterCompositionPDF(jsPDF, fmt, {
+        ligne1: `${CLUB} · Foot à ${typeFoot}`,
+        titre: CLUB, tag: cat, sousTitre,
+        jour: JOURS_PDF[dObj.getDay()], jnum: dObj.getDate(), mois: MOIS_PDF[dObj.getMonth()], annee: dObj.getFullYear(),
+        systeme: lineup.formation, titulaires, remplacants: subs, pied: `${CLUB} · ${cat}`, avecPhotos,
+      });
+      setPdfCompoMsg(null);
+    } catch (e) { setPdfCompoMsg("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
+  }
 
   // Convoqués : 12 maxi en foot à 8, 16 maxi en foot à 11, sinon titulaires plus 4 (foot à 4 et à 5)
   const maxConvoques = typeFoot === 8 ? 12 : typeFoot === 11 ? 16 : typeFoot === 10 ? 14 : typeFoot === 9 ? 13 : formation.length + 8;
@@ -3653,6 +3816,18 @@ function Compo({ players, cat, catInfo, db, mutate }) {
         Titulaires {Object.keys(lineup.slots || {}).length}/{formation.length} · Convoqués {convoques}/{maxConvoques}
         {catInfo.type === 11 ? " (14 à 16 conseillés)" : ""} · Disponibles {benchDispo.length}
       </div>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 14, alignItems: "center" }}>
+        {[[false, "Numéros"], [true, "Photos"]].map(([val, lib]) => {
+          const on = avecPhotos === val;
+          return <button key={lib} onClick={() => setAvecPhotos(val)} style={{ flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "9px 0", fontSize: 12.5, fontWeight: 800, background: on ? C.bleu : C.grisClair, color: on ? "#fff" : C.gris }}>{lib} dans les cercles</button>;
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <Btn variant="accent" full onClick={() => exportCompo("a4")}><FileDown size={16} /> Composition PDF · A4</Btn>
+        <Btn variant="primary" full onClick={() => exportCompo("a3")}><FileDown size={16} /> A3</Btn>
+      </div>
+      {pdfCompoMsg && <div style={{ fontSize: 12.5, color: C.encre, background: C.fond, borderRadius: 10, padding: 10, marginTop: 8 }}>{pdfCompoMsg}</div>}
 
       {pick != null && (
         <Modal title={`Placer au poste ${formation[pick].l}`} onClose={() => setPick(null)}>
