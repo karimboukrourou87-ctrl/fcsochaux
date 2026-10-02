@@ -3443,16 +3443,30 @@ async function exporterCompositionPDF(jsPDF, fmt, data) {
   const M = W * 0.06;
 
   // ---------- EN-TETE ----------
+  // logo en haut à droite ; les dates se calent à sa gauche
+  let rD = W - M;
+  try {
+    if (typeof LOGO_CLUB === "string" && LOGO_CLUB) {
+      const lw = W * 0.085; let lh = lw * 1.18;
+      try { const pr = doc.getImageProperties(LOGO_CLUB); if (pr && pr.width) lh = lw * (pr.height / pr.width); } catch (e) {}
+      doc.addImage(LOGO_CLUB, "PNG", W - M - lw, H * 0.026, lw, lh);
+      rD = W - M - lw - W * 0.025;
+    }
+  } catch (e) { rD = W - M; }
   const yl1 = H * 0.052;
   sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(W * 0.016);
   doc.text(String(data.ligne1 || "").toUpperCase(), M, yl1, { charSpace: 1.6 });
   const jour = String(data.jour || "").toUpperCase();
-  doc.text(jour, W - M - doc.getTextWidth(jour) - (jour.length - 1) * 1.2, yl1, { charSpace: 1.2 });
+  doc.text(jour, rD - doc.getTextWidth(jour) - (jour.length - 1) * 1.2, yl1, { charSpace: 1.2 });
   const yBig = yl1 + W * 0.072;
-  sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(W * 0.07);
-  doc.text(String(data.titre || "").toUpperCase(), M, yBig);
+  const titreTxt = String(data.titre || "").toUpperCase();
+  doc.setFont("helvetica", "bold");
+  let ts = W * 0.07; doc.setFontSize(ts);
+  const maxTW = W - 2 * M - W * 0.2;
+  while (doc.getTextWidth(titreTxt) > maxTW && ts > W * 0.028) { ts -= 1; doc.setFontSize(ts); }
+  sc(bleu); doc.text(titreTxt, M, yBig);
   const jn = String(data.jnum || "");
-  doc.setFontSize(W * 0.072); doc.text(jn, W - M - doc.getTextWidth(jn), yBig);
+  doc.setFontSize(W * 0.072); doc.text(jn, rD - doc.getTextWidth(jn), yBig);
   // sous-titre : pastille + texte
   const ySub = yBig + W * 0.04;
   const tag = String(data.tag || "").toUpperCase();
@@ -3461,7 +3475,7 @@ async function exporterCompositionPDF(jsPDF, fmt, data) {
   if (tag) { sf(jaune); doc.rect(M, ySub - W * 0.019, tagW, W * 0.032, "F"); sc(navy); doc.text(tag, M + W * 0.014, ySub + W * 0.004); }
   sc(bleu); doc.setFontSize(W * 0.028); doc.text(String(data.sousTitre || "").toUpperCase(), M + (tag ? tagW + W * 0.02 : 0), ySub + W * 0.007);
   const moisAn = `${(data.mois || "")} ${(data.annee || "")}`.trim().toUpperCase();
-  sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(W * 0.02); doc.text(moisAn, W - M - doc.getTextWidth(moisAn), ySub + W * 0.004);
+  sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(W * 0.02); doc.text(moisAn, rD - doc.getTextWidth(moisAn), ySub + W * 0.004);
 
   // ---------- TERRAIN ----------
   const pX = M, pW = W - 2 * M;
@@ -3602,10 +3616,10 @@ function Compo({ players, cat, catInfo, db, mutate }) {
       const subs = (remplacants || []).map((pid) => { const p = trouve(pid); return p ? { num: numeroDe(p), nom: p.nom, prenom: p.prenom } : null; }).filter(Boolean);
       const sousTitre = match ? (match.adversaire ? `Contre ${match.adversaire}` : (match.competition || match.type || "Match")) : "Composition";
       await exporterCompositionPDF(jsPDF, fmt, {
-        ligne1: `${CLUB} · Foot à ${typeFoot}`,
-        titre: CLUB, tag: cat, sousTitre,
+        ligne1: `Foot à ${typeFoot}`,
+        titre: CLUB_LONG, tag: cat, sousTitre,
         jour: JOURS_PDF[dObj.getDay()], jnum: dObj.getDate(), mois: MOIS_PDF[dObj.getMonth()], annee: dObj.getFullYear(),
-        systeme: lineup.formation, titulaires, remplacants: subs, pied: `${CLUB} · ${cat}`, avecPhotos,
+        systeme: lineup.formation, titulaires, remplacants: subs, pied: `${CLUB_LONG} · ${cat}`, avecPhotos,
       });
       setPdfCompoMsg(null);
     } catch (e) { setPdfCompoMsg("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
