@@ -3588,7 +3588,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
         if (annule) return;
         const arr = [];
         // on ne récupère que l'identité du joueur pour la composition, rien d'autre de la catégorie du dessous
-        res.forEach(({ c, d }) => { if (d && Array.isArray(d.players)) d.players.forEach((p) => arr.push({ id: p.id, prenom: p.prenom, nom: p.nom, poste: p.poste, numero: p.numero, photo: p.photo, dob: p.dob, suspension: p.suspension, suspensionFin: p.suspensionFin, discDate: p.discDate, cat: c, surclasse: true })); });
+        res.forEach(({ c, d }) => { if (d && Array.isArray(d.players)) d.players.forEach((p) => arr.push({ id: p.id, prenom: p.prenom, nom: p.nom, poste: p.poste, numero: p.numero, licence: p.licence, photo: p.photo, dob: p.dob, suspension: p.suspension, suspensionFin: p.suspensionFin, discDate: p.discDate, cat: c, surclasse: true })); });
         setSurclasses(arr);
       } catch (e) { if (!annule) setSurclasses([]); }
     })();
@@ -3916,6 +3916,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 800 }}>{p.prenom} {p.nom}</div>
                       <div style={{ fontSize: 12, color: bloque ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(p.suspensionFin)}` : "")) : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
+                      {p.licence ? <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 700, marginTop: 1 }}>Licence {p.licence}</div> : null}
                     </div>
                     {estSurcl ? <Pastille bg="#E7EEF6" color={C.bleu}>{p.cat}</Pastille> : null}
                     {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : rge ? <Pastille bg="#FBE3E3" color={C.rouge}>Rouge</Pastille> : placeAilleurs ? <Pastille bg={C.grisClair} color={C.gris}>déjà placé</Pastille> : estRempl ? <Pastille bg="#FFF3DA" color={C.jauneFonce}>banc</Pastille> : null}
@@ -3951,6 +3952,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 800 }}>{p.prenom} {p.nom}</div>
                     <div style={{ fontSize: 12, color: (susp || rge) ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(p.suspensionFin)}` : "")) : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
+                    {p.licence ? <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 700, marginTop: 1 }}>Licence {p.licence}</div> : null}
                   </div>
                   {estSurcl ? <Pastille bg="#E7EEF6" color={C.bleu}>{p.cat}</Pastille> : null}
                   {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : rge ? <Pastille bg="#FBE3E3" color={C.rouge}>Rouge</Pastille> : null}
