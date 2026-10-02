@@ -4124,6 +4124,9 @@ function RosterEncadrement({ db, mutate, onClose }) {
   const [nom, setNom] = useState("");
   const [role, setRole] = useState(ROLES_ENCADREMENT[0]);
   const [licence, setLicence] = useState("");
+  const [importMsg, setImportMsg] = useState(null);
+  const [coller, setColler] = useState(false);
+  const [texteColle, setTexteColle] = useState("");
   function ajouter() {
     const n = nom.trim(); if (!n) return;
     mutate((d) => { d.encadrement = d.encadrement || []; d.encadrement.push({ id: uid(), nom: n, role, licence: licence.trim() }); return d; });
@@ -4131,6 +4134,41 @@ function RosterEncadrement({ db, mutate, onClose }) {
   }
   function retirer(id) {
     mutate((d) => { d.encadrement = (d.encadrement || []).filter((x) => x.id !== id); return d; });
+  }
+  function traiterImport(texte) {
+    try {
+      let t = String(texte || "").trim();
+      const deb = t.indexOf("{") >= 0 ? t.indexOf("{") : t.indexOf("[");
+      const fin = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
+      if (deb >= 0 && fin > deb) t = t.slice(deb, fin + 1);
+      const parsed = JSON.parse(t);
+      const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.encadrement) ? parsed.encadrement : null);
+      if (!arr) throw new Error("format");
+      let ajout = 0, ignore = 0;
+      mutate((d) => {
+        d.encadrement = d.encadrement || [];
+        arr.forEach((x) => {
+          const n = String((x && x.nom) || "").trim(); if (!n) { ignore++; return; }
+          const lic = String((x && x.licence) || "").trim();
+          const rl = ROLES_ENCADREMENT.includes(x && x.role) ? x.role : "Éducateur";
+          const existe = d.encadrement.some((e) => (lic && e.licence === lic) || (e.nom.toLowerCase() === n.toLowerCase() && e.role === rl));
+          if (existe) { ignore++; return; }
+          d.encadrement.push({ id: uid(), nom: n, role: rl, licence: lic });
+          ajout++;
+        });
+        return d;
+      });
+      setImportMsg(`${ajout} personne(s) importée(s).` + (ignore ? ` ${ignore} ignorée(s) (déjà présentes).` : ""));
+      return true;
+    } catch (e) { setImportMsg("Contenu non valide. Vérifie que c'est bien le JSON de l'encadrement."); return false; }
+  }
+  function importerFichier(ev) {
+    const f = ev.target.files && ev.target.files[0]; ev.target.value = "";
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => traiterImport(reader.result);
+    reader.onerror = () => setImportMsg("Lecture du fichier impossible.");
+    reader.readAsText(f);
   }
   return (
     <Modal title="Encadrement : éducateurs, dirigeants, délégués, arbitres" onClose={onClose}>
@@ -4145,6 +4183,21 @@ function RosterEncadrement({ db, mutate, onClose }) {
         <Field label="N° de licence"><Inp value={licence} onChange={(e) => setLicence(e.target.value)} placeholder="Optionnel" /></Field>
       </div>
       <Btn variant="accent" full onClick={ajouter}><Plus size={16} /> Ajouter à la liste</Btn>
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "10px 12px", fontWeight: 700, fontSize: 13, color: C.encre, background: "#fff" }}>
+          <Upload size={16} /> Importer un fichier
+          <input type="file" accept=".json,application/json,text/plain,text/json,*/*" onChange={importerFichier} style={{ display: "none" }} />
+        </label>
+        <Btn variant="ghost" onClick={() => { setColler(true); setTexteColle(""); }}><ClipboardList size={16} /> Coller le JSON</Btn>
+      </div>
+      {importMsg && <div style={{ fontSize: 12.5, color: importMsg.includes("non valide") || importMsg.includes("impossible") ? C.rouge : C.vert, fontWeight: 700, margin: "8px 0", textAlign: "center" }}>{importMsg}</div>}
+      {coller && (
+        <Modal title="Coller le JSON de l'encadrement" onClose={() => setColler(false)}
+          footer={<Btn variant="accent" full disabled={!texteColle.trim()} onClick={() => { if (traiterImport(texteColle)) setColler(false); }}><Save size={16} /> Importer</Btn>}>
+          <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Colle ici le contenu du fichier JSON de l'encadrement, puis touche Importer.</div>
+          <textarea value={texteColle} onChange={(e) => setTexteColle(e.target.value)} rows={10} placeholder='{ "encadrement": [ { "nom": "...", "role": "Éducateur", "licence": "..." } ] }' style={{ width: "100%", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 11, fontSize: 12.5, fontFamily: "monospace", resize: "vertical", boxSizing: "border-box" }} />
+        </Modal>
+      )}
       <div style={{ marginTop: 14, display: "grid", gap: 4 }}>
         {liste.length === 0 ? <Empty icon={<Users size={22} color={C.gris} />} text="Aucun nom enregistré" /> :
           ROLES_ENCADREMENT.map((r) => {
