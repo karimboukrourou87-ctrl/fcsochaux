@@ -2566,6 +2566,30 @@ function risqueSuspension(p, db, cat) {
   return { alerte: false };
 }
 
+/* Responsables matériel : rotation enregistrée par semaine, tenant compte des absents */
+const RESP_EPOCH = Date.UTC(2024, 0, 7); // dimanche 7 janvier 2024
+function semaineMatIndex(d = new Date()) { const t = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); return Math.floor((t - RESP_EPOCH) / (7 * 86400000)); }
+function semaineMatDates(w) {
+  const deb = RESP_EPOCH + w * 7 * 86400000;
+  const f = (ms) => { const d = new Date(ms); return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}`; };
+  return { debMs: deb, finMs: deb + 6 * 86400000, debut: f(deb), fin: f(deb + 6 * 86400000) };
+}
+function respMatCat(cfg, cat) { return (cfg && cfg.respMat && cfg.respMat[cat]) || {}; }
+function passagesMat(cfg, cat, pid, avantW) { const s = respMatCat(cfg, cat); let c = 0; Object.keys(s).forEach((k) => { if (avantW != null && Number(k) >= avantW) return; const r = s[k]; if (r && (r.ballId === pid || r.chasId === pid)) c++; }); return c; }
+function oublisMat(cfg, cat, pid) { const s = respMatCat(cfg, cat); let c = 0; Object.keys(s).forEach((k) => { const r = s[k]; if (!r) return; if (r.ballId === pid && r.oubliBall) c++; if (r.chasId === pid && r.oubliChas) c++; }); return c; }
+function dispoMatSemaine(p, db, cat, w) {
+  if ((db.injuries || []).some((i) => i.joueurId === p.id && !i.fini)) return false;
+  const { debMs, finMs } = semaineMatDates(w);
+  const sess = (db.trainings || []).filter((t) => t.cat === cat && t.date && t.presence);
+  for (const t of sess) { const [y, m, dd] = String(t.date).split("-").map(Number); const d = Date.UTC(y, (m || 1) - 1, dd || 1); if (d >= debMs && d <= finMs) { const st = t.presence[p.id]; if (st === "absent" || st === "malade" || st === "blesse") return false; } }
+  return true;
+}
+function choisirResponsablesMat(players, db, cat, cfg, w) {
+  const dispo = players.filter((p) => dispoMatSemaine(p, db, cat, w));
+  const tri = [...dispo].sort((a, b) => passagesMat(cfg, cat, a.id, w) - passagesMat(cfg, cat, b.id, w) || `${a.nom}${a.prenom}`.localeCompare(`${b.nom}${b.prenom}`));
+  return [tri[0] || null, tri[1] || null];
+}
+
 function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
   const [q, setQ] = useState("");
   const [edit, setEdit] = useState(null);
@@ -2597,19 +2621,15 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
   }
 
   const respMat = (() => {
-    const ordre = [...players].sort((a, b) => `${a.nom}${a.prenom}`.localeCompare(`${b.nom}${b.prenom}`));
-    const n = ordre.length;
-    if (n === 0) return null;
-    const epoch = Date.UTC(2024, 0, 7); // dimanche 7 janvier 2024
-    const now = new Date();
-    const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-    const w = Math.floor((today - epoch) / (7 * 86400000));
-    const pick = (ww) => n === 1 ? [ordre[0], ordre[0]] : [ordre[((2 * ww) % n + n) % n], ordre[((2 * ww + 1) % n + n) % n]];
-    const [ball, chas] = pick(w);
-    const [ballN, chasN] = pick(w + 1);
-    const debutMs = epoch + w * 7 * 86400000;
-    const fmt = (ms) => { const d = new Date(ms); return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}`; };
-    return { ball, chas, ballN, chasN, debut: fmt(debutMs), fin: fmt(debutMs + 6 * 86400000) };
+    if (!players.length) return null;
+    const w = semaineMatIndex();
+    const cfg = db.config || {};
+    const rec = respMatCat(cfg, cat)[w];
+    const dt = semaineMatDates(w);
+    let ball = rec ? players.find((p) => p.id === rec.ballId) : null;
+    let chas = rec ? players.find((p) => p.id === rec.chasId) : null;
+    if (!ball || !chas) { const [b, c] = choisirResponsablesMat(players, db, cat, cfg, w); ball = ball || b; chas = chas || c; }
+    return { ball, chas, debut: dt.debut, fin: dt.fin, cfg, w };
   })();
   const nomJ = (p) => p ? `${p.prenom} ${p.nom}` : "—";
 
@@ -2618,7 +2638,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
       {respMat && (
         <Card style={{ marginBottom: 14, padding: 13, background: "#F4F8FD", borderColor: "#D7E3F2" }}>
           <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2 }}>Responsables matériel</div>
-          <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Semaine du {respMat.debut} au {respMat.fin} · roulement automatique chaque dimanche</div>
+          <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Semaine du {respMat.debut} au {respMat.fin} · roulement automatique chaque dimanche · géré dans l'onglet Séances</div>
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ flex: 1, background: "#fff", borderRadius: 10, border: `1px solid ${C.grisClair}`, padding: "9px 11px" }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3 }}>Ballons</div>
@@ -2629,7 +2649,6 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
               <div style={{ fontWeight: 800, fontSize: 14.5, marginTop: 2 }}>{nomJ(respMat.chas)}</div>
             </div>
           </div>
-          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 9 }}>Semaine prochaine : Ballons {nomJ(respMat.ballN)} · Chasubles {nomJ(respMat.chasN)}</div>
         </Card>
       )}
 
@@ -3017,6 +3036,15 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
           <div key={l} style={{ background: "#fff", borderRadius: 12, padding: "12px 6px", textAlign: "center", border: `1px solid ${C.grisClair}` }}>
             <div style={{ fontSize: 20, fontWeight: 900, color: col }}>{v}</div>
             <div style={{ fontSize: 10.5, color: C.gris, marginTop: 2 }}>{l}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, margin: "0 0 6px" }}>Responsabilité matériel</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 16 }}>
+        {[["Passages", passagesMat(db.config || {}, p.cat, p.id), C.bleu], ["Oublis", oublisMat(db.config || {}, p.cat, p.id), C.rouge]].map(([l, v, col]) => (
+          <div key={l} style={{ background: "#fff", borderRadius: 12, padding: "12px 6px", textAlign: "center", border: `1px solid ${C.grisClair}` }}>
+            <div style={{ fontSize: 20, fontWeight: 900, color: col }}>{v}</div>
+            <div style={{ fontSize: 10.5, color: C.gris, marginTop: 2 }}>{l === "Passages" ? "Passages matériel" : "Oublis matériel"}</div>
           </div>
         ))}
       </div>
@@ -5233,6 +5261,31 @@ function Entrainements({ players, cat, db, mutate }) {
   const [texteColle, setTexteColle] = useState("");
   const [nbMois, setNbMois] = useState(false);
 
+  // Responsables matériel de la semaine (enregistrés, tiennent compte des absents)
+  const semW = semaineMatIndex();
+  const dtW = semaineMatDates(semW);
+  const recW = respMatCat(db.config || {}, cat)[semW];
+  const ballP = recW ? players.find((p) => p.id === recW.ballId) : null;
+  const chasP = recW ? players.find((p) => p.id === recW.chasId) : null;
+  const ballIndispo = ballP && !dispoMatSemaine(ballP, db, cat, semW);
+  const chasIndispo = chasP && !dispoMatSemaine(chasP, db, cat, semW);
+  useEffect(() => {
+    if (!players.length) return;
+    const cfg = db.config || {};
+    if (respMatCat(cfg, cat)[semW]) return;
+    const [b, c] = choisirResponsablesMat(players, db, cat, cfg, semW);
+    if (!b || !c) return;
+    mutate((d) => { d.config = d.config || {}; d.config.respMat = d.config.respMat || {}; d.config.respMat[cat] = d.config.respMat[cat] || {}; if (!d.config.respMat[cat][semW]) d.config.respMat[cat][semW] = { ballId: b.id, chasId: c.id, oubliBall: false, oubliChas: false }; return d; });
+  }, [cat, semW, players.length]);
+  function reajusterResp() {
+    const [b, c] = choisirResponsablesMat(players, db, cat, db.config || {}, semW);
+    if (!b || !c) return;
+    mutate((d) => { d.config = d.config || {}; d.config.respMat = d.config.respMat || {}; d.config.respMat[cat] = d.config.respMat[cat] || {}; d.config.respMat[cat][semW] = { ballId: b.id, chasId: c.id, oubliBall: false, oubliChas: false }; return d; });
+  }
+  function toggleOubli(role) {
+    mutate((d) => { const m = (d.config || {}).respMat; const r = m && m[cat] && m[cat][semW]; if (r) { if (role === "ball") r.oubliBall = !r.oubliBall; else r.oubliChas = !r.oubliChas; } return d; });
+  }
+
   function traiterImportSeances(texte) {
     try {
       // on isole le JSON même si le fichier contient d'autres caractères autour
@@ -5351,6 +5404,24 @@ function Entrainements({ players, cat, db, mutate }) {
 
       {sous === "planning" && (
         <>
+          {players.length > 0 && (
+            <Card style={{ marginBottom: 12, padding: 13, background: "#F4F8FD", borderColor: "#D7E3F2" }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2 }}>Responsables matériel</div>
+              <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Semaine du {dtW.debut} au {dtW.fin} · roulement automatique chaque dimanche, absents exclus</div>
+              {[["ball", "Ballons", ballP, ballIndispo, recW && recW.oubliBall], ["chas", "Chasubles", chasP, chasIndispo, recW && recW.oubliChas]].map(([role, lib, p, indispo, oubli]) => (
+                <div key={role} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", borderRadius: 10, border: `1px solid ${C.grisClair}`, padding: "9px 11px", marginBottom: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3 }}>{lib}</div>
+                    <div style={{ fontWeight: 800, fontSize: 14.5, marginTop: 2 }}>{p ? `${p.prenom} ${p.nom}` : "—"}{p ? <span style={{ fontSize: 11.5, color: C.gris, fontWeight: 600 }}> · {passagesMat(db.config || {}, cat, p.id)} passage{passagesMat(db.config || {}, cat, p.id) > 1 ? "s" : ""}</span> : null}</div>
+                    {indispo ? <div style={{ fontSize: 11, color: C.rouge, fontWeight: 700, marginTop: 2 }}>Absent cette semaine, pense à réajuster</div> : null}
+                  </div>
+                  {p && <button onClick={() => toggleOubli(role)} style={{ border: "none", cursor: "pointer", borderRadius: 9, padding: "7px 10px", fontSize: 12, fontWeight: 800, background: oubli ? C.rouge : C.grisClair, color: oubli ? "#fff" : C.gris, flex: "0 0 auto" }}>{oubli ? "Oubli noté" : "Noter un oubli"}</button>}
+                </div>
+              ))}
+              {(ballIndispo || chasIndispo) && <Btn variant="ghost" full size="sm" onClick={reajusterResp}><ArrowRightLeft size={15} /> Réajuster selon les absents</Btn>}
+            </Card>
+          )}
+
           <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
             <Sel value={mois} onChange={(e) => setMois(+e.target.value)} style={{ flex: 2 }}>
               {MOIS.map((m, i) => <option key={m} value={i}>{m}</option>)}
