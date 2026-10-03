@@ -1611,13 +1611,11 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison) {
 
   const passagesM = passagesMat(db.config || {}, p.cat, p.id);
   const oublisM = oublisMat(db.config || {}, p.cat, p.id);
-  if (passagesM || oublisM) {
-    section("Responsable matériel");
-    paires([
-      ["Passages matériel", passagesM],
-      ["Oublis matériel", oublisM],
-    ]);
-  }
+  section("Responsable matériel");
+  paires([
+    ["Passages matériel", passagesM],
+    ["Oublis matériel", oublisM],
+  ]);
 
   const blessures = db.injuries.filter((i) => i.joueurId === p.id && (!i.debut || saisonDe(i.debut) === saison));
   if (blessures.length) {
