@@ -2709,13 +2709,14 @@ function risqueSuspension(p, db, cat) {
 }
 
 /* Responsables matériel : rotation enregistrée par semaine, tenant compte des absents */
-const RESP_EPOCH = Date.UTC(2024, 0, 1); // lundi 1er janvier 2024 (semaines du lundi au dimanche)
+const RESP_EPOCH = Date.UTC(2024, 0, 7); // dimanche 7 janvier 2024 (l'index change chaque dimanche)
 function semaineMatIndex(d = new Date()) { const t = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); return Math.floor((t - RESP_EPOCH) / (7 * 86400000)); }
 function semaineMatDates(w) {
-  const deb = RESP_EPOCH + w * 7 * 86400000; // lundi
+  const dim = RESP_EPOCH + w * 7 * 86400000; // dimanche = bascule de l'affichage
+  const lun = dim + 1 * 86400000;            // lundi = début de la responsabilité
+  const ven = dim + 5 * 86400000;            // vendredi = fin de la responsabilité
   const f = (ms) => { const d = new Date(ms); return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}`; };
-  // responsabilité du lundi au vendredi inclus
-  return { debMs: deb, finMs: deb + 4 * 86400000, debut: f(deb), fin: f(deb + 4 * 86400000) };
+  return { debMs: lun, finMs: ven, debut: f(lun), fin: f(ven) };
 }
 // Vacances scolaires zone A (Besançon / Doubs) 2026-2027 : lundi de la PREMIÈRE semaine de chaque période.
 // Le club ferme habituellement cette première semaine (roulement matériel suspendu).
@@ -6172,7 +6173,7 @@ function Entrainements({ players, cat, db, mutate }) {
           {players.length > 0 && (
             <Card style={{ marginBottom: 12, padding: 13, background: "#F4F8FD", borderColor: "#D7E3F2" }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2 }}>Responsables matériel (ballons + chasubles)</div>
-              <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>{avantDemarrage ? "Premier passage : d" : "D"}u lundi {dtW.debut} au vendredi {dtW.fin} · deux responsables, chacun un sac de ballons et des chasubles · le binôme change chaque lundi (à la première séance), absents exclus</div>
+              <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>{avantDemarrage ? "Premier passage : d" : "D"}u lundi {dtW.debut} au vendredi {dtW.fin} · deux responsables, chacun un sac de ballons et des chasubles · le binôme suivant s'affiche le dimanche (pour prévenir les parents), responsabilité du lundi au vendredi, absents exclus</div>
               {!rouleActif ? (
                 <div style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "12px 11px", marginBottom: 8, fontSize: 13, color: C.encre, lineHeight: 1.5 }}>
                   Le roulement démarrera le <strong>lundi {semaineMatDates(startW).debut}</strong> (du lundi {semaineMatDates(startW).debut} au vendredi {semaineMatDates(startW).fin}). Les deux premiers joueurs de l'ordre alphabétique seront désignés automatiquement à la première séance du lundi.
