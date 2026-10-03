@@ -6010,8 +6010,14 @@ function Entrainements({ players, cat, db, mutate }) {
       const startW = semaineMatIndex(startDate);
       d.config.respMatStart = d.config.respMatStart || {};
       d.config.respMatStart[cat] = startW;
-      // si la semaine en cours est déjà le point de départ (reset un lundi), on désigne tout de suite
-      if (semW >= startW) { const [b, c] = choisirResponsablesMat(poolAvec(d.config), d, cat, d.config, semW); if (b && c) d.config.respMat[cat][semW] = { ballId: b.id, chasId: c.id, oubliBall: false, oubliChas: false }; }
+      d.config.respMatOuvertExcept = d.config.respMatOuvertExcept || {};
+      d.config.respMatOuvertExcept[cat] = [];
+      // désigne tout de suite le premier binôme de la semaine de départ.
+      // respMat[cat] vient d'être vidé -> 0 passage pour tout le monde -> pur ordre alphabétique par nom.
+      if (!estSemaineFermee(startW, d.config, cat)) {
+        const [b, c] = choisirResponsablesMat(poolAvec(d.config), d, cat, d.config, startW);
+        if (b && c) d.config.respMat[cat][startW] = { ballId: b.id, chasId: c.id, oubliBall: false, oubliChas: false };
+      }
       return d;
     });
     setConfirmReinit(false);
