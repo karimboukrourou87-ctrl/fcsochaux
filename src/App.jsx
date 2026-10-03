@@ -364,7 +364,7 @@ function Transports({ db, mutate, cat, onClose }) {
 }
 
 
-function OrganisationMatchs({ db, mutate, cat, peutValider, onClose }) {
+function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose }) {
   const [sel, setSel] = useState(null);
   const [edit, setEdit] = useState(null);
   const [roster, setRoster] = useState(false);
@@ -412,8 +412,8 @@ function OrganisationMatchs({ db, mutate, cat, peutValider, onClose }) {
         });
         setEdit(null);
       }} />}
-      {sel && <OrgaMatch match={sel} db={db} mutate={mutate} peutValider={peutValider} onClose={() => setSel(null)} />}
-      {roster && <RosterEncadrement db={db} mutate={mutate} onClose={() => setRoster(false)} />}
+      {sel && <OrgaMatch demo={demo} match={sel} db={db} mutate={mutate} peutValider={peutValider} onClose={() => setSel(null)} />}
+      {roster && <RosterEncadrement demo={demo} db={db} mutate={mutate} onClose={() => setRoster(false)} />}
     </Modal>
   );
 }
@@ -1141,6 +1141,35 @@ async function saveCat(cat, blob, userId) {
   const sb = await getSupabase();
   const { error } = await sb.from("categorie_data").upsert({ categorie: cat, data: blob, maj_le: new Date().toISOString(), maj_par: userId });
   if (error) throw error;
+}
+
+// Liste d'encadrement COMMUNE à tout le club (une seule liste, visible dans toutes les catégories)
+const CAT_ENCADREMENT = "__ENCADREMENT__";
+async function loadEncadrementClub() {
+  try { const d = await loadCat(CAT_ENCADREMENT); return Array.isArray(d.encadrement) ? d.encadrement : []; }
+  catch (e) { return []; }
+}
+async function saveEncadrementClub(liste) {
+  const sb = await getSupabase();
+  let userId = null;
+  try { const u = await sb.auth.getUser(); userId = (u && u.data && u.data.user) ? u.data.user.id : null; } catch (e) {}
+  await saveCat(CAT_ENCADREMENT, { encadrement: liste }, userId);
+}
+// Hook : renvoie [liste, maj, chargement]. maj(fn) applique fn à la liste et enregistre.
+function useEncadrementClub(demo, db, mutate) {
+  const [listeRemote, setListeRemote] = useState(null);
+  useEffect(() => {
+    if (demo) return;
+    let annule = false;
+    loadEncadrementClub().then((l) => { if (!annule) setListeRemote(l); }).catch(() => { if (!annule) setListeRemote([]); });
+    return () => { annule = true; };
+  }, [demo]);
+  const liste = demo ? (db.encadrement || []) : (listeRemote || []);
+  const maj = (fn) => {
+    if (demo) { mutate((d) => { d.encadrement = fn(d.encadrement || []); return d; }); return; }
+    setListeRemote((prev) => { const next = fn(prev || []); saveEncadrementClub(next).catch(() => {}); return next; });
+  };
+  return [liste, maj, !demo && listeRemote === null];
 }
 
 // Propage un carton rouge d'un joueur surclassé vers sa catégorie d'origine
@@ -1963,8 +1992,8 @@ export default function App() {
         )}
         {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) window.open(u, "_blank", "noopener"); setShowClassement(true); }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} />}
-        {tab === "compo" && <Compo players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
-        {tab === "matchs" && <Matchs players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} />}
+        {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
+        {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} />}
         {tab === "entrainements" && <Entrainements players={players} cat={cat} db={db} mutate={mutate} />}
         {tab === "detection" && <Detection cat={cat} db={db} mutate={mutate} />}
         <div style={{ display: "flex", justifyContent: "center", padding: "10px 16px 26px" }}>
@@ -2007,7 +2036,7 @@ export default function App() {
       {showDemandes && <Demandes demo={demo} db={db} mutate={mutate} cat={cat} session={session} onVu={() => setDemTick((t) => t + 1)} onClose={() => { setDemTick((t) => t + 1); setShowDemandes(false); }} />}
       {showClassement && <Classement cat={cat} db={db} mutate={mutate} onClose={() => setShowClassement(false)} />}
       {showTransport && <Transports db={db} mutate={mutate} cat={cat} onClose={() => setShowTransport(false)} />}
-      {showOrganisation && <OrganisationMatchs db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
+      {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
       {showPlanning && <Planning db={db} mutate={mutate} cats={cats} profil={profil} peutValider={peutValider} cat={cat} onClose={() => setShowPlanning(false)} />}
       {showPlanningHebdo && <PlanningHebdo onClose={() => setShowPlanningHebdo(false)} />}
@@ -3643,13 +3672,21 @@ async function exporterCompositionPDF(jsPDF, fmt, data) {
 }
 
 const FORMATS_MULTI = { U13: [8, 10, 11], "Foot loisirs": [11, 9, 8], "Foot santé": [6, 5] };
-function Compo({ players, cat, catInfo, db, mutate }) {
+function Compo({ demo, players, cat, catInfo, db, mutate }) {
   const matchsCat = (db.matches || []).filter((m) => m.cat === cat).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const aujourdhui = hoyISO();
   const matchProchain = matchsCat.find((m) => (m.date || "") >= aujourdhui);
   const matchDefaut = matchProchain ? matchProchain.id : (matchsCat.length ? matchsCat[matchsCat.length - 1].id : "");
   const [matchSel, setMatchSel] = useState(matchDefaut);
   const key = matchSel || cat;
+  // Encadrement du match (liste commune du club) : coach, coach adjoint, dirigeant, délégué
+  const [listeEncCompo] = useEncadrementClub(demo, db, mutate);
+  const matchCourant = (db.matches || []).find((m) => m.id === matchSel);
+  const encMatch = (matchCourant && matchCourant.encadrement) || {};
+  function majEncMatch(patch) {
+    if (!matchSel) return;
+    mutate((d) => { const m = d.matches.find((x) => x.id === matchSel); if (m) m.encadrement = { ...(m.encadrement || {}), ...patch }; return d; });
+  }
   const formats = FORMATS_MULTI[cat] || [catInfo.type];
   const lineupRaw = db.lineups[key] || {};
   const typeFoot = (lineupRaw.format && formats.includes(lineupRaw.format)) ? lineupRaw.format : formats[0];
@@ -3830,6 +3867,27 @@ function Compo({ players, cat, catInfo, db, mutate }) {
         <div style={{ background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
           <div style={{ fontSize: 12.5, color: C.encre, marginBottom: 8, lineHeight: 1.4 }}>Ce match n'a pas encore de composition. Tu peux repartir de ta dernière composition plutôt que de tout refaire, puis l'ajuster.</div>
           <Btn variant="accent" full onClick={reprendreCompo}>Reprendre la dernière composition</Btn>
+        </div>
+      )}
+
+      {matchSel && (
+        <div style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+          <div style={{ fontWeight: 800, marginBottom: 4, display: "flex", alignItems: "center", gap: 7 }}><Users size={16} color={C.bleu} /> Encadrement du match</div>
+          <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Coach, coach adjoint, dirigeant et délégué (liste commune du club).</div>
+          {[
+            { key: "educateur", label: "Coach" },
+            { key: "coachAdjoint", label: "Coach adjoint" },
+            { key: "dirigeant", label: "Dirigeant" },
+            { key: "delegue", label: "Délégué" },
+          ].map(({ key: kk, label }) => (
+            <Field key={kk} label={label}>
+              <Sel value={encMatch[kk] || ""} onChange={(e) => majEncMatch({ [kk]: e.target.value })}>
+                <option value="">Non désigné</option>
+                {listeEncCompo.map((g) => <option key={g.id} value={g.nom}>{g.nom}{g.role ? ` (${g.role})` : ""}</option>)}
+                {encMatch[kk] && !listeEncCompo.some((g) => g.nom === encMatch[kk]) ? <option value={encMatch[kk]}>{encMatch[kk]}</option> : null}
+              </Sel>
+            </Field>
+          ))}
         </div>
       )}
 
@@ -4053,7 +4111,7 @@ function Compo({ players, cat, catInfo, db, mutate }) {
 /* ============================================================
    Matchs : calendrier, score, rapport, notes
    ============================================================ */
-function Matchs({ players, cat, catInfo, db, mutate, peutValider, profil }) {
+function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }) {
   const [edit, setEdit] = useState(null);
   const [open, setOpen] = useState(null);
   const [filtre, setFiltre] = useState("Tous");
@@ -4152,7 +4210,7 @@ function Matchs({ players, cat, catInfo, db, mutate, peutValider, profil }) {
         setEdit(null);
       }} />}
 
-      {open && <RapportMatch match={open} players={players} db={db} mutate={mutate} peutValider={peutValider} profil={profil}
+      {open && <RapportMatch demo={demo} match={open} players={players} db={db} mutate={mutate} peutValider={peutValider} profil={profil}
         onClose={() => setOpen(null)}
         onEdit={() => { setEdit(open); setOpen(null); }}
         onDelete={() => { mutate((d) => { d.matches = d.matches.filter((x) => x.id !== open.id); return d; }); setOpen(null); }} />}
@@ -4201,8 +4259,8 @@ function EditMatch({ match, onClose, onSave }) {
   );
 }
 
-function RosterEncadrement({ db, mutate, onClose }) {
-  const liste = db.encadrement || [];
+function RosterEncadrement({ demo, db, mutate, onClose }) {
+  const [liste, majEnc, chargementEnc] = useEncadrementClub(demo, db, mutate);
   const [nom, setNom] = useState("");
   const [role, setRole] = useState(ROLES_ENCADREMENT[0]);
   const [licence, setLicence] = useState("");
@@ -4213,21 +4271,16 @@ function RosterEncadrement({ db, mutate, onClose }) {
   const [edit, setEdit] = useState(null);
   function ajouter() {
     const n = nom.trim(); if (!n) return;
-    mutate((d) => { d.encadrement = d.encadrement || []; d.encadrement.push({ id: uid(), nom: n, role, licence: licence.trim() }); return d; });
+    majEnc((l) => [...l, { id: uid(), nom: n, role, licence: licence.trim() }]);
     setNom(""); setLicence("");
   }
   function retirer(id) {
-    mutate((d) => { d.encadrement = (d.encadrement || []).filter((x) => x.id !== id); return d; });
+    majEnc((l) => l.filter((x) => x.id !== id));
   }
   function enregistrerEdit() {
     if (!edit) return;
     const n = (edit.nom || "").trim(); if (!n) return;
-    mutate((d) => {
-      d.encadrement = d.encadrement || [];
-      const p = d.encadrement.find((x) => x.id === edit.id);
-      if (p) { p.nom = n; p.role = edit.role; p.licence = (edit.licence || "").trim(); }
-      return d;
-    });
+    majEnc((l) => l.map((x) => x.id === edit.id ? { ...x, nom: n, role: edit.role, licence: (edit.licence || "").trim() } : x));
     setEdit(null);
   }
   function traiterImport(texte) {
@@ -4240,19 +4293,17 @@ function RosterEncadrement({ db, mutate, onClose }) {
       const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.encadrement) ? parsed.encadrement : null);
       if (!arr) throw new Error("format");
       let ajout = 0, ignore = 0;
-      mutate((d) => {
-        d.encadrement = d.encadrement || [];
-        arr.forEach((x) => {
-          const n = String((x && x.nom) || "").trim(); if (!n) { ignore++; return; }
-          const lic = String((x && x.licence) || "").trim();
-          const rl = ROLES_ENCADREMENT.includes(x && x.role) ? x.role : "Éducateur";
-          const existe = d.encadrement.some((e) => (lic && e.licence === lic) || (e.nom.toLowerCase() === n.toLowerCase() && e.role === rl));
-          if (existe) { ignore++; return; }
-          d.encadrement.push({ id: uid(), nom: n, role: rl, licence: lic });
-          ajout++;
-        });
-        return d;
+      const base = [...liste];
+      arr.forEach((x) => {
+        const n = String((x && x.nom) || "").trim(); if (!n) { ignore++; return; }
+        const lic = String((x && x.licence) || "").trim();
+        const rl = ROLES_ENCADREMENT.includes(x && x.role) ? x.role : "Éducateur";
+        const existe = base.some((e) => (lic && e.licence === lic) || (e.nom.toLowerCase() === n.toLowerCase() && e.role === rl));
+        if (existe) { ignore++; return; }
+        base.push({ id: uid(), nom: n, role: rl, licence: lic });
+        ajout++;
       });
+      majEnc(() => base);
       setImportMsg(`${ajout} personne(s) importée(s).` + (ignore ? ` ${ignore} ignorée(s) (déjà présentes).` : ""));
       return true;
     } catch (e) { setImportMsg("Contenu non valide. Vérifie que c'est bien le JSON de l'encadrement."); return false; }
@@ -4267,7 +4318,8 @@ function RosterEncadrement({ db, mutate, onClose }) {
   }
   return (
     <Modal title="Encadrement : éducateurs, dirigeants, délégués, arbitres" onClose={onClose}>
-      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>Saisis une fois les noms et numéros de licence, ils seront proposés pour chaque match.</div>
+      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>Liste commune à tout le club : les noms ajoutés ici sont disponibles dans toutes les catégories. Saisis une fois les noms et numéros de licence, ils seront proposés pour chaque match.</div>
+      {chargementEnc && <div style={{ fontSize: 12.5, color: C.bleu, fontWeight: 700, marginBottom: 10 }}>Chargement de la liste du club...</div>}
       <Field label="Nom et prénom"><Inp value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nom et prénom" /></Field>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         <Field label="Rôle">
@@ -4405,7 +4457,7 @@ function Convocation({ db, cat, match, mutate, onClose }) {
 }
 
 
-function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
+function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
   const [roster, setRoster] = useState(false);
   const [causeRefus, setCauseRefus] = useState(false);
   const [cause, setCause] = useState("");
@@ -4418,7 +4470,7 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
   const r = cur.reservation || {};
   const exterieur = cur.lieu === "Extérieur";
   const domicile = cur.lieu === "Domicile";
-  const liste = db.encadrement || [];
+  const [liste] = useEncadrementClub(demo, db, mutate);
   const parRole = (rl) => liste.filter((x) => x.role === rl);
   const ciOrga = CATEGORIES.find((x) => x.id === cur.cat);
   const u17plus = !!(ciOrga && (ciOrga.groupe === "Formation" || ciOrga.groupe === "PRO"));
@@ -4642,6 +4694,7 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
       <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Désigne le dirigeant, le délégué et l'arbitre depuis la liste enregistrée.</div>
       {champs.map(({ role, key, src, options }) => {
         const gens = parRole(src || role);
+        const autres = liste.filter((x) => !gens.some((g) => g.id === x.id));
         const opts = options || [];
         return (
           <Field key={key} label={role}>
@@ -4649,14 +4702,16 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
               <option value="">Non désigné</option>
               {opts.map((o) => <option key={o} value={o}>{o}</option>)}
               {gens.map((g) => <option key={g.id}>{g.nom}</option>)}
-              {e[key] && !gens.some((g) => g.nom === e[key]) && !opts.includes(e[key]) ? <option value={e[key]}>{e[key]}</option> : null}
+              {autres.length ? <option disabled>— Autres personnes —</option> : null}
+              {autres.map((g) => <option key={g.id} value={g.nom}>{g.nom}{g.role ? ` (${g.role})` : ""}</option>)}
+              {e[key] && !liste.some((g) => g.nom === e[key]) && !opts.includes(e[key]) ? <option value={e[key]}>{e[key]}</option> : null}
             </Sel>
           </Field>
         );
       })}
       <Btn variant="ghost" full onClick={() => setRoster(true)}><Edit3 size={16} /> Modifier la liste des noms</Btn>
 
-      {roster && <RosterEncadrement db={db} mutate={mutate} onClose={() => setRoster(false)} />}
+      {roster && <RosterEncadrement demo={demo} db={db} mutate={mutate} onClose={() => setRoster(false)} />}
       {convoc && <Convocation db={db} cat={cur.cat} match={match} mutate={mutate} onClose={() => setConvoc(false)} />}
     </Modal>
   );
@@ -4812,6 +4867,28 @@ function exporterRapportMatchPDF(jsPDF, match, players, db, educateur, avecPhoto
     nonRet.forEach(({ nom, motif }) => {
       if (y > H - 50) { doc.addPage(); y = 50; }
       doc.text("- " + nom + (motif ? " : " + motif : ""), M, y); y += 13;
+    });
+    y += 6; sd(trait); doc.line(M, y, W - M, y); y += 18;
+  }
+
+  // Encadrement du match
+  const enc = cur.encadrement || {};
+  const lignesEnc = [
+    ["Coach", enc.educateur], ["Coach adjoint", enc.coachAdjoint],
+    ["Coach des gardiens", enc.coachGardiens], ["Préparateur physique", enc.prepaPhysique],
+    ["Dirigeant", enc.dirigeant], ["Délégué", enc.delegue],
+    ["Arbitre central", enc.arbitre], ["Arbitre assistant 1", enc.assistant1],
+    ["Arbitre assistant 2", enc.assistant2], ["Arbitre assistant 3", enc.assistant3],
+  ].filter(([, v]) => v);
+  if (lignesEnc.length) {
+    if (y > H - 80) { doc.addPage(); y = 50; }
+    sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text("Encadrement", M, y); y += 15;
+    doc.setFontSize(9.5);
+    lignesEnc.forEach(([k, v]) => {
+      if (y > H - 50) { doc.addPage(); y = 50; }
+      sc(gris); doc.setFont("helvetica", "bold"); doc.text(k + " :", M, y);
+      sc(encre); doc.setFont("helvetica", "normal"); doc.text(String(v), M + doc.getTextWidth(k + " : ") + 4, y);
+      y += 13;
     });
     y += 6; sd(trait); doc.line(M, y, W - M, y); y += 18;
   }
@@ -5327,7 +5404,7 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
   );
 }
 
-function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, peutValider, profil }) {
+function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDelete, peutValider, profil }) {
   const [noteFor, setNoteFor] = useState(null);
   const [orga, setOrga] = useState(false);
   const [jong, setJong] = useState(false);
@@ -5649,6 +5726,32 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
         <div style={{ display: "grid", gap: 9 }}>{joueursRapport.map(ligne)}</div>}
       {msgSurclasse && <div style={{ fontSize: 12.5, fontWeight: 700, color: msgSurclasse.includes("n'a pas pu") || msgSurclasse.includes("introuvable") ? C.rouge : C.vert, background: C.fond, borderRadius: 10, padding: 10, marginTop: 10 }}>{msgSurclasse}</div>}
 
+      {(() => {
+        const e = cur.encadrement || {};
+        const lignes = [
+          ["Coach", e.educateur], ["Coach adjoint", e.coachAdjoint], ["Coach des gardiens", e.coachGardiens],
+          ["Préparateur physique", e.prepaPhysique], ["Dirigeant", e.dirigeant], ["Délégué", e.delegue],
+          ["Arbitre central", e.arbitre], ["Arbitre assistant 1", e.assistant1], ["Arbitre assistant 2", e.assistant2], ["Arbitre assistant 3", e.assistant3],
+        ].filter(([, v]) => v);
+        return (
+          <div style={{ marginTop: 14, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: 12 }}>
+            <div style={{ fontWeight: 800, marginBottom: 6, display: "flex", alignItems: "center", gap: 7 }}><ShieldAlert size={16} color={C.bleu} /> Encadrement du match</div>
+            {lignes.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: C.gris }}>Aucun encadrant désigné. Désigne-les dans la composition ou via "Organisation du match".</div>
+            ) : (
+              <div style={{ display: "grid", gap: 4 }}>
+                {lignes.map(([k, v]) => (
+                  <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                    <span style={{ color: C.gris, fontWeight: 700 }}>{k}</span>
+                    <span style={{ fontWeight: 700, color: C.encre }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       <div style={{ fontWeight: 800, margin: "16px 0 8px", display: "flex", alignItems: "center", gap: 7 }}><Users size={16} color={C.gris} /> Joueurs non retenus</div>
       <div style={{ fontSize: 12, color: C.gris, marginBottom: 8 }}>Précise pourquoi un joueur de la catégorie n'est pas sur la feuille de match (pas retenu, ou prévu dans la catégorie au-dessus).</div>
       {nonRetenusDispo.length === 0 ? (
@@ -5692,7 +5795,7 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
       {msgPdf && <div style={{ fontSize: 12.5, color: C.encre, background: C.fond, borderRadius: 10, padding: 10, marginTop: 8 }}>{msgPdf}</div>}
 
       {noteFor && <NoterJoueur match={match} player={noteFor} db={db} mutate={mutate} onClose={() => setNoteFor(null)} />}
-      {orga && <OrgaMatch match={match} db={db} mutate={mutate} peutValider={peutValider} onClose={() => setOrga(false)} />}
+      {orga && <OrgaMatch demo={demo} match={match} db={db} mutate={mutate} peutValider={peutValider} onClose={() => setOrga(false)} />}
       {plateau && <OrganiserPlateau tournoi={{ nom: `${match.type}${match.date ? " du " + fmtDate(match.date) : ""}`, organisation: cur.organisation }} onClose={() => setPlateau(false)} onSave={enregistrerPlateau} />}
       {jong && (/^U13/.test(match.cat)
         ? <DefiJonglageLigue match={match} players={players} db={db} mutate={mutate} onClose={() => setJong(false)} />
