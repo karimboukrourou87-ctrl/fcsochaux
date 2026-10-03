@@ -5780,6 +5780,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
                   <option value="Pas retenu">Pas retenu</option>
                   {catsSup.map((c) => <option key={c} value={"Prévu en " + c}>{"Prévu en " + c}</option>)}
                   <option value="Non qualifié">Non qualifié</option>
+                  <option value="Suspendu">Suspendu</option>
                   <option value="Blessé">Blessé</option>
                   <option value="Absent">Absent</option>
                 </Sel>
