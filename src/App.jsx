@@ -5919,7 +5919,11 @@ function Entrainements({ players, cat, db, mutate }) {
   const [gererSurclasses, setGererSurclasses] = useState(false);
 
   // Responsables matériel de la semaine (enregistrés, tiennent compte des absents)
-  const semW = semaineMatIndex();
+  const semReelle = semaineMatIndex();
+  const startW = (db.config && db.config.respMatStart && db.config.respMatStart[cat]);
+  // Semaine affichée/gérée : si le roulement n'a pas encore démarré, on montre directement la semaine de départ
+  const semW = (startW != null && semReelle < startW) ? startW : semReelle;
+  const avantDemarrage = startW != null && semReelle < startW;
   const dtW = semaineMatDates(semW);
   // Joueurs surclassés ajoutés manuellement au roulement de cette catégorie
   const surclassesAjoutes = (db.config && db.config.respMatSurclasses && db.config.respMatSurclasses[cat]) || [];
@@ -5947,8 +5951,7 @@ function Entrainements({ players, cat, db, mutate }) {
     })();
     return () => { annule = true; };
   }, [cat]);
-  const startW = (db.config && db.config.respMatStart && db.config.respMatStart[cat]);
-  const rouleActif = startW == null || semW >= startW;
+  const rouleActif = true;
   const semaineFermee = estSemaineFermee(semW, db.config || {}, cat);
   const vacancesW = infoVacances(semW);
   useEffect(() => {
@@ -6169,7 +6172,7 @@ function Entrainements({ players, cat, db, mutate }) {
           {players.length > 0 && (
             <Card style={{ marginBottom: 12, padding: 13, background: "#F4F8FD", borderColor: "#D7E3F2" }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2 }}>Responsables matériel (ballons + chasubles)</div>
-              <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Du lundi {dtW.debut} au vendredi {dtW.fin} · deux responsables, chacun un sac de ballons et des chasubles · le binôme change chaque lundi (à la première séance), absents exclus</div>
+              <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>{avantDemarrage ? "Premier passage : d" : "D"}u lundi {dtW.debut} au vendredi {dtW.fin} · deux responsables, chacun un sac de ballons et des chasubles · le binôme change chaque lundi (à la première séance), absents exclus</div>
               {!rouleActif ? (
                 <div style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "12px 11px", marginBottom: 8, fontSize: 13, color: C.encre, lineHeight: 1.5 }}>
                   Le roulement démarrera le <strong>lundi {semaineMatDates(startW).debut}</strong> (du lundi {semaineMatDates(startW).debut} au vendredi {semaineMatDates(startW).fin}). Les deux premiers joueurs de l'ordre alphabétique seront désignés automatiquement à la première séance du lundi.
