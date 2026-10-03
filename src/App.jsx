@@ -1424,7 +1424,7 @@ function chargerJsPDF() {
 }
 
 
-function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison) {
+function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   try {
     doc.setProperties({
@@ -1609,8 +1609,8 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison) {
     ]);
   }
 
-  const passagesM = passagesMat(db.config || {}, p.cat, p.id);
-  const oublisM = oublisMat(db.config || {}, p.cat, p.id);
+  const passagesM = matTot ? matTot.passages : passagesMat(db.config || {}, p.cat, p.id);
+  const oublisM = matTot ? matTot.oublis : oublisMat(db.config || {}, p.cat, p.id);
   section("Responsable matériel");
   paires([
     ["Passages matériel", passagesM],
@@ -2720,6 +2720,8 @@ function respMatCat(cfg, cat) { return (cfg && cfg.respMat && cfg.respMat[cat]) 
 function passagesMat(cfg, cat, pid, avantW) { const s = respMatCat(cfg, cat); let c = 0; Object.keys(s).forEach((k) => { if (avantW != null && Number(k) >= avantW) return; const r = s[k]; if (r && (r.ballId === pid || r.chasId === pid)) c++; }); return c; }
 function oublisMat(cfg, cat, pid) { const s = respMatCat(cfg, cat); let c = 0; Object.keys(s).forEach((k) => { const r = s[k]; if (!r) return; if (r.ballId === pid && r.oubliBall) c++; if (r.chasId === pid && r.oubliChas) c++; }); return c; }
 function dispoMatSemaine(p, db, cat, w) {
+  const exclus = (db.config && db.config.respMatExclus && db.config.respMatExclus[cat]) || [];
+  if (exclus.includes(p.id)) return false;
   if ((db.injuries || []).some((i) => i.joueurId === p.id && !i.fini)) return false;
   const { debMs, finMs } = semaineMatDates(w);
   const sess = (db.trainings || []).filter((t) => t.cat === cat && t.date && t.presence);
@@ -3061,6 +3063,26 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
   const blessures = db.injuries.filter((i) => i.joueurId === p.id && (!i.debut || saisonDe(i.debut) === saisonSel));
   const age = ageOf(p.dob);
 
+  // La fiche (U13) cumule aussi les responsabilités matériel faites en surclassement (U14, etc.)
+  const [matSurclasse, setMatSurclasse] = useState({ passages: 0, oublis: 0 });
+  useEffect(() => {
+    let annule = false;
+    const cats = categoriesAuDessus(p.cat);
+    if (!cats.length) { setMatSurclasse({ passages: 0, oublis: 0 }); return; }
+    (async () => {
+      try {
+        const res = await Promise.all(cats.map((c) => loadCat(c).then((d) => ({ c, d })).catch(() => ({ c, d: null }))));
+        if (annule) return;
+        let pa = 0, ou = 0;
+        res.forEach(({ c, d }) => { if (d) { pa += passagesMat(d.config || {}, c, p.id); ou += oublisMat(d.config || {}, c, p.id); } });
+        setMatSurclasse({ passages: pa, oublis: ou });
+      } catch (e) { if (!annule) setMatSurclasse({ passages: 0, oublis: 0 }); }
+    })();
+    return () => { annule = true; };
+  }, [p.id, p.cat]);
+  const passagesTot = passagesMat(db.config || {}, p.cat, p.id) + matSurclasse.passages;
+  const oublisTot = oublisMat(db.config || {}, p.cat, p.id) + matSurclasse.oublis;
+
   // Colonne du milieu centrée et alignée de façon identique sur toutes les fiches
   const info = (icon, label, val) => (
     <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderBottom: `1px solid ${C.grisClair}` }}>
@@ -3074,7 +3096,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
     setPdfMsg("Préparation du PDF...");
     try {
       const jsPDF = await chargerJsPDF();
-      exporterFichePDF(jsPDF, p, db, tests, stats, bilansSaison.slice(0, 1), saisonSel);
+      exporterFichePDF(jsPDF, p, db, tests, stats, bilansSaison.slice(0, 1), saisonSel, { passages: passagesTot, oublis: oublisTot });
       setPdfMsg(null);
     } catch (e) {
       setPdfMsg("Téléchargement du module PDF impossible (vérifie la connexion). Réessaie.");
@@ -3183,7 +3205,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
       </div>
       <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, margin: "0 0 6px" }}>Responsabilité matériel</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 16 }}>
-        {[["Passages", passagesMat(db.config || {}, p.cat, p.id), C.bleu], ["Oublis", oublisMat(db.config || {}, p.cat, p.id), C.rouge]].map(([l, v, col]) => (
+        {[["Passages", passagesTot, C.bleu], ["Oublis", oublisTot, C.rouge]].map(([l, v, col]) => (
           <div key={l} style={{ background: "#fff", borderRadius: 12, padding: "12px 6px", textAlign: "center", border: `1px solid ${C.grisClair}` }}>
             <div style={{ fontSize: 20, fontWeight: 900, color: col }}>{v}</div>
             <div style={{ fontSize: 10.5, color: C.gris, marginTop: 2 }}>{l === "Passages" ? "Passages matériel" : "Oublis matériel"}</div>
@@ -5903,31 +5925,95 @@ function Entrainements({ players, cat, db, mutate }) {
   const [coller, setColler] = useState(false);
   const [texteColle, setTexteColle] = useState("");
   const [nbMois, setNbMois] = useState(false);
+  const [confirmReinit, setConfirmReinit] = useState(false);
+  const [gererExclus, setGererExclus] = useState(false);
+  const [gererSurclasses, setGererSurclasses] = useState(false);
 
   // Responsables matériel de la semaine (enregistrés, tiennent compte des absents)
   const semW = semaineMatIndex();
   const dtW = semaineMatDates(semW);
+  // Joueurs surclassés ajoutés manuellement au roulement de cette catégorie
+  const surclassesAjoutes = (db.config && db.config.respMatSurclasses && db.config.respMatSurclasses[cat]) || [];
+  const poolResp = [...players, ...surclassesAjoutes.filter((s) => !players.some((p) => p.id === s.id))];
+  const nomPool = (id) => { const p = poolResp.find((x) => x.id === id); return p ? `${p.prenom} ${p.nom}` : ""; };
   const recW = respMatCat(db.config || {}, cat)[semW];
-  const ballP = recW ? players.find((p) => p.id === recW.ballId) : null;
-  const chasP = recW ? players.find((p) => p.id === recW.chasId) : null;
+  const ballP = recW ? poolResp.find((p) => p.id === recW.ballId) : null;
+  const chasP = recW ? poolResp.find((p) => p.id === recW.chasId) : null;
   const ballIndispo = ballP && !dispoMatSemaine(ballP, db, cat, semW);
   const chasIndispo = chasP && !dispoMatSemaine(chasP, db, cat, semW);
+  // chargement des joueurs des catégories du dessous (pour ajouter un surclassé)
+  const catsBasEnt = SURCLASSEMENT[cat] || [];
+  const [surclassesDispo, setSurclassesDispo] = useState([]);
   useEffect(() => {
-    if (!players.length) return;
+    let annule = false;
+    if (!catsBasEnt.length) { setSurclassesDispo([]); return; }
+    (async () => {
+      try {
+        const res = await Promise.all(catsBasEnt.map((c) => loadCat(c).then((d) => ({ c, d })).catch(() => ({ c, d: null }))));
+        if (annule) return;
+        const arr = [];
+        res.forEach(({ c, d }) => { if (d && Array.isArray(d.players)) d.players.forEach((p) => arr.push({ id: p.id, prenom: p.prenom, nom: p.nom, cat: c })); });
+        setSurclassesDispo(arr);
+      } catch (e) { if (!annule) setSurclassesDispo([]); }
+    })();
+    return () => { annule = true; };
+  }, [cat]);
+  useEffect(() => {
+    if (!poolResp.length) return;
     const cfg = db.config || {};
     if (respMatCat(cfg, cat)[semW]) return;
-    const [b, c] = choisirResponsablesMat(players, db, cat, cfg, semW);
+    const [b, c] = choisirResponsablesMat(poolResp, db, cat, cfg, semW);
     if (!b || !c) return;
     mutate((d) => { d.config = d.config || {}; d.config.respMat = d.config.respMat || {}; d.config.respMat[cat] = d.config.respMat[cat] || {}; if (!d.config.respMat[cat][semW]) d.config.respMat[cat][semW] = { ballId: b.id, chasId: c.id, oubliBall: false, oubliChas: false }; return d; });
-  }, [cat, semW, players.length]);
+  }, [cat, semW, poolResp.length]);
   function reajusterResp() {
-    const [b, c] = choisirResponsablesMat(players, db, cat, db.config || {}, semW);
+    const [b, c] = choisirResponsablesMat(poolResp, db, cat, db.config || {}, semW);
     if (!b || !c) return;
     mutate((d) => { d.config = d.config || {}; d.config.respMat = d.config.respMat || {}; d.config.respMat[cat] = d.config.respMat[cat] || {}; d.config.respMat[cat][semW] = { ballId: b.id, chasId: c.id, oubliBall: false, oubliChas: false }; return d; });
   }
   function toggleOubli(role) {
     mutate((d) => { const m = (d.config || {}).respMat; const r = m && m[cat] && m[cat][semW]; if (r) { if (role === "ball") r.oubliBall = !r.oubliBall; else r.oubliChas = !r.oubliChas; } return d; });
   }
+  function reinitialiserResp() {
+    // efface tout l'historique du roulement de la catégorie et repart au début (ordre alphabétique)
+    mutate((d) => { d.config = d.config || {}; d.config.respMat = d.config.respMat || {}; d.config.respMat[cat] = {}; return d; });
+    setConfirmReinit(false);
+  }
+  function poolAvec(cfg) {
+    const ex = (cfg.respMatExclus && cfg.respMatExclus[cat]) || [];
+    const sur = (cfg.respMatSurclasses && cfg.respMatSurclasses[cat]) || [];
+    const base = [...players, ...sur.filter((s) => !players.some((p) => p.id === s.id))];
+    return base.filter((p) => !ex.includes(p.id));
+  }
+  function toggleExclusResp(pid) {
+    mutate((d) => {
+      d.config = d.config || {};
+      d.config.respMatExclus = d.config.respMatExclus || {};
+      const arr = d.config.respMatExclus[cat] || [];
+      d.config.respMatExclus[cat] = arr.includes(pid) ? arr.filter((x) => x !== pid) : [...arr, pid];
+      const [b, c] = choisirResponsablesMat(poolAvec(d.config), d, cat, d.config, semW);
+      if (b && c) { d.config.respMat = d.config.respMat || {}; d.config.respMat[cat] = d.config.respMat[cat] || {}; d.config.respMat[cat][semW] = { ballId: b.id, chasId: c.id, oubliBall: false, oubliChas: false }; }
+      return d;
+    });
+  }
+  function ajouterSurclasseResp(s) {
+    mutate((d) => {
+      d.config = d.config || {};
+      d.config.respMatSurclasses = d.config.respMatSurclasses || {};
+      const arr = d.config.respMatSurclasses[cat] || [];
+      if (!arr.some((x) => x.id === s.id)) d.config.respMatSurclasses[cat] = [...arr, { id: s.id, prenom: s.prenom, nom: s.nom, cat: s.cat }];
+      return d;
+    });
+  }
+  function retirerSurclasseResp(pid) {
+    mutate((d) => {
+      d.config = d.config || {};
+      d.config.respMatSurclasses = d.config.respMatSurclasses || {};
+      d.config.respMatSurclasses[cat] = (d.config.respMatSurclasses[cat] || []).filter((x) => x.id !== pid);
+      return d;
+    });
+  }
+  const exclusResp = (db.config && db.config.respMatExclus && db.config.respMatExclus[cat]) || [];
 
   function traiterImportSeances(texte) {
     try {
@@ -6049,20 +6135,87 @@ function Entrainements({ players, cat, db, mutate }) {
         <>
           {players.length > 0 && (
             <Card style={{ marginBottom: 12, padding: 13, background: "#F4F8FD", borderColor: "#D7E3F2" }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2 }}>Responsables matériel</div>
-              <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Semaine du {dtW.debut} au {dtW.fin} · roulement automatique chaque dimanche, absents exclus</div>
-              {[["ball", "Ballons", ballP, ballIndispo, recW && recW.oubliBall], ["chas", "Chasubles", chasP, chasIndispo, recW && recW.oubliChas]].map(([role, lib, p, indispo, oubli]) => (
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2 }}>Responsables matériel (ballons + chasubles)</div>
+              <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Semaine du {dtW.debut} au {dtW.fin} · deux responsables, chacun un sac de ballons et des chasubles · roulement alphabétique automatique chaque dimanche, absents exclus</div>
+              {[["ball", "Responsable 1", ballP, ballIndispo, recW && recW.oubliBall], ["chas", "Responsable 2", chasP, chasIndispo, recW && recW.oubliChas]].map(([role, lib, p, indispo, oubli]) => (
                 <div key={role} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", borderRadius: 10, border: `1px solid ${C.grisClair}`, padding: "9px 11px", marginBottom: 8 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3 }}>{lib}</div>
-                    <div style={{ fontWeight: 800, fontSize: 14.5, marginTop: 2 }}>{p ? `${p.prenom} ${p.nom}` : "—"}{p ? <span style={{ fontSize: 11.5, color: C.gris, fontWeight: 600 }}> · {passagesMat(db.config || {}, cat, p.id)} passage{passagesMat(db.config || {}, cat, p.id) > 1 ? "s" : ""}</span> : null}</div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3 }}>{lib} · ballons + chasubles</div>
+                    <div style={{ fontWeight: 800, fontSize: 14.5, marginTop: 2 }}>{p ? `${p.prenom} ${p.nom}` : "—"}{p && surclassesAjoutes.some((s) => s.id === p.id) ? <span style={{ fontSize: 10.5, fontWeight: 800, color: C.bleu, background: "#EAF0F7", borderRadius: 6, padding: "1px 6px", marginLeft: 6 }}>Surclassé {p.cat || ""}</span> : null}{p ? <span style={{ fontSize: 11.5, color: C.gris, fontWeight: 600 }}> · {passagesMat(db.config || {}, cat, p.id)} passage{passagesMat(db.config || {}, cat, p.id) > 1 ? "s" : ""}</span> : null}</div>
                     {indispo ? <div style={{ fontSize: 11, color: C.rouge, fontWeight: 700, marginTop: 2 }}>Absent cette semaine, pense à réajuster</div> : null}
                   </div>
                   {p && <button onClick={() => toggleOubli(role)} style={{ border: "none", cursor: "pointer", borderRadius: 9, padding: "7px 10px", fontSize: 12, fontWeight: 800, background: oubli ? C.rouge : C.grisClair, color: oubli ? "#fff" : C.gris, flex: "0 0 auto" }}>{oubli ? "Oubli noté" : "Noter un oubli"}</button>}
                 </div>
               ))}
               {(ballIndispo || chasIndispo) && <Btn variant="ghost" full size="sm" onClick={reajusterResp}><ArrowRightLeft size={15} /> Réajuster selon les absents</Btn>}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <Btn variant="ghost" size="sm" full onClick={() => setGererExclus(true)}><Users size={15} /> Joueurs non concernés{exclusResp.length ? ` (${exclusResp.length})` : ""}</Btn>
+                <Btn variant="ghost" size="sm" full onClick={() => setConfirmReinit(true)}><ArrowRightLeft size={15} /> Réinitialiser le roulement</Btn>
+              </div>
+              {catsBasEnt.length > 0 && (
+                <Btn variant="ghost" size="sm" full style={{ marginTop: 8 }} onClick={() => setGererSurclasses(true)}><Plus size={15} /> Ajouter un joueur surclassé{surclassesAjoutes.length ? ` (${surclassesAjoutes.length})` : ""}</Btn>
+              )}
             </Card>
+          )}
+
+          {gererSurclasses && (
+            <Modal title="Surclassés au roulement matériel" onClose={() => setGererSurclasses(false)}>
+              <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Ajoute un joueur d'une catégorie du dessous qui s'entraîne avec {cat} (ex. surclassé). Une fois ajouté, il entre dans le roulement automatique comme les autres.</div>
+              {surclassesAjoutes.length > 0 && (
+                <>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: C.gris, margin: "6px 0" }}>Ajoutés au roulement</div>
+                  <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+                    {surclassesAjoutes.map((s) => (
+                      <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "9px 11px" }}>
+                        <div style={{ flex: 1, minWidth: 0, fontWeight: 700 }}>{s.prenom} {s.nom} <span style={{ fontSize: 11, color: C.bleu, fontWeight: 700 }}>({s.cat})</span></div>
+                        <button onClick={() => retirerSurclasseResp(s.id)} style={{ border: "none", cursor: "pointer", borderRadius: 9, padding: "7px 12px", fontSize: 12, fontWeight: 800, background: C.rouge, color: "#fff", flex: "0 0 auto" }}>Retirer</button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.gris, margin: "6px 0" }}>Joueurs disponibles ({catsBasEnt.join(", ")})</div>
+              {surclassesDispo.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: C.gris, background: C.fond, borderRadius: 10, padding: 10 }}>Aucun joueur chargé pour les catégories du dessous.</div>
+              ) : (
+                <div style={{ display: "grid", gap: 6 }}>
+                  {[...surclassesDispo].filter((s) => !surclassesAjoutes.some((x) => x.id === s.id)).sort((a, b) => `${a.nom}${a.prenom}`.localeCompare(`${b.nom}${b.prenom}`)).map((s) => (
+                    <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "9px 11px" }}>
+                      <div style={{ flex: 1, minWidth: 0, fontWeight: 700 }}>{s.prenom} {s.nom} <span style={{ fontSize: 11, color: C.gris, fontWeight: 700 }}>({s.cat})</span></div>
+                      <button onClick={() => ajouterSurclasseResp(s)} style={{ border: "none", cursor: "pointer", borderRadius: 9, padding: "7px 12px", fontSize: 12, fontWeight: 800, background: C.bleu, color: "#fff", flex: "0 0 auto" }}>Ajouter</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Modal>
+          )}
+
+          {confirmReinit && (
+            <Modal title="Réinitialiser le roulement" onClose={() => setConfirmReinit(false)}
+              footer={<><Btn variant="ghost" full onClick={() => setConfirmReinit(false)}>Non, annuler</Btn><Btn variant="danger" full onClick={reinitialiserResp}><ArrowRightLeft size={16} /> Oui, réinitialiser</Btn></>}>
+              <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.5 }}>
+                Es-tu sûr de vouloir réinitialiser le roulement des responsables matériel de la catégorie <strong>{cat}</strong> ?
+                <br /><br />
+                L'historique des passages est effacé et le roulement repart du début, dans l'ordre alphabétique. Cette action est définitive.
+              </div>
+            </Modal>
+          )}
+
+          {gererExclus && (
+            <Modal title="Joueurs non concernés par le roulement" onClose={() => setGererExclus(false)}>
+              <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Décoche un joueur pour le sortir du roulement des responsables matériel (ex. joueur surclassé présent seulement certains jours). Il ne sera plus désigné automatiquement.</div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {[...players].sort((a, b) => `${a.nom}${a.prenom}`.localeCompare(`${b.nom}${b.prenom}`)).map((p) => {
+                  const exclu = exclusResp.includes(p.id);
+                  return (
+                    <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "9px 11px" }}>
+                      <div style={{ flex: 1, minWidth: 0, fontWeight: 700, color: exclu ? C.gris : C.encre, textDecoration: exclu ? "line-through" : "none" }}>{p.prenom} {p.nom}</div>
+                      <button onClick={() => toggleExclusResp(p.id)} style={{ border: "none", cursor: "pointer", borderRadius: 9, padding: "7px 12px", fontSize: 12, fontWeight: 800, background: exclu ? C.rouge : C.grisClair, color: exclu ? "#fff" : C.gris, flex: "0 0 auto" }}>{exclu ? "Non concerné" : "Concerné"}</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </Modal>
           )}
 
           <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
