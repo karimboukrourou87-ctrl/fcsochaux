@@ -871,6 +871,18 @@ function categorieAuDessus(cat) {
   for (const sup in SURCLASSEMENT) { if ((SURCLASSEMENT[sup] || []).includes(cat)) return sup; }
   return null;
 }
+// Toutes les catégories supérieures possibles (pour "prévu en ...").
+// En formation/pro, un joueur peut être prévu dans toutes les catégories au-dessus.
+const ECHELLE_PRO = ["U17 NAT", "U19 NAT", "N2", "Ligue 2"];
+const ECHELLE_FEM = ["U18F", "U19F NAT", "SENIORS F"];
+function categoriesAuDessus(cat) {
+  let i = ECHELLE_PRO.indexOf(cat);
+  if (i >= 0) return ECHELLE_PRO.slice(i + 1);
+  i = ECHELLE_FEM.indexOf(cat);
+  if (i >= 0) return ECHELLE_FEM.slice(i + 1);
+  const c = categorieAuDessus(cat);
+  return c ? [c] : [];
+}
 
 // Catégories qu'une catégorie peut demander (joueur surclassé de deux ans en dessous)
 const VOISINS_SPECIAUX = {
@@ -5552,7 +5564,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
 
   // Joueurs de la catégorie non retenus (ni titulaire, ni remplaçant, sans stats)
   const nonRetenusDispo = players.filter((p) => !idsCompo.has(p.id));
-  const catSup = categorieAuDessus(match.cat);
+  const catsSup = categoriesAuDessus(match.cat);
   function setNonRetenu(joueurId, motif) {
     mutate((d) => {
       const m = d.matches.find((x) => x.id === match.id);
@@ -5766,7 +5778,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
                 <Sel value={motif} onChange={(e) => setNonRetenu(p.id, e.target.value)} style={{ flex: "0 0 auto", width: "auto", minWidth: 150 }}>
                   <option value="">Retenu / non précisé</option>
                   <option value="Pas retenu">Pas retenu</option>
-                  {catSup ? <option value={"Prévu en " + catSup}>{"Prévu en " + catSup}</option> : null}
+                  {catsSup.map((c) => <option key={c} value={"Prévu en " + c}>{"Prévu en " + c}</option>)}
                   <option value="Non qualifié">Non qualifié</option>
                   <option value="Blessé">Blessé</option>
                   <option value="Absent">Absent</option>
