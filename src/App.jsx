@@ -2709,16 +2709,35 @@ function risqueSuspension(p, db, cat) {
 }
 
 /* Responsables matériel : rotation enregistrée par semaine, tenant compte des absents */
-const RESP_EPOCH = Date.UTC(2024, 0, 7); // dimanche 7 janvier 2024
+const RESP_EPOCH = Date.UTC(2024, 0, 1); // lundi 1er janvier 2024 (semaines du lundi au dimanche)
 function semaineMatIndex(d = new Date()) { const t = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); return Math.floor((t - RESP_EPOCH) / (7 * 86400000)); }
 function semaineMatDates(w) {
-  const deb = RESP_EPOCH + w * 7 * 86400000;
+  const deb = RESP_EPOCH + w * 7 * 86400000; // lundi
   const f = (ms) => { const d = new Date(ms); return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}`; };
-  return { debMs: deb, finMs: deb + 6 * 86400000, debut: f(deb), fin: f(deb + 6 * 86400000) };
+  // responsabilité du lundi au vendredi inclus
+  return { debMs: deb, finMs: deb + 4 * 86400000, debut: f(deb), fin: f(deb + 4 * 86400000) };
+}
+// Vacances scolaires zone A (Besançon / Doubs) 2026-2027 : lundi de la PREMIÈRE semaine de chaque période.
+// Le club ferme habituellement cette première semaine (roulement matériel suspendu).
+const VACANCES_ZONE_A_FERMETURE = [
+  { iso: "2026-10-19", nom: "Toussaint" },
+  { iso: "2026-12-21", nom: "Noël" },
+  { iso: "2027-02-15", nom: "Hiver" },
+  { iso: "2027-04-12", nom: "Printemps" },
+];
+function semainesFermeesDefaut() {
+  return VACANCES_ZONE_A_FERMETURE.map((v) => { const [y, m, d] = v.iso.split("-").map(Number); return { w: semaineMatIndex(new Date(y, m - 1, d)), nom: v.nom }; });
+}
+function infoVacances(w) { return semainesFermeesDefaut().find((x) => x.w === w) || null; }
+function estSemaineFermee(w, cfg, cat) {
+  const ouvExc = (cfg && cfg.respMatOuvertExcept && cfg.respMatOuvertExcept[cat]) || [];
+  if (ouvExc.includes(w)) return false; // ouverte en exception
+  return !!infoVacances(w);
 }
 function respMatCat(cfg, cat) { return (cfg && cfg.respMat && cfg.respMat[cat]) || {}; }
-function passagesMat(cfg, cat, pid, avantW) { const s = respMatCat(cfg, cat); let c = 0; Object.keys(s).forEach((k) => { if (avantW != null && Number(k) >= avantW) return; const r = s[k]; if (r && (r.ballId === pid || r.chasId === pid)) c++; }); return c; }
-function oublisMat(cfg, cat, pid) { const s = respMatCat(cfg, cat); let c = 0; Object.keys(s).forEach((k) => { const r = s[k]; if (!r) return; if (r.ballId === pid && r.oubliBall) c++; if (r.chasId === pid && r.oubliChas) c++; }); return c; }
+function respMatStartCat(cfg, cat) { const s = cfg && cfg.respMatStart && cfg.respMatStart[cat]; return (s == null ? null : Number(s)); }
+function passagesMat(cfg, cat, pid, avantW) { const s = respMatCat(cfg, cat); const st = respMatStartCat(cfg, cat); let c = 0; Object.keys(s).forEach((k) => { if (avantW != null && Number(k) >= avantW) return; if (st != null && Number(k) < st) return; const r = s[k]; if (r && (r.ballId === pid || r.chasId === pid)) c++; }); return c; }
+function oublisMat(cfg, cat, pid) { const s = respMatCat(cfg, cat); const st = respMatStartCat(cfg, cat); let c = 0; Object.keys(s).forEach((k) => { if (st != null && Number(k) < st) return; const r = s[k]; if (!r) return; if (r.ballId === pid && r.oubliBall) c++; if (r.chasId === pid && r.oubliChas) c++; }); return c; }
 function dispoMatSemaine(p, db, cat, w) {
   const exclus = (db.config && db.config.respMatExclus && db.config.respMatExclus[cat]) || [];
   if (exclus.includes(p.id)) return false;
@@ -2764,38 +2783,8 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
     });
   }
 
-  const respMat = (() => {
-    if (!players.length) return null;
-    const w = semaineMatIndex();
-    const cfg = db.config || {};
-    const rec = respMatCat(cfg, cat)[w];
-    const dt = semaineMatDates(w);
-    let ball = rec ? players.find((p) => p.id === rec.ballId) : null;
-    let chas = rec ? players.find((p) => p.id === rec.chasId) : null;
-    if (!ball || !chas) { const [b, c] = choisirResponsablesMat(players, db, cat, cfg, w); ball = ball || b; chas = chas || c; }
-    return { ball, chas, debut: dt.debut, fin: dt.fin, cfg, w };
-  })();
-  const nomJ = (p) => p ? `${p.prenom} ${p.nom}` : "—";
-
   return (
     <div>
-      {respMat && (
-        <Card style={{ marginBottom: 14, padding: 13, background: "#F4F8FD", borderColor: "#D7E3F2" }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2 }}>Responsables matériel</div>
-          <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Semaine du {respMat.debut} au {respMat.fin} · roulement automatique chaque dimanche · géré dans l'onglet Séances</div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <div style={{ flex: 1, background: "#fff", borderRadius: 10, border: `1px solid ${C.grisClair}`, padding: "9px 11px" }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3 }}>Ballons</div>
-              <div style={{ fontWeight: 800, fontSize: 14.5, marginTop: 2 }}>{nomJ(respMat.ball)}</div>
-            </div>
-            <div style={{ flex: 1, background: "#fff", borderRadius: 10, border: `1px solid ${C.grisClair}`, padding: "9px 11px" }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3 }}>Chasubles</div>
-              <div style={{ fontWeight: 800, fontSize: 14.5, marginTop: 2 }}>{nomJ(respMat.chas)}</div>
-            </div>
-          </div>
-        </Card>
-      )}
-
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
         <div style={{ flex: 1, position: "relative" }}>
           <Search size={17} color={C.gris} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
@@ -5958,14 +5947,44 @@ function Entrainements({ players, cat, db, mutate }) {
     })();
     return () => { annule = true; };
   }, [cat]);
+  const startW = (db.config && db.config.respMatStart && db.config.respMatStart[cat]);
+  const rouleActif = startW == null || semW >= startW;
+  const semaineFermee = estSemaineFermee(semW, db.config || {}, cat);
+  const vacancesW = infoVacances(semW);
   useEffect(() => {
     if (!poolResp.length) return;
     const cfg = db.config || {};
+    const st = cfg.respMatStart && cfg.respMatStart[cat];
+    if (st != null && semW < st) return; // le roulement n'a pas encore commencé
+    if (estSemaineFermee(semW, cfg, cat)) return; // semaine de vacances : club fermé
     if (respMatCat(cfg, cat)[semW]) return;
     const [b, c] = choisirResponsablesMat(poolResp, db, cat, cfg, semW);
     if (!b || !c) return;
     mutate((d) => { d.config = d.config || {}; d.config.respMat = d.config.respMat || {}; d.config.respMat[cat] = d.config.respMat[cat] || {}; if (!d.config.respMat[cat][semW]) d.config.respMat[cat][semW] = { ballId: b.id, chasId: c.id, oubliBall: false, oubliChas: false }; return d; });
-  }, [cat, semW, poolResp.length]);
+  }, [cat, semW, poolResp.length, startW, semaineFermee]);
+  function ouvrirSemaineException() {
+    mutate((d) => {
+      d.config = d.config || {};
+      d.config.respMatOuvertExcept = d.config.respMatOuvertExcept || {};
+      const arr = d.config.respMatOuvertExcept[cat] || [];
+      if (!arr.includes(semW)) d.config.respMatOuvertExcept[cat] = [...arr, semW];
+      // on désigne tout de suite pour cette semaine ouverte exceptionnellement
+      if (!respMatCat(d.config, cat)[semW]) {
+        const [b, c] = choisirResponsablesMat(poolAvec(d.config), d, cat, d.config, semW);
+        if (b && c) { d.config.respMat = d.config.respMat || {}; d.config.respMat[cat] = d.config.respMat[cat] || {}; d.config.respMat[cat][semW] = { ballId: b.id, chasId: c.id, oubliBall: false, oubliChas: false }; }
+      }
+      return d;
+    });
+  }
+  function refermerSemaine() {
+    mutate((d) => {
+      d.config = d.config || {};
+      d.config.respMatOuvertExcept = d.config.respMatOuvertExcept || {};
+      d.config.respMatOuvertExcept[cat] = (d.config.respMatOuvertExcept[cat] || []).filter((x) => x !== semW);
+      if (d.config.respMat && d.config.respMat[cat]) delete d.config.respMat[cat][semW];
+      return d;
+    });
+  }
   function reajusterResp() {
     const [b, c] = choisirResponsablesMat(poolResp, db, cat, db.config || {}, semW);
     if (!b || !c) return;
@@ -5975,8 +5994,22 @@ function Entrainements({ players, cat, db, mutate }) {
     mutate((d) => { const m = (d.config || {}).respMat; const r = m && m[cat] && m[cat][semW]; if (r) { if (role === "ball") r.oubliBall = !r.oubliBall; else r.oubliChas = !r.oubliChas; } return d; });
   }
   function reinitialiserResp() {
-    // efface tout l'historique du roulement de la catégorie et repart au début (ordre alphabétique)
-    mutate((d) => { d.config = d.config || {}; d.config.respMat = d.config.respMat || {}; d.config.respMat[cat] = {}; return d; });
+    // efface tout l'historique et fait repartir le roulement (ordre alphabétique)
+    // à partir du prochain lundi (première séance de la semaine)
+    mutate((d) => {
+      d.config = d.config || {};
+      d.config.respMat = d.config.respMat || {};
+      d.config.respMat[cat] = {};
+      const now = new Date();
+      const toMon = (1 - now.getDay() + 7) % 7; // jours jusqu'au prochain lundi (0 si lundi)
+      const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + toMon);
+      const startW = semaineMatIndex(startDate);
+      d.config.respMatStart = d.config.respMatStart || {};
+      d.config.respMatStart[cat] = startW;
+      // si la semaine en cours est déjà le point de départ (reset un lundi), on désigne tout de suite
+      if (semW >= startW) { const [b, c] = choisirResponsablesMat(poolAvec(d.config), d, cat, d.config, semW); if (b && c) d.config.respMat[cat][semW] = { ballId: b.id, chasId: c.id, oubliBall: false, oubliChas: false }; }
+      return d;
+    });
     setConfirmReinit(false);
   }
   function poolAvec(cfg) {
@@ -6136,7 +6169,23 @@ function Entrainements({ players, cat, db, mutate }) {
           {players.length > 0 && (
             <Card style={{ marginBottom: 12, padding: 13, background: "#F4F8FD", borderColor: "#D7E3F2" }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2 }}>Responsables matériel (ballons + chasubles)</div>
-              <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Semaine du {dtW.debut} au {dtW.fin} · deux responsables, chacun un sac de ballons et des chasubles · roulement alphabétique automatique chaque dimanche, absents exclus</div>
+              <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Du lundi {dtW.debut} au vendredi {dtW.fin} · deux responsables, chacun un sac de ballons et des chasubles · le binôme change chaque lundi (à la première séance), absents exclus</div>
+              {!rouleActif ? (
+                <div style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "12px 11px", marginBottom: 8, fontSize: 13, color: C.encre, lineHeight: 1.5 }}>
+                  Le roulement démarrera le <strong>lundi {semaineMatDates(startW).debut}</strong> (du lundi {semaineMatDates(startW).debut} au vendredi {semaineMatDates(startW).fin}). Les deux premiers joueurs de l'ordre alphabétique seront désignés automatiquement à la première séance du lundi.
+                </div>
+              ) : semaineFermee ? (
+                <div style={{ background: "#FFF3DA", border: "1px solid #EBD3AE", borderRadius: 10, padding: "12px 11px", marginBottom: 8, fontSize: 13, color: C.encre, lineHeight: 1.5 }}>
+                  <strong>Club fermé cette semaine</strong>{vacancesW ? ` (première semaine des vacances de ${vacancesW.nom})` : " (vacances scolaires)"}. Le roulement est suspendu et reprendra à la réouverture, sans sauter de tour.
+                  <Btn variant="ghost" size="sm" full style={{ marginTop: 8 }} onClick={ouvrirSemaineException}><Check size={15} /> Ouvrir exceptionnellement cette semaine</Btn>
+                </div>
+              ) : (<>
+              {(db.config && db.config.respMatOuvertExcept && (db.config.respMatOuvertExcept[cat] || []).includes(semW) && infoVacances(semW)) ? (
+                <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ flex: 1 }}>Semaine de vacances ouverte en exception</span>
+                  <button onClick={refermerSemaine} style={{ border: "none", cursor: "pointer", borderRadius: 8, padding: "5px 9px", fontSize: 11.5, fontWeight: 800, background: C.grisClair, color: C.gris }}>Refermer</button>
+                </div>
+              ) : null}
               {[["ball", "Responsable 1", ballP, ballIndispo, recW && recW.oubliBall], ["chas", "Responsable 2", chasP, chasIndispo, recW && recW.oubliChas]].map(([role, lib, p, indispo, oubli]) => (
                 <div key={role} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", borderRadius: 10, border: `1px solid ${C.grisClair}`, padding: "9px 11px", marginBottom: 8 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -6148,6 +6197,7 @@ function Entrainements({ players, cat, db, mutate }) {
                 </div>
               ))}
               {(ballIndispo || chasIndispo) && <Btn variant="ghost" full size="sm" onClick={reajusterResp}><ArrowRightLeft size={15} /> Réajuster selon les absents</Btn>}
+              </>)}
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                 <Btn variant="ghost" size="sm" full onClick={() => setGererExclus(true)}><Users size={15} /> Joueurs non concernés{exclusResp.length ? ` (${exclusResp.length})` : ""}</Btn>
                 <Btn variant="ghost" size="sm" full onClick={() => setConfirmReinit(true)}><ArrowRightLeft size={15} /> Réinitialiser le roulement</Btn>
