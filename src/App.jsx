@@ -4663,7 +4663,7 @@ function OrgaMatch({ match, db, mutate, onClose, peutValider }) {
 }
 
 
-function exporterRapportMatchPDF(jsPDF, match, players, db, educateur) {
+function exporterRapportMatchPDF(jsPDF, match, players, db, educateur, avecPhotos) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const W = 595, H = 842, M = 40;
   const navy = [14, 30, 51], bleu = [26, 53, 83], orr = [198, 162, 76], encre = [22, 32, 46], gris = [122, 130, 142], trait = [228, 232, 238], rouge = [181, 72, 63], vert = [47, 163, 107], blanc = [255, 255, 255];
@@ -4747,7 +4747,7 @@ function exporterRapportMatchPDF(jsPDF, match, players, db, educateur) {
       const jid = slots[i]; const j = players.find((p) => p.id === jid);
       const gk = s.l === "G"; const r = 11;
       let photoOk = false;
-      if (j && j.photo) {
+      if (avecPhotos && j && j.photo) {
         try {
           doc.saveGraphicsState();
           doc.circle(cx, cy, r); doc.clip(); doc.discardPath();
@@ -5334,6 +5334,7 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
   const [plateau, setPlateau] = useState(false);
   const [msgPdf, setMsgPdf] = useState(null);
   const [msgSurclasse, setMsgSurclasse] = useState(null);
+  const [avecPhotosRap, setAvecPhotosRap] = useState(false);
   const joue = match.scorePour != null && match.scoreContre != null;
   const estPlateau = ["Plateau", "Tournoi"].includes(match.type);
   function enregistrerPlateau(organisation) {
@@ -5486,7 +5487,7 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
 
   async function telechargerRapport() {
     setMsgPdf("Préparation du PDF...");
-    try { const jsPDF = await chargerJsPDF(); exporterRapportMatchPDF(jsPDF, match, joueursRapport, db, profil && profil.nom); setMsgPdf(null); }
+    try { const jsPDF = await chargerJsPDF(); exporterRapportMatchPDF(jsPDF, match, joueursRapport, db, profil && profil.nom, avecPhotosRap); setMsgPdf(null); }
     catch (e) { setMsgPdf("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
   }
 
@@ -5663,6 +5664,7 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
                   <option value="">Retenu / non précisé</option>
                   <option value="Pas retenu">Pas retenu</option>
                   {catSup ? <option value={"Prévu en " + catSup}>{"Prévu en " + catSup}</option> : null}
+                  <option value="Non qualifié">Non qualifié</option>
                   <option value="Blessé">Blessé</option>
                   <option value="Absent">Absent</option>
                 </Sel>
@@ -5682,7 +5684,11 @@ function RapportMatch({ match, players, db, mutate, onClose, onEdit, onDelete, p
         <Btn variant="ghost" full style={{ marginTop: 10 }} onClick={() => setJong(true)}><ClipboardList size={16} /> {/^U13/.test(match.cat) ? `Défi jonglage ${match.cat}${/F$/.test(match.cat) ? "" : "R"} (Ligue)` : `Feuille défi jonglerie ${match.cat} (District)`}</Btn>
       )}
 
-      <Btn variant="accent" full style={{ marginTop: 10 }} onClick={telechargerRapport}><FileDown size={16} /> Exporter le rapport en PDF</Btn>
+      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+        <button onClick={() => setAvecPhotosRap(false)} style={{ flex: 1, cursor: "pointer", borderRadius: 11, padding: "9px 10px", fontWeight: 800, fontSize: 13, border: `1px solid ${!avecPhotosRap ? C.bleu : C.grisClair}`, background: !avecPhotosRap ? C.bleu : "#fff", color: !avecPhotosRap ? "#fff" : C.encre }}>Sans photos</button>
+        <button onClick={() => setAvecPhotosRap(true)} style={{ flex: 1, cursor: "pointer", borderRadius: 11, padding: "9px 10px", fontWeight: 800, fontSize: 13, border: `1px solid ${avecPhotosRap ? C.bleu : C.grisClair}`, background: avecPhotosRap ? C.bleu : "#fff", color: avecPhotosRap ? "#fff" : C.encre }}>Avec photos</button>
+      </div>
+      <Btn variant="accent" full style={{ marginTop: 8 }} onClick={telechargerRapport}><FileDown size={16} /> Exporter le rapport en PDF ({avecPhotosRap ? "avec photos" : "sans photos"})</Btn>
       {msgPdf && <div style={{ fontSize: 12.5, color: C.encre, background: C.fond, borderRadius: 10, padding: 10, marginTop: 8 }}>{msgPdf}</div>}
 
       {noteFor && <NoterJoueur match={match} player={noteFor} db={db} mutate={mutate} onClose={() => setNoteFor(null)} />}
