@@ -539,7 +539,7 @@ function FormDemande({ annuaire, onSubmit, onClose }) {
   );
 }
 
-function Demandes({ demo, db, mutate, cat, session, onClose }) {
+function Demandes({ demo, db, mutate, cat, session, onClose, onVu }) {
   const [onglet, setOnglet] = useState("recues");
   const [nouveau, setNouveau] = useState(false);
   const [remoteList, setRemoteList] = useState([]);
@@ -574,6 +574,23 @@ function Demandes({ demo, db, mutate, cat, session, onClose }) {
   const recues = liste.filter((x) => x.joueurCat === cat);
   const envoyees = liste.filter((x) => x.demandeurCat === cat);
   const nbAttente = recues.filter((x) => x.statut === "en_attente").length;
+
+  // Marque comme vues les reponses recues a mes demandes des que j'ouvre cet ecran.
+  // Repli local (par appareil) + colonne partagee vue_demandeur dans Supabase (tous les appareils).
+  const idsReponses = envoyees.filter((x) => x.statut === "acceptee" || x.statut === "refusee").map((x) => String(x.id)).join(",");
+  useEffect(() => {
+    if (!idsReponses) return;
+    const ids = idsReponses.split(",");
+    marquerDemVues(ids);
+    if (demo) {
+      mutate((d) => { (d.demandes || []).forEach((x) => { if (ids.includes(String(x.id))) x.vueDemandeur = true; }); return d; });
+    } else {
+      (async () => {
+        try { const sb = await getSupabase(); await sb.from("demandes_joueur").update({ vue_demandeur: true }).in("id", ids); } catch (e) {}
+      })();
+    }
+    if (onVu) onVu();
+  }, [idsReponses]);
 
   const voisins = voisinsDemandables(cat);
   const annuaire = demo
@@ -1150,6 +1167,20 @@ const uid = () =>
     ? window.crypto.randomUUID()
     : String(Date.now()) + Math.random().toString(16).slice(2);
 
+// Reponses aux demandes de joueur deja vues par le demandeur (par appareil)
+const CLE_DEM_VUES = "fcsm-dem-reponses-vues";
+function lireDemVues() {
+  try { return new Set(JSON.parse(localStorage.getItem(CLE_DEM_VUES) || "[]")); }
+  catch (e) { return new Set(); }
+}
+function marquerDemVues(ids) {
+  try {
+    const s = lireDemVues();
+    (ids || []).forEach((i) => s.add(String(i)));
+    localStorage.setItem(CLE_DEM_VUES, JSON.stringify(Array.from(s)));
+  } catch (e) {}
+}
+
 
 /* ============================================================
    Petits composants d'interface
@@ -1562,7 +1593,8 @@ export default function App() {
   const [db, setDb] = useState(null);
   const [reunionsClub, setReunionsClub] = useState(null);
   const [reunionsErr, setReunionsErr] = useState(null);
-  const [demResume, setDemResume] = useState({ recues: 0, envoyees: 0 });
+  const [demResume, setDemResume] = useState({ recues: 0, envoyees: 0, reponses: 0 });
+  const [demTick, setDemTick] = useState(0);
   const [saveStatus, setSaveStatus] = useState(null);
   const [showScores, setShowScores] = useState(false);
   const [showDemandes, setShowDemandes] = useState(false);
@@ -1664,32 +1696,35 @@ export default function App() {
   }, [session, demo]);
 
   useEffect(() => {
-    if (!cat) { setDemResume({ recues: 0, envoyees: 0 }); return; }
+    if (!cat) { setDemResume({ recues: 0, envoyees: 0, reponses: 0 }); return; }
+    const vues = lireDemVues();
     if (demo) {
       const list = (db && db.demandes) || [];
       setDemResume({
         recues: list.filter((d) => d.joueurCat === cat && d.statut === "en_attente").length,
         envoyees: list.filter((d) => d.demandeurCat === cat && d.statut === "en_attente").length,
+        reponses: list.filter((d) => d.demandeurCat === cat && (d.statut === "acceptee" || d.statut === "refusee") && !d.vueDemandeur && !vues.has(String(d.id))).length,
       });
       return;
     }
-    if (!session) { setDemResume({ recues: 0, envoyees: 0 }); return; }
+    if (!session) { setDemResume({ recues: 0, envoyees: 0, reponses: 0 }); return; }
     let annule = false;
     (async () => {
       try {
         const sb = await getSupabase();
-        const { data, error } = await sb.from("demandes_joueur").select("demandeur_cat,joueur_cat,statut");
+        const { data, error } = await sb.from("demandes_joueur").select("*");
         if (error) throw error;
         if (annule) return;
         const list = data || [];
         setDemResume({
           recues: list.filter((d) => d.joueur_cat === cat && d.statut === "en_attente").length,
           envoyees: list.filter((d) => d.demandeur_cat === cat && d.statut === "en_attente").length,
+          reponses: list.filter((d) => d.demandeur_cat === cat && (d.statut === "acceptee" || d.statut === "refusee") && !d.vue_demandeur && !vues.has(String(d.id))).length,
         });
-      } catch (e) { if (!annule) setDemResume({ recues: 0, envoyees: 0 }); }
+      } catch (e) { if (!annule) setDemResume({ recues: 0, envoyees: 0, reponses: 0 }); }
     })();
     return () => { annule = true; };
-  }, [session, cat, demo, tab, db]);
+  }, [session, cat, demo, tab, db, demTick]);
 
   useEffect(() => {
     if (saveStatus === "ok" || saveStatus === "ro") { const t = setTimeout(() => setSaveStatus(null), 2600); return () => clearTimeout(t); }
@@ -1929,7 +1964,7 @@ export default function App() {
       )}
 
       {showScores && <ScoresWeekend onClose={() => setShowScores(false)} localDb={demo ? db : null} />}
-      {showDemandes && <Demandes demo={demo} db={db} mutate={mutate} cat={cat} session={session} onClose={() => setShowDemandes(false)} />}
+      {showDemandes && <Demandes demo={demo} db={db} mutate={mutate} cat={cat} session={session} onVu={() => setDemTick((t) => t + 1)} onClose={() => { setDemTick((t) => t + 1); setShowDemandes(false); }} />}
       {showClassement && <Classement cat={cat} db={db} mutate={mutate} onClose={() => setShowClassement(false)} />}
       {showTransport && <Transports db={db} mutate={mutate} cat={cat} onClose={() => setShowTransport(false)} />}
       {showOrganisation && <OrganisationMatchs db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
@@ -2167,11 +2202,12 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
   const alerteReunions = (db.reunions || []).filter((r) => (r.date || "") >= todayStr && (r.participants || []).some((p) => (p.email || "").toLowerCase() === (monEmail || "").toLowerCase() && p.email)).length;
   const alerteDemRecues = (demResume && demResume.recues) || 0;
   const alerteDemEnvoyees = (demResume && demResume.envoyees) || 0;
+  const alerteDemReponses = (demResume && demResume.reponses) || 0;
   const alerteSuivi = priseEnChargeMedicale(cat) !== "parents" ? enSuiviMedical : 0;
 
   const cartes = [
     { titre: "Scores du week-end", sous: "Résultats de toutes les catégories", icon: Trophy, action: onScores, accent: true },
-    { titre: "Demandes de joueurs", sous: "Demander un joueur d'une autre catégorie", icon: ArrowRightLeft, action: onDemandes, badge: alerteDemRecues },
+    { titre: "Demandes de joueurs", sous: "Demander un joueur d'une autre catégorie", icon: ArrowRightLeft, action: onDemandes, badge: alerteDemRecues + alerteDemReponses },
     { titre: "Classement du championnat", sous: "District, Ligue, National et Ligue 2 en direct", icon: ListOrdered, action: onClassement },
     { titre: "Demande de transport", sous: "Minibus, bus en location ou voitures, à l'avance", icon: Bus, action: onTransport },
     { titre: "Organisation des matchs", sous: "Terrain, vestiaires, transport et encadrement", icon: MapPin, action: onOrganisation, badge: nbOrga },
@@ -2215,7 +2251,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
         </Card>
       )}
 
-      {(alerteDemRecues > 0 || alerteDemEnvoyees > 0 || alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0 || aRisqueSusp > 0 || alerteSuivi > 0 || blesses > 0) && (
+      {(alerteDemRecues > 0 || alerteDemEnvoyees > 0 || alerteDemReponses > 0 || alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0 || aRisqueSusp > 0 || alerteSuivi > 0 || blesses > 0) && (
         <div style={{ background: "#FFF3DA", border: "1px solid #EBD3AE", borderRadius: 14, padding: "12px 14px", marginBottom: 18 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: "#B87A2B", fontSize: 13.5, marginBottom: 6 }}><Bell size={16} /> À ne pas oublier</div>
           {alerteDemRecues > 0 && (
@@ -2230,8 +2266,14 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
               <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
             </div>
           )}
+          {alerteDemReponses > 0 && (
+            <div onClick={onDemandes} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: (alerteDemRecues > 0 || alerteDemEnvoyees > 0) ? "1px solid #EBD3AE" : "none" }}>
+              <ArrowRightLeft size={15} color={C.vert} /> <span style={{ flex: 1 }}>{alerteDemReponses} réponse{alerteDemReponses > 1 ? "s" : ""} à vos demandes de joueur (acceptée ou refusée)</span>
+              <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
+            </div>
+          )}
           {alerteReunions > 0 && (
-            <div onClick={onReunions} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: (alerteDemRecues > 0 || alerteDemEnvoyees > 0) ? "1px solid #EBD3AE" : "none" }}>
+            <div onClick={onReunions} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: (alerteDemRecues > 0 || alerteDemEnvoyees > 0 || alerteDemReponses > 0) ? "1px solid #EBD3AE" : "none" }}>
               <Users size={15} color={C.bleu} /> <span style={{ flex: 1 }}>{alerteReunions} réunion{alerteReunions > 1 ? "s" : ""} à venir</span>
               <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
             </div>
@@ -4876,7 +4918,10 @@ function DefiJonglageLigue({ match, players, db, mutate, onClose }) {
     vis: (j0.vis && j0.vis.length) ? j0.vis : vide(),
   });
   const setCell = (cote, i, k, v) => setJ((o) => { const arr = [...o[cote]]; arr[i] = { ...arr[i], [k]: (k === "pd" || k === "pg" || k === "alt") ? cap(v) : v }; return { ...o, [cote]: arr }; });
-  const toutA50 = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => ({ ...r, pd: 50, pg: 50, alt: 50 })) }));
+  const toutA50 = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => {
+    const aNom = ((r.nom || "").trim() !== "") || ((r.prenom || "").trim() !== "");
+    return aNom ? { ...r, pd: 50, pg: 50, alt: 50 } : { ...r, pd: 0, pg: 0, alt: 0 };
+  }) }));
   const effacer = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => ({ ...r, pd: "", pg: "", alt: "" })) }));
   const enregistrer = () => { mutate((d) => { d.matches.find((x) => x.id === match.id).jonglage = j; return d; }); };
   async function telecharger() {
@@ -5149,7 +5194,10 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
     vis: (j0.vis && j0.vis.length && j0.vis[0] && "pd1" in j0.vis[0]) ? j0.vis : vide(),
   });
   const setCell = (cote, i, k, v) => setJ((o) => { const arr = [...o[cote]]; arr[i] = { ...arr[i], [k]: (k === "nom" || k === "prenom") ? v : cap(v) }; return { ...o, [cote]: arr }; });
-  const toutA50 = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => ({ ...r, pd1: 50, pd2: 50, pg1: 50, pg2: 50 })) }));
+  const toutA50 = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => {
+    const aNom = ((r.nom || "").trim() !== "") || ((r.prenom || "").trim() !== "");
+    return aNom ? { ...r, pd1: 50, pd2: 50, pg1: 50, pg2: 50 } : { ...r, pd1: 0, pd2: 0, pg1: 0, pg2: 0 };
+  }) }));
   const effacer = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => ({ ...r, pd1: "", pd2: "", pg1: "", pg2: "" })) }));
   const enregistrer = () => { mutate((d) => { d.matches.find((x) => x.id === match.id).jonglage = j; return d; }); };
   async function telecharger() {
