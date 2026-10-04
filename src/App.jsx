@@ -1048,7 +1048,7 @@ const ASPECTS_BILAN = [
   { k: "mental", label: "Mental" },
   { k: "technique", label: "Technique" },
   { k: "tactique", label: "Tactique" },
-  { k: "athlete", label: "Athlète" },
+  { k: "athlete", label: "Athlétique" },
 ];
 const NIVEAUX_BILAN = [
   { k: "insuffisant", label: "Insuffisant", color: "#B5483F", bg: "#FBE3E3", pdf: [181, 72, 63] },
@@ -1318,6 +1318,24 @@ function Btn({ children, onClick, variant = "primary", size = "md", style, type,
       onMouseOut={(e) => (e.currentTarget.style.filter = "none")}>
       {children}
     </button>
+  );
+}
+
+// Bouton de suppression sécurisé : demande toujours confirmation nommée avant de supprimer
+function BtnSuppr({ nom, onConfirm, label, size = "md", full, style }) {
+  const [ouvrir, setOuvrir] = useState(false);
+  return (
+    <>
+      <Btn variant="danger" size={size} full={full} style={style} onClick={() => setOuvrir(true)}>
+        <Trash2 size={size === "sm" ? 15 : 16} />{label ? ` ${label}` : ""}
+      </Btn>
+      {ouvrir && (
+        <Modal title="Confirmer la suppression" onClose={() => setOuvrir(false)}
+          footer={<><Btn variant="ghost" full onClick={() => setOuvrir(false)}>Non, annuler</Btn><Btn variant="danger" full onClick={() => { setOuvrir(false); onConfirm && onConfirm(); }}><Trash2 size={16} /> Oui, supprimer</Btn></>}>
+          <div style={{ fontSize: 14.5, color: C.encre, lineHeight: 1.55 }}>Es-tu sûr de vouloir supprimer <strong>{nom || "cet élément"}</strong> ?<br /><br />Cette action est définitive et ne peut pas être annulée.</div>
+        </Modal>
+      )}
+    </>
   );
 }
 
@@ -1617,6 +1635,25 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
       let txt = `Note moyenne du groupe : ${mg.toFixed(1)}/7  (sur ${moysG.length} joueur${moysG.length > 1 ? "s" : ""} noté${moysG.length > 1 ? "s" : ""})`;
       if (stats.moy != null) txt += stats.moy >= mg ? "  -  ce joueur est au-dessus de la moyenne." : "  -  ce joueur est en dessous de la moyenne.";
       doc.text(txt, M, y, { maxWidth: W - 2 * M }); y += 14;
+    }
+  }
+
+  // Notes de match par aspect (comparaison au groupe)
+  {
+    const mj = moyMatchAspects(p, db, saison);
+    const mgr = moyGroupeMatchAspects(db, p.cat, saison);
+    const fn2 = (v) => (v == null ? "-" : (Math.round(v * 10) / 10).toFixed(1));
+    if (AXES.some((a) => mj[a.k] != null)) {
+      section("Notes de match par aspect");
+      AXES.forEach((a) => {
+        if (mj[a.k] == null) return;
+        sautPage(14);
+        sc(GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(a.label + " :", M, y);
+        sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.text(fn2(mj[a.k]) + "/7", M + 70, y);
+        if (mgr[a.k] != null) { sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.text("groupe " + fn2(mgr[a.k]) + "/7", M + 110, y); }
+        y += 12;
+      });
+      y += 2;
     }
   }
 
@@ -2528,6 +2565,23 @@ function statsJoueur(p, db, saison) {
   return { minutes, buts, passes, moy };
 }
 
+// Moyennes des notes de match par aspect (mental, technique, tactique, athletique)
+function moyMatchAspects(p, db, saison) {
+  const acc = {}; AXES.forEach((a) => { acc[a.k] = []; });
+  (db.matches || []).filter((m) => m.cat === p.cat && (!saison || saisonDe(m.date) === saison)).forEach((m) => {
+    const no = m.notes && m.notes[p.id];
+    if (no && typeof no === "object") AXES.forEach((a) => { const v = no[a.k]; if (v != null && v !== "") acc[a.k].push(+v); });
+  });
+  const res = {}; AXES.forEach((a) => { res[a.k] = acc[a.k].length ? acc[a.k].reduce((x, y) => x + y, 0) / acc[a.k].length : null; });
+  return res;
+}
+function moyGroupeMatchAspects(db, cat, saison) {
+  const acc = {}; AXES.forEach((a) => { acc[a.k] = []; });
+  (db.players || []).filter((x) => x.cat === cat).forEach((j) => { const m = moyMatchAspects(j, db, saison); AXES.forEach((a) => { if (m[a.k] != null) acc[a.k].push(m[a.k]); }); });
+  const res = {}; AXES.forEach((a) => { res[a.k] = acc[a.k].length ? acc[a.k].reduce((x, y) => x + y, 0) / acc[a.k].length : null; });
+  return res;
+}
+
 /* Saison de football en cours (la saison va d'aout a juillet) */
 function saisonCourante(d = new Date()) {
   const y = d.getFullYear();
@@ -2822,6 +2876,42 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
   const [fiche, setFiche] = useState(null);
   const [tri, setTri] = useState("nom");
   const [cloture, setCloture] = useState(false);
+  const [importMsg, setImportMsg] = useState(null);
+
+  function traiterImportJoueur(texte) {
+    try {
+      let t = String(texte || "").trim();
+      const deb = t.indexOf("{"); const fin = t.lastIndexOf("}");
+      if (deb >= 0 && fin > deb) t = t.slice(deb, fin + 1);
+      const parsed = JSON.parse(t);
+      const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.players) ? parsed.players : (parsed.prenom || parsed.nom ? [parsed] : null));
+      if (!arr || !arr.length) throw new Error("format");
+      let ajout = 0, ignore = 0;
+      mutate((d) => {
+        d.players = d.players || [];
+        arr.forEach((j) => {
+          const n = String(j && j.nom || "").trim(), pr = String(j && j.prenom || "").trim();
+          if (!n && !pr) { ignore++; return; }
+          const lic = String(j && j.licence || "").trim();
+          const existe = d.players.some((x) => x.cat === cat && ((lic && x.licence === lic) || (x.nom || "").toLowerCase() === n.toLowerCase() && (x.prenom || "").toLowerCase() === pr.toLowerCase()));
+          if (existe) { ignore++; return; }
+          d.players.push({ ...j, id: uid(), cat });
+          ajout++;
+        });
+        return d;
+      });
+      setImportMsg(`${ajout} fiche(s) importée(s).` + (ignore ? ` ${ignore} ignorée(s) (déjà présente).` : ""));
+      return true;
+    } catch (e) { setImportMsg("Fichier non valide. Vérifie que c'est bien un JSON de fiche joueur."); return false; }
+  }
+  function importerFiche(ev) {
+    const f = ev.target.files && ev.target.files[0]; ev.target.value = "";
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => traiterImportJoueur(r.result);
+    r.onerror = () => setImportMsg("Lecture du fichier impossible.");
+    r.readAsText(f);
+  }
 
   const liste = players
     .filter((p) => `${p.prenom} ${p.nom} ${p.poste || ""}`.toLowerCase().includes(q.toLowerCase()))
@@ -2855,6 +2945,15 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
         </div>
         {!lectureSeule && <Btn variant="accent" onClick={() => setEdit({ cat })}><Plus size={18} /></Btn>}
       </div>
+      {!lectureSeule && (
+        <>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 7, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "8px 12px", fontWeight: 700, fontSize: 12.5, color: C.encre, background: "#fff", marginBottom: 10 }}>
+            <Upload size={15} /> Importer une fiche (JSON)
+            <input type="file" accept=".json,application/json,text/plain,*/*" onChange={importerFiche} style={{ display: "none" }} />
+          </label>
+          {importMsg && <div style={{ fontSize: 12.5, fontWeight: 700, color: importMsg.includes("non valide") || importMsg.includes("impossible") ? C.rouge : C.vert, marginBottom: 10 }}>{importMsg}</div>}
+        </>
+      )}
 
       <div style={{ display: "flex", gap: 7, marginBottom: 14 }}>
         {[["nom", "Nom"], ["numero", "Numéro"], ["poste", "Poste"]].map(([k, lab]) => (
@@ -3076,7 +3175,7 @@ function EditBilan({ bilan, educateurs, axesPrecedent, onClose, onSave, onDelete
   const setAspect = (ak, champ, v) => setF((o) => ({ ...o, aspects: { ...(o.aspects || {}), [ak]: { ...((o.aspects || {})[ak] || {}), [champ]: v } } }));
   return (
     <Modal title={bilan.id ? "Modifier le bilan" : "Nouveau bilan"} onClose={onClose}
-      footer={<><Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}</>}>
+      footer={<><Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{onDelete && <BtnSuppr nom="ce bilan" onConfirm={onDelete} />}</>}>
       <Field label="Date du bilan"><Inp type="date" value={f.date} onChange={(e) => set("date", e.target.value)} /></Field>
       <Field label="Éducateur (qui a fait le bilan)">
         {educateurs.length > 0 && !autre ? (
@@ -3173,6 +3272,9 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
   })();
   const tauxSaison = nbSeancesSaison ? Math.round((assi.presences / nbSeancesSaison) * 100) : null;
   const moyGroupeBilan = moyennesGroupeBilan(db, p.cat);
+  const matchAspJoueur = moyMatchAspects(p, db, saisonSel);
+  const matchAspGroupe = moyGroupeMatchAspects(db, p.cat, saisonSel);
+  const aMatchAsp = AXES.some((a) => matchAspJoueur[a.k] != null);
   const cartonsActifs = (() => { const ci = CATEGORIES.find((x) => x.id === p.cat); return (ci && ci.type === 11) || p.cat === "U13"; })();
   const tests = (p.tests || []).slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const blessures = db.injuries.filter((i) => i.joueurId === p.id && (!i.debut || saisonDe(i.debut) === saisonSel));
@@ -3308,6 +3410,25 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
             <span style={{ fontWeight: 700, color: stats.moy >= moyGroupe.moy ? C.vert : "#B87A2B" }}> {p.prenom} est {stats.moy >= moyGroupe.moy ? "au-dessus" : "en dessous"} de la moyenne du groupe.</span>
           )}
         </div>
+      )}
+      {aMatchAsp && (
+        <>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, margin: "0 0 6px" }}>Notes de match par aspect (comparaison groupe)</div>
+          <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+            {AXES.map((a) => {
+              const vj = matchAspJoueur[a.k]; if (vj == null) return null;
+              const vg = matchAspGroupe[a.k];
+              return (
+                <div key={a.k} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "8px 11px" }}>
+                  <span style={{ fontWeight: 800, fontSize: 13, flex: 1 }}>{a.label}</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 900, color: C.bleu }}>{fmtNote(vj)}<span style={{ fontSize: 10.5, color: C.gris, fontWeight: 700 }}>/7</span></span>
+                  {vg != null ? <span style={{ fontSize: 11.5, color: C.gris, fontWeight: 700 }}>groupe {fmtNote(vg)}</span> : null}
+                  {vg != null ? <span style={{ fontSize: 11, fontWeight: 800, color: vj >= vg ? C.vert : "#B87A2B" }}>{vj >= vg ? "▲" : "▼"}</span> : null}
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
       <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, margin: "0 0 6px" }}>Assiduité{nbSeancesSaison ? ` · sur ${nbSeancesSaison} séance${nbSeancesSaison > 1 ? "s" : ""} · ${tauxSaison}% de présence` : ""}</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
@@ -5819,7 +5940,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
     <Modal title="Rapport de match" onClose={onClose}
       footer={<>
         <Btn variant="ghost" onClick={onEdit} full><Edit3 size={16} /> Modifier</Btn>
-        <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>
+        <BtnSuppr nom={"le match contre " + (match.adversaire || "l'adversaire") + (match.date ? " du " + fmtDate(match.date) : "")} onConfirm={onDelete} />
       </>}>
       <Card style={{ marginBottom: 14, textAlign: "center" }}>
         <div style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>{fmtDate(match.date)} · {match.lieu}{match.type ? ` · ${match.type}` : ""}{match.competition ? ` · ${match.competition}` : ""}</div>
@@ -6802,7 +6923,7 @@ function DetailSeance({ seance, players, onClose, onEdit, onDelete }) {
     <Modal title="Détail de la séance" onClose={onClose}
       footer={<>
         <Btn variant="ghost" onClick={onEdit} full><Edit3 size={16} /> Modifier</Btn>
-        <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>
+        <BtnSuppr nom={"la séance du " + fmtDate(seance.date)} onConfirm={onDelete} />
       </>}>
       <div style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>{fmtDate(seance.date)}</div>
       <div style={{ fontWeight: 900, fontSize: 17, margin: "4px 0 6px" }}>{seance.theme || "Séance d'entraînement"}</div>
@@ -6863,7 +6984,7 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
     <Modal title={blessure.id ? "Suivi médical" : "Nouvelle blessure"} onClose={onClose}
       footer={<>
         <Btn variant="accent" full onClick={() => onSave({ ...f, fini: (f.phase === "P4" && f.testRetour === "valide") ? true : f.fini })}><Save size={16} /> Enregistrer</Btn>
-        {onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}
+        {onDelete && <BtnSuppr nom="cette blessure" onConfirm={onDelete} />}
       </>}>
       <Field label="Joueur">
         <Sel value={f.joueurId || ""} onChange={(e) => set("joueurId", e.target.value)}>
@@ -7520,7 +7641,7 @@ function EditAcces({ educateur, onClose, onSave, onDelete }) {
 
   return (
     <Modal title={educateur.id ? "Modifier l'accès" : "Nouvel éducateur"} onClose={onClose}
-      footer={<><Btn variant="accent" full disabled={!f.nom.trim()} onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{educateur.id && onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}</>}>
+      footer={<><Btn variant="accent" full disabled={!f.nom.trim()} onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{educateur.id && onDelete && <BtnSuppr nom={"l'accès de " + (f.nom || "cet éducateur")} onConfirm={onDelete} />}</>}>
       <Field label="Nom et prénom"><Inp value={f.nom} onChange={(e) => set("nom", e.target.value)} placeholder="Nom et prénom" /></Field>
       <Field label="Adresse email"><Inp type="email" value={f.email} onChange={(e) => set("email", e.target.value)} placeholder="prenom.nom@club.fr" /></Field>
       <Field label="Fonction dans le club">
@@ -9163,7 +9284,7 @@ function EditTournoi({ tournoi, onClose, onSave, onDelete }) {
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
   return (
     <Modal title={tournoi.id ? "Modifier le tournoi" : "Nouveau tournoi"} onClose={onClose}
-      footer={<><Btn variant="accent" full disabled={!f.nom.trim()} onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{tournoi.id && onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}</>}>
+      footer={<><Btn variant="accent" full disabled={!f.nom.trim()} onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{tournoi.id && onDelete && <BtnSuppr nom={f.nom ? "le plateau/tournoi « " + f.nom + " »" : "ce plateau/tournoi"} onConfirm={onDelete} />}</>}>
       <Field label="Nom du tournoi"><Inp value={f.nom} onChange={(e) => set("nom", e.target.value)} placeholder="Tournoi de printemps, Challenge..." /></Field>
       <Field label="Date"><Inp type="date" value={f.date} onChange={(e) => set("date", e.target.value)} /></Field>
       <Field label="Lieu (optionnel)"><Inp value={f.lieu} onChange={(e) => set("lieu", e.target.value)} placeholder="Ville ou stade" /></Field>
@@ -9280,7 +9401,7 @@ function EditReunion({ reunion, educateurs, onClose, onSave, onDelete }) {
 
   return (
     <Modal title={reunion.id ? "Modifier la réunion" : "Programmer une réunion"} onClose={onClose}
-      footer={<><Btn variant="accent" full disabled={!f.objet.trim() || !f.date} onClick={finaliser}><Save size={16} /> Enregistrer</Btn>{reunion.id && onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}</>}>
+      footer={<><Btn variant="accent" full disabled={!f.objet.trim() || !f.date} onClick={finaliser}><Save size={16} /> Enregistrer</Btn>{reunion.id && onDelete && <BtnSuppr nom={f.objet ? "la réunion « " + f.objet + " »" : "cette réunion"} onConfirm={onDelete} />}</>}>
       <Field label="Objet de la réunion"><Inp value={f.objet} onChange={(e) => set("objet", e.target.value)} placeholder="Réunion de préparation, bilan..." /></Field>
       <div style={{ display: "flex", gap: 10 }}>
         <div style={{ flex: 1 }}><Field label="Date"><Inp type="date" value={f.date} onChange={(e) => set("date", e.target.value)} /></Field></div>
@@ -9691,7 +9812,7 @@ function EditDetection({ fiche, onClose, onSave, onDelete }) {
     <Modal title={fiche.id ? "Talent repéré" : "Nouveau talent repéré"} onClose={onClose}
       footer={<>
         <Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>
-        {onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}
+        {onDelete && <BtnSuppr nom={"le talent " + ((f.prenom || "") + " " + (f.nom || "")).trim() || "ce talent"} onConfirm={onDelete} />}
       </>}>
       <Field label="Nom du joueur"><Inp value={f.nom || ""} onChange={(e) => set("nom", e.target.value)} /></Field>
       <Field label="Équipe adverse"><Inp value={f.equipe || ""} onChange={(e) => set("equipe", e.target.value)} placeholder="Club rencontré" /></Field>
