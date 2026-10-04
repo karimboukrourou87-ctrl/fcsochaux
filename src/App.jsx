@@ -2565,6 +2565,29 @@ function statsJoueur(p, db, saison) {
   return { minutes, buts, passes, moy };
 }
 
+// Données orphelines : stats de match / blessures rattachées à un identifiant sans joueur (après suppression)
+function donneesOrphelines(db, cat) {
+  const idsJoueurs = new Set((db.players || []).map((p) => p.id));
+  const refs = {};
+  const add = (id) => { if (!refs[id]) refs[id] = { matchs: new Set(), advs: [], minutes: 0, buts: 0, passes: 0, notes: [], blessures: 0 }; return refs[id]; };
+  (db.matches || []).filter((m) => m.cat === cat).forEach((m) => {
+    const present = ["tempsJeu", "buteurs", "passeurs", "notes", "jaunes", "rouges", "blancs", "blesses", "cartonsMin"];
+    const idsM = new Set();
+    present.forEach((ch) => { const o = m[ch]; if (o) Object.keys(o).forEach((id) => idsM.add(id)); });
+    idsM.forEach((id) => { const r = add(id); if (!r.matchs.has(m.id)) { r.matchs.add(m.id); r.advs.push({ adv: m.adversaire || "Adversaire", date: m.date || "" }); } });
+    if (m.tempsJeu) Object.keys(m.tempsJeu).forEach((id) => { add(id).minutes += (+m.tempsJeu[id] || 0); });
+    if (m.buteurs) Object.keys(m.buteurs).forEach((id) => { add(id).buts += (+m.buteurs[id] || 0); });
+    if (m.passeurs) Object.keys(m.passeurs).forEach((id) => { add(id).passes += (+m.passeurs[id] || 0); });
+    if (m.notes) Object.keys(m.notes).forEach((id) => { const nv = typeof m.notes[id] === "object" ? m.notes[id].note : m.notes[id]; if (nv != null && nv !== "") add(id).notes.push(+nv); });
+  });
+  (db.injuries || []).filter((i) => i.cat === cat).forEach((i) => { if (i.joueurId) add(i.joueurId).blessures++; });
+  return Object.keys(refs).filter((id) => !idsJoueurs.has(id)).map((id) => {
+    const r = refs[id]; const moy = r.notes.length ? r.notes.reduce((a, b) => a + b, 0) / r.notes.length : null;
+    const advs = r.advs.sort((a, b) => (a.date || "").localeCompare(b.date || "")).map((x) => x.adv);
+    return { id, nbMatchs: r.matchs.size, advs, minutes: r.minutes, buts: r.buts, passes: r.passes, moy, blessures: r.blessures };
+  }).filter((o) => o.nbMatchs > 0 || o.blessures > 0).sort((a, b) => b.nbMatchs - a.nbMatchs);
+}
+
 // Moyennes des notes de match par aspect (mental, technique, tactique, athletique)
 function moyMatchAspects(p, db, saison) {
   const acc = {}; AXES.forEach((a) => { acc[a.k] = []; });
@@ -2912,6 +2935,30 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
     r.onerror = () => setImportMsg("Lecture du fichier impossible.");
     r.readAsText(f);
   }
+  const orphelins = donneesOrphelines(db, cat);
+  const [recup, setRecup] = useState(false);
+  const [cibleRecup, setCibleRecup] = useState({});
+  function reattacher(orphanId, targetId) {
+    if (!targetId) return;
+    mutate((d) => {
+      (d.matches || []).forEach((m) => {
+        if (m.cat !== cat) return;
+        ["tempsJeu", "buteurs", "passeurs", "notes", "jaunes", "rouges", "blancs", "blesses", "cartonsMin", "nonRetenus"].forEach((ch) => {
+          if (m[ch] && m[ch][orphanId] !== undefined) { m[ch][targetId] = m[ch][orphanId]; delete m[ch][orphanId]; }
+        });
+      });
+      (d.injuries || []).forEach((i) => { if (i.cat === cat && i.joueurId === orphanId) i.joueurId = targetId; });
+      Object.values(d.lineups || {}).forEach((lu) => {
+        if (!lu) return;
+        if (lu.slots) Object.keys(lu.slots).forEach((k) => { if (lu.slots[k] === orphanId) lu.slots[k] = targetId; });
+        if (Array.isArray(lu.remplacants)) lu.remplacants = lu.remplacants.map((x) => (x === orphanId ? targetId : x));
+        if (lu.capitaine === orphanId) lu.capitaine = targetId;
+        if (lu.numeros && lu.numeros[orphanId] !== undefined) { lu.numeros[targetId] = lu.numeros[orphanId]; delete lu.numeros[orphanId]; }
+      });
+      return d;
+    });
+    setImportMsg("Données réattachées. Ouvre la fiche du joueur pour vérifier.");
+  }
 
   const liste = players
     .filter((p) => `${p.prenom} ${p.nom} ${p.poste || ""}`.toLowerCase().includes(q.toLowerCase()))
@@ -2947,11 +2994,37 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
       </div>
       {!lectureSeule && (
         <>
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 7, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "8px 12px", fontWeight: 700, fontSize: 12.5, color: C.encre, background: "#fff", marginBottom: 10 }}>
-            <Upload size={15} /> Importer une fiche (JSON)
-            <input type="file" accept=".json,application/json,text/plain,*/*" onChange={importerFiche} style={{ display: "none" }} />
-          </label>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 7, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "8px 12px", fontWeight: 700, fontSize: 12.5, color: C.encre, background: "#fff" }}>
+              <Upload size={15} /> Importer une fiche (JSON)
+              <input type="file" accept=".json,application/json,text/plain,*/*" onChange={importerFiche} style={{ display: "none" }} />
+            </label>
+            {orphelins.length > 0 && (
+              <Btn variant="ghost" size="sm" onClick={() => setRecup(true)}><ArrowRightLeft size={15} /> Récupérer des données supprimées ({orphelins.length})</Btn>
+            )}
+          </div>
           {importMsg && <div style={{ fontSize: 12.5, fontWeight: 700, color: importMsg.includes("non valide") || importMsg.includes("impossible") ? C.rouge : C.vert, marginBottom: 10 }}>{importMsg}</div>}
+          {recup && (
+            <Modal title="Récupérer des données supprimées" onClose={() => setRecup(false)}>
+              <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Voici des données (matchs, blessures) qui étaient rattachées à un joueur supprimé. Choisis à quelle fiche actuelle les réattacher (ex. la fiche d'Issa recréée), puis touche Réattacher.</div>
+              <div style={{ display: "grid", gap: 10 }}>
+                {orphelins.map((o) => (
+                  <div key={o.id} style={{ border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: 11, background: "#fff" }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 4 }}>Joueur supprimé</div>
+                    <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 6 }}>{o.nbMatchs} match{o.nbMatchs > 1 ? "s" : ""} · {o.minutes} min · {o.buts} but{o.buts > 1 ? "s" : ""} · {o.passes} passe{o.passes > 1 ? "s" : ""}{o.moy != null ? ` · note ${o.moy.toFixed(1)}/7` : ""}{o.blessures ? ` · ${o.blessures} blessure${o.blessures > 1 ? "s" : ""}` : ""}</div>
+                    {o.advs && o.advs.length ? <div style={{ fontSize: 12, color: C.encre, marginBottom: 8 }}><span style={{ color: C.gris, fontWeight: 700 }}>Adversaires : </span>{o.advs.join(", ")}</div> : null}
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <Sel value={cibleRecup[o.id] || ""} onChange={(e) => setCibleRecup((c) => ({ ...c, [o.id]: e.target.value }))} style={{ flex: 1, minWidth: 160 }}>
+                        <option value="">Réattacher à...</option>
+                        {[...players].sort((a, b) => `${a.nom}${a.prenom}`.localeCompare(`${b.nom}${b.prenom}`)).map((pl) => <option key={pl.id} value={pl.id}>{pl.prenom} {pl.nom}</option>)}
+                      </Sel>
+                      <Btn variant="accent" size="sm" disabled={!cibleRecup[o.id]} onClick={() => reattacher(o.id, cibleRecup[o.id])}><ArrowRightLeft size={15} /> Réattacher</Btn>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Modal>
+          )}
         </>
       )}
 
