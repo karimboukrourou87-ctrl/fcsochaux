@@ -1043,6 +1043,21 @@ const AXES = [
   { k: "athletique", label: "Athlétique" },
 ];
 
+// Bilan joueur : 4 aspects notés avec code couleur + commentaire
+const ASPECTS_BILAN = [
+  { k: "mental", label: "Mental" },
+  { k: "technique", label: "Technique" },
+  { k: "tactique", label: "Tactique" },
+  { k: "athlete", label: "Athlète" },
+];
+const NIVEAUX_BILAN = [
+  { k: "insuffisant", label: "Insuffisant", color: "#B5483F", bg: "#FBE3E3", pdf: [181, 72, 63] },
+  { k: "moyen", label: "Moyen", color: "#B87A2B", bg: "#FFF3DA", pdf: [184, 122, 43] },
+  { k: "bon", label: "Bon", color: "#2FA36B", bg: "#E2F4E9", pdf: [47, 163, 107] },
+  { k: "tresbon", label: "Très bon", color: "#1A3553", bg: "#EAF0F7", pdf: [26, 53, 83] },
+];
+function niveauBilan(k) { return NIVEAUX_BILAN.find((n) => n.k === k) || null; }
+
 const TYPES_MATCH = ["Championnat", "Coupe", "Amical", "Plateau", "Tournoi"];
 
 const MINIBUS = ["T2", "T3", "T4", "T5"];
@@ -1635,17 +1650,42 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot) {
       lignes.forEach((l) => { sautPage(12); doc.text(l, M, y); y += 10.5; });
       y += 1.5;
     };
+    const aspectPDF = (label, asp) => {
+      if (!asp || (!asp.niveau && !asp.commentaire)) return;
+      sautPage(24);
+      const n = NIVEAUX_BILAN.find((x) => x.k === asp.niveau);
+      sc(GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+      doc.text(label.toUpperCase(), M, y);
+      if (n) {
+        const txt = n.label; doc.setFontSize(7.5);
+        const tw = doc.getTextWidth(txt) + 10;
+        sf(n.pdf); doc.roundedRect(M + 60, y - 7, tw, 11, 3, 3, "F");
+        sc([255, 255, 255]); doc.text(txt, M + 65, y);
+      }
+      y += 11;
+      if (asp.commentaire) {
+        sc(ENCRE); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+        const lignes = doc.splitTextToSize(String(asp.commentaire), W - 2 * M);
+        lignes.forEach((l) => { sautPage(12); doc.text(l, M, y); y += 10.5; });
+      }
+      y += 2;
+    };
     bilans.forEach((b, idx) => {
       sautPage(42);
       sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
       doc.text(`${b.date ? new Date(b.date + "T00:00:00").toLocaleDateString("fr-FR") : "Bilan"}${b.educateur ? "   ·   " + b.educateur : ""}`, M, y);
       y += 13;
-      rubriquePDF("Appréciation générale", b.appreciation);
-      rubriquePDF("Points forts", b.pointsForts);
+      const aAspects = ASPECTS_BILAN.some((a) => (b.aspects || {})[a.k] && (((b.aspects[a.k]).niveau) || ((b.aspects[a.k]).commentaire)));
+      if (aAspects) {
+        ASPECTS_BILAN.forEach((a) => aspectPDF(a.label, (b.aspects || {})[a.k]));
+      } else {
+        rubriquePDF("Appréciation générale", b.appreciation);
+        rubriquePDF("Points forts", b.pointsForts);
+        rubriquePDF("Objectifs", b.objectifs);
+        rubriquePDF("Comportement et état d'esprit", b.comportement);
+        rubriquePDF("Entretien avec le joueur ou les parents", b.entretien);
+      }
       rubriquePDF("Axes de progrès", b.axesProgres);
-      rubriquePDF("Objectifs", b.objectifs);
-      rubriquePDF("Comportement et état d'esprit", b.comportement);
-      rubriquePDF("Entretien avec le joueur ou les parents", b.entretien);
       if (idx < bilans.length - 1) { y += 2; sd(TRAIT); doc.line(M, y, W - M, y); y += 12; }
     });
   }
@@ -2962,12 +3002,31 @@ function CarteBilan({ b, onEdit }) {
       </button>
       {ouverte && (
         <div style={{ padding: "0 12px 13px" }}>
-          {bloc("Appréciation générale", b.appreciation)}
-          {bloc("Points forts", b.pointsForts)}
+          {ASPECTS_BILAN.some((a) => (b.aspects || {})[a.k] && ((b.aspects[a.k].niveau) || (b.aspects[a.k].commentaire))) ? (
+            <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
+              {ASPECTS_BILAN.map((a) => {
+                const asp = (b.aspects || {})[a.k] || {};
+                if (!asp.niveau && !asp.commentaire) return null;
+                const n = niveauBilan(asp.niveau);
+                return (
+                  <div key={a.k} style={{ border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "8px 11px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: asp.commentaire ? 4 : 0 }}>
+                      <span style={{ fontWeight: 800, fontSize: 13, flex: 1 }}>{a.label}</span>
+                      {n ? <span style={{ fontSize: 11.5, fontWeight: 800, color: n.color, background: n.bg, borderRadius: 7, padding: "3px 9px" }}>{n.label}</span> : null}
+                    </div>
+                    {asp.commentaire ? <div style={{ fontSize: 13, color: C.encre, whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{asp.commentaire}</div> : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (<>
+            {bloc("Appréciation générale", b.appreciation)}
+            {bloc("Points forts", b.pointsForts)}
+            {bloc("Objectifs", b.objectifs)}
+            {bloc("Comportement et état d'esprit", b.comportement)}
+            {bloc("Entretien avec le joueur ou les parents", b.entretien)}
+          </>)}
           {bloc("Axes de progrès", b.axesProgres)}
-          {bloc("Objectifs", b.objectifs)}
-          {bloc("Comportement et état d'esprit", b.comportement)}
-          {bloc("Entretien avec le joueur ou les parents", b.entretien)}
           <Btn variant="ghost" size="sm" onClick={onEdit} style={{ marginTop: 4 }}><Edit3 size={15} /> Modifier ce bilan</Btn>
         </div>
       )}
@@ -2975,17 +3034,11 @@ function CarteBilan({ b, onEdit }) {
   );
 }
 
-function EditBilan({ bilan, educateurs, onClose, onSave, onDelete }) {
-  const [f, setF] = useState({ date: "", educateur: "", appreciation: "", pointsForts: "", axesProgres: "", objectifs: "", comportement: "", entretien: "", ...bilan });
+function EditBilan({ bilan, educateurs, axesPrecedent, onClose, onSave, onDelete }) {
+  const [f, setF] = useState({ date: "", educateur: "", aspects: {}, axesProgres: "", ...bilan });
   const [autre, setAutre] = useState(!!bilan.educateur && educateurs.length > 0 && !educateurs.includes(bilan.educateur));
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
-  const LIM = { appreciation: 300, pointsForts: 220, axesProgres: 220, objectifs: 200, comportement: 180, entretien: 300 };
-  const zone = (k, rows) => (
-    <div>
-      <textarea value={f[k] || ""} maxLength={LIM[k]} onChange={(e) => set(k, e.target.value)} rows={rows} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
-      <div style={{ fontSize: 11, color: (f[k] || "").length >= LIM[k] ? C.rouge : C.gris, textAlign: "right", marginTop: 2 }}>{(f[k] || "").length} / {LIM[k]} caractères</div>
-    </div>
-  );
+  const setAspect = (ak, champ, v) => setF((o) => ({ ...o, aspects: { ...(o.aspects || {}), [ak]: { ...((o.aspects || {})[ak] || {}), [champ]: v } } }));
   return (
     <Modal title={bilan.id ? "Modifier le bilan" : "Nouveau bilan"} onClose={onClose}
       footer={<><Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{onDelete && <Btn variant="danger" onClick={onDelete}><Trash2 size={16} /></Btn>}</>}>
@@ -3001,12 +3054,41 @@ function EditBilan({ bilan, educateurs, onClose, onSave, onDelete }) {
           <Inp value={f.educateur} onChange={(e) => set("educateur", e.target.value)} placeholder="Nom de l'éducateur" />
         )}
       </Field>
-      <Field label="Appréciation générale">{zone("appreciation", 3)}</Field>
-      <Field label="Points forts">{zone("pointsForts", 2)}</Field>
-      <Field label="Axes de progrès">{zone("axesProgres", 2)}</Field>
-      <Field label="Objectifs pour la suite">{zone("objectifs", 2)}</Field>
-      <Field label="Comportement et état d'esprit">{zone("comportement", 2)}</Field>
-      <Field label="Entretien avec le joueur ou les parents">{zone("entretien", 3)}</Field>
+
+      {!bilan.id && axesPrecedent ? (
+        <div style={{ background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 11, padding: 11, marginBottom: 12 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 4 }}>Axes de progrès du bilan précédent</div>
+          <div style={{ fontSize: 13, color: C.encre, whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{axesPrecedent}</div>
+        </div>
+      ) : null}
+
+      <div style={{ fontSize: 12.5, color: C.gris, margin: "4px 0 10px", lineHeight: 1.45 }}>Évalue chaque aspect avec le code couleur, puis ajoute un commentaire.</div>
+      {ASPECTS_BILAN.map((a) => {
+        const asp = (f.aspects || {})[a.k] || {};
+        return (
+          <div key={a.k} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 8 }}>{a.label}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+              {NIVEAUX_BILAN.map((n) => {
+                const on = asp.niveau === n.k;
+                return (
+                  <button key={n.k} onClick={() => setAspect(a.k, "niveau", on ? "" : n.k)} style={{
+                    flex: "1 1 40%", minWidth: 110, cursor: "pointer", borderRadius: 9, padding: "8px 8px", fontWeight: 800, fontSize: 12.5,
+                    border: `1.5px solid ${on ? n.color : C.grisClair}`, background: on ? n.bg : "#fff", color: on ? n.color : C.gris,
+                  }}>{n.label}</button>
+                );
+              })}
+            </div>
+            <textarea value={asp.commentaire || ""} maxLength={300} onChange={(e) => setAspect(a.k, "commentaire", e.target.value)} rows={2} placeholder={"Commentaire " + a.label.toLowerCase() + "..."} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
+            <div style={{ fontSize: 11, color: (asp.commentaire || "").length >= 300 ? C.rouge : C.gris, textAlign: "right", marginTop: 2 }}>{(asp.commentaire || "").length} / 300 caractères</div>
+          </div>
+        );
+      })}
+
+      <Field label="Axes de progrès (à préparer pour le prochain bilan)">
+        <textarea value={f.axesProgres || ""} maxLength={400} onChange={(e) => set("axesProgres", e.target.value)} rows={3} placeholder="Points à travailler d'ici le prochain bilan..." style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
+        <div style={{ fontSize: 11, color: (f.axesProgres || "").length >= 400 ? C.rouge : C.gris, textAlign: "right", marginTop: 2 }}>{(f.axesProgres || "").length} / 400 caractères</div>
+      </Field>
     </Modal>
   );
 }
@@ -3340,7 +3422,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
         </>
       )}
 
-      {bilanEdit && <EditBilan bilan={bilanEdit} educateurs={educateurs} onClose={() => setBilanEdit(null)}
+      {bilanEdit && <EditBilan bilan={bilanEdit} educateurs={educateurs} axesPrecedent={(() => { const autres = (p.bilans || []).filter((x) => x.id && x.id !== bilanEdit.id && x.axesProgres).sort((a, b) => (b.date || "").localeCompare(a.date || "")); return autres.length ? autres[0].axesProgres : ""; })()} onClose={() => setBilanEdit(null)}
         onSave={(b) => {
           mutate((d) => {
             const pl = d.players.find((x) => x.id === p.id);
