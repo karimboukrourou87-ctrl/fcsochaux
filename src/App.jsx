@@ -1057,6 +1057,22 @@ const NIVEAUX_BILAN = [
   { k: "tresbon", label: "Très bon", color: "#1A3553", bg: "#EAF0F7", pdf: [26, 53, 83] },
 ];
 function niveauBilan(k) { return NIVEAUX_BILAN.find((n) => n.k === k) || null; }
+function noteAspectBilan(b, k) { const a = b && b.aspects && b.aspects[k]; const v = a && a.note; return (v === "" || v == null) ? null : +v; }
+function noteGlobaleBilan(b) { const ns = ASPECTS_BILAN.map((a) => noteAspectBilan(b, a.k)).filter((v) => v != null); return ns.length ? ns.reduce((x, y) => x + y, 0) / ns.length : null; }
+function dernierBilanAspects(j) { return (j.bilans || []).filter((b) => b.aspects && ASPECTS_BILAN.some((a) => noteAspectBilan(b, a.k) != null)).sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0] || null; }
+function moyennesGroupeBilan(db, cat) {
+  const res = { globale: null }; const acc = {}; const glob = [];
+  ASPECTS_BILAN.forEach((a) => { acc[a.k] = []; });
+  (db.players || []).filter((x) => x.cat === cat).forEach((j) => {
+    const b = dernierBilanAspects(j); if (!b) return;
+    ASPECTS_BILAN.forEach((a) => { const v = noteAspectBilan(b, a.k); if (v != null) acc[a.k].push(v); });
+    const g = noteGlobaleBilan(b); if (g != null) glob.push(g);
+  });
+  ASPECTS_BILAN.forEach((a) => { res[a.k] = acc[a.k].length ? acc[a.k].reduce((x, y) => x + y, 0) / acc[a.k].length : null; });
+  res.globale = glob.length ? glob.reduce((x, y) => x + y, 0) / glob.length : null;
+  return res;
+}
+const fmtNote = (v) => (v == null ? "-" : (Math.round(v * 10) / 10).toFixed(1));
 
 const TYPES_MATCH = ["Championnat", "Coupe", "Amical", "Plateau", "Tournoi"];
 
@@ -1439,7 +1455,7 @@ function chargerJsPDF() {
 }
 
 
-function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot) {
+function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, moyBilan) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   try {
     doc.setProperties({
@@ -1650,34 +1666,40 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot) {
       lignes.forEach((l) => { sautPage(12); doc.text(l, M, y); y += 10.5; });
       y += 1.5;
     };
-    const aspectPDF = (label, asp) => {
-      if (!asp || (!asp.niveau && !asp.commentaire)) return;
-      sautPage(24);
+    const fn = (v) => (v == null ? "-" : (Math.round(v * 10) / 10).toFixed(1));
+    const aspectPDF = (b, a) => {
+      const asp = (b.aspects || {})[a.k] || {};
+      const note = noteAspectBilan(b, a.k);
+      if (!asp.niveau && !asp.commentaire && note == null) return;
+      sautPage(26);
       const n = NIVEAUX_BILAN.find((x) => x.k === asp.niveau);
-      sc(GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
-      doc.text(label.toUpperCase(), M, y);
-      if (n) {
-        const txt = n.label; doc.setFontSize(7.5);
-        const tw = doc.getTextWidth(txt) + 10;
-        sf(n.pdf); doc.roundedRect(M + 60, y - 7, tw, 11, 3, 3, "F");
-        sc([255, 255, 255]); doc.text(txt, M + 65, y);
-      }
-      y += 11;
+      const mg = moyBilan ? moyBilan[a.k] : null;
+      // bandeau de l'aspect
+      sf(FOND); doc.roundedRect(M, y - 8, W - 2 * M, 17, 3, 3, "F");
+      sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+      doc.text(a.label, M + 6, y + 3.5);
+      let xr = W - M - 6;
+      if (mg != null) { sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8); const t = "groupe " + fn(mg) + "/7"; const w = doc.getTextWidth(t); doc.text(t, xr - w, y + 3.5); xr -= w + 10; }
+      if (note != null) { sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); const t = fn(note) + "/7"; const w = doc.getTextWidth(t); doc.text(t, xr - w, y + 3.5); xr -= w + 10; }
+      if (n) { const t = n.label; doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); const tw = doc.getTextWidth(t) + 10; sf(n.pdf); doc.roundedRect(xr - tw, y - 4.5, tw, 11, 3, 3, "F"); sc([255, 255, 255]); doc.text(t, xr - tw + 5, y + 3); xr -= tw + 8; }
+      y += 15;
       if (asp.commentaire) {
         sc(ENCRE); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-        const lignes = doc.splitTextToSize(String(asp.commentaire), W - 2 * M);
-        lignes.forEach((l) => { sautPage(12); doc.text(l, M, y); y += 10.5; });
+        const lignes = doc.splitTextToSize(String(asp.commentaire), W - 2 * M - 8);
+        lignes.forEach((l) => { sautPage(12); doc.text(l, M + 4, y); y += 10.5; });
       }
-      y += 2;
+      y += 4;
     };
     bilans.forEach((b, idx) => {
-      sautPage(42);
+      sautPage(46);
+      const gNote = noteGlobaleBilan(b);
       sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
       doc.text(`${b.date ? new Date(b.date + "T00:00:00").toLocaleDateString("fr-FR") : "Bilan"}${b.educateur ? "   ·   " + b.educateur : ""}`, M, y);
-      y += 13;
-      const aAspects = ASPECTS_BILAN.some((a) => (b.aspects || {})[a.k] && (((b.aspects[a.k]).niveau) || ((b.aspects[a.k]).commentaire)));
+      if (gNote != null) { const t = "Moyenne " + fn(gNote) + "/7" + (moyBilan && moyBilan.globale != null ? "  (groupe " + fn(moyBilan.globale) + ")" : ""); sc(BLEU); doc.setFontSize(9.5); const w = doc.getTextWidth(t); doc.text(t, W - M - w, y); }
+      y += 14;
+      const aAspects = ASPECTS_BILAN.some((a) => (b.aspects || {})[a.k] && (((b.aspects[a.k]).niveau) || ((b.aspects[a.k]).commentaire) || noteAspectBilan(b, a.k) != null));
       if (aAspects) {
-        ASPECTS_BILAN.forEach((a) => aspectPDF(a.label, (b.aspects || {})[a.k]));
+        ASPECTS_BILAN.forEach((a) => aspectPDF(b, a));
       } else {
         rubriquePDF("Appréciation générale", b.appreciation);
         rubriquePDF("Points forts", b.pointsForts);
@@ -2982,7 +3004,7 @@ function CarteSaisonParcours({ s, precedente }) {
   );
 }
 
-function CarteBilan({ b, onEdit }) {
+function CarteBilan({ b, moy, onEdit }) {
   const [ouverte, setOuverte] = useState(false);
   const bloc = (titre, val) => val ? (
     <div style={{ marginBottom: 8 }}>
@@ -2990,6 +3012,7 @@ function CarteBilan({ b, onEdit }) {
       <div style={{ fontSize: 13.5, color: C.encre, whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{val}</div>
     </div>
   ) : null;
+  const gNote = noteGlobaleBilan(b);
   return (
     <Card style={{ marginBottom: 10, padding: 0, overflow: "hidden" }}>
       <button onClick={() => setOuverte((o) => !o)} style={{ width: "100%", border: "none", background: "transparent", cursor: "pointer", padding: 12, display: "flex", alignItems: "center", gap: 10, textAlign: "left" }}>
@@ -2998,26 +3021,38 @@ function CarteBilan({ b, onEdit }) {
           <div style={{ fontWeight: 800, fontSize: 14, color: C.encre }}>{b.date ? fmtDate(b.date) : "Bilan"}</div>
           <div style={{ fontSize: 12, color: C.gris, marginTop: 1 }}>{b.educateur ? `Par ${b.educateur}` : "Éducateur non précisé"}</div>
         </div>
+        {gNote != null ? <div style={{ fontWeight: 900, fontSize: 15, color: C.bleu, flex: "0 0 auto" }}>{fmtNote(gNote)}<span style={{ fontSize: 11, color: C.gris, fontWeight: 700 }}>/7</span></div> : null}
         <ChevronLeft size={17} color={C.gris} style={{ transform: ouverte ? "rotate(90deg)" : "rotate(-90deg)", flex: "0 0 auto" }} />
       </button>
       {ouverte && (
         <div style={{ padding: "0 12px 13px" }}>
-          {ASPECTS_BILAN.some((a) => (b.aspects || {})[a.k] && ((b.aspects[a.k].niveau) || (b.aspects[a.k].commentaire))) ? (
+          {ASPECTS_BILAN.some((a) => (b.aspects || {})[a.k] && ((b.aspects[a.k].niveau) || (b.aspects[a.k].commentaire) || noteAspectBilan(b, a.k) != null)) ? (
             <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
               {ASPECTS_BILAN.map((a) => {
                 const asp = (b.aspects || {})[a.k] || {};
-                if (!asp.niveau && !asp.commentaire) return null;
+                const note = noteAspectBilan(b, a.k);
+                if (!asp.niveau && !asp.commentaire && note == null) return null;
                 const n = niveauBilan(asp.niveau);
+                const mg = moy ? moy[a.k] : null;
                 return (
                   <div key={a.k} style={{ border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "8px 11px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: asp.commentaire ? 4 : 0 }}>
-                      <span style={{ fontWeight: 800, fontSize: 13, flex: 1 }}>{a.label}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: asp.commentaire ? 4 : 0, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 800, fontSize: 13, flex: 1, minWidth: 90 }}>{a.label}</span>
+                      {note != null ? <span style={{ fontSize: 12.5, fontWeight: 900, color: C.bleu }}>{fmtNote(note)}<span style={{ fontSize: 10.5, color: C.gris, fontWeight: 700 }}>/7</span></span> : null}
+                      {mg != null ? <span style={{ fontSize: 11, color: C.gris, fontWeight: 700 }}>groupe {fmtNote(mg)}</span> : null}
                       {n ? <span style={{ fontSize: 11.5, fontWeight: 800, color: n.color, background: n.bg, borderRadius: 7, padding: "3px 9px" }}>{n.label}</span> : null}
                     </div>
                     {asp.commentaire ? <div style={{ fontSize: 13, color: C.encre, whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{asp.commentaire}</div> : null}
                   </div>
                 );
               })}
+              {(gNote != null || (moy && moy.globale != null)) && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.fond, border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "9px 11px" }}>
+                  <span style={{ fontWeight: 800, fontSize: 13, flex: 1 }}>Moyenne globale</span>
+                  <span style={{ fontSize: 14, fontWeight: 900, color: C.bleu }}>{fmtNote(gNote)}<span style={{ fontSize: 10.5, color: C.gris, fontWeight: 700 }}>/7</span></span>
+                  {moy && moy.globale != null ? <span style={{ fontSize: 11.5, color: C.gris, fontWeight: 700 }}>groupe {fmtNote(moy.globale)}</span> : null}
+                </div>
+              )}
             </div>
           ) : (<>
             {bloc("Appréciation générale", b.appreciation)}
@@ -3067,7 +3102,14 @@ function EditBilan({ bilan, educateurs, axesPrecedent, onClose, onSave, onDelete
         const asp = (f.aspects || {})[a.k] || {};
         return (
           <div key={a.k} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
-            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 8 }}>{a.label}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+              <div style={{ fontWeight: 800, fontSize: 14, flex: 1 }}>{a.label}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>Note</span>
+                <input type="number" min="0" max="7" step="0.5" inputMode="decimal" value={asp.note ?? ""} onChange={(e) => setAspect(a.k, "note", e.target.value === "" ? "" : Math.min(7, Math.max(0, +e.target.value)))} placeholder="/7" style={{ width: 62, padding: "7px 8px", borderRadius: 8, border: `1px solid ${C.grisClair}`, fontSize: 13.5, fontWeight: 800, textAlign: "center", boxSizing: "border-box" }} />
+                <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>/7</span>
+              </div>
+            </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
               {NIVEAUX_BILAN.map((n) => {
                 const on = asp.niveau === n.k;
@@ -3130,6 +3172,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
     return moys.length ? { moy: moys.reduce((a, b) => a + b, 0) / moys.length, n: moys.length } : null;
   })();
   const tauxSaison = nbSeancesSaison ? Math.round((assi.presences / nbSeancesSaison) * 100) : null;
+  const moyGroupeBilan = moyennesGroupeBilan(db, p.cat);
   const cartonsActifs = (() => { const ci = CATEGORIES.find((x) => x.id === p.cat); return (ci && ci.type === 11) || p.cat === "U13"; })();
   const tests = (p.tests || []).slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const blessures = db.injuries.filter((i) => i.joueurId === p.id && (!i.debut || saisonDe(i.debut) === saisonSel));
@@ -3168,7 +3211,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
     setPdfMsg("Préparation du PDF...");
     try {
       const jsPDF = await chargerJsPDF();
-      exporterFichePDF(jsPDF, p, db, tests, stats, bilansSaison.slice(0, 1), saisonSel, { passages: passagesTot, oublis: oublisTot });
+      exporterFichePDF(jsPDF, p, db, tests, stats, bilansSaison.slice(0, 1), saisonSel, { passages: passagesTot, oublis: oublisTot }, moyGroupeBilan);
       setPdfMsg(null);
     } catch (e) {
       setPdfMsg("Téléchargement du module PDF impossible (vérifie la connexion). Réessaie.");
@@ -3412,7 +3455,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
       {bilansSaison.length === 0 ? (
         <Card style={{ marginBottom: 14, textAlign: "center", color: C.gris, fontSize: 13, padding: 16 }}>Aucun bilan pour la saison {saisonSel}</Card>
       ) : (
-        <div style={{ marginBottom: 6 }}>{bilansSaison.map((b) => <CarteBilan key={b.id} b={b} onEdit={() => setBilanEdit(b)} />)}</div>
+        <div style={{ marginBottom: 6 }}>{bilansSaison.map((b) => <CarteBilan key={b.id} b={b} moy={moyGroupeBilan} onEdit={() => setBilanEdit(b)} />)}</div>
       )}
 
       {p.parcours && p.parcours.length > 0 && (
