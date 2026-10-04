@@ -2569,7 +2569,7 @@ function statsJoueur(p, db, saison) {
 function donneesOrphelines(db, cat) {
   const idsJoueurs = new Set((db.players || []).map((p) => p.id));
   const refs = {};
-  const add = (id) => { if (!refs[id]) refs[id] = { matchs: new Set(), advs: [], minutes: 0, buts: 0, passes: 0, notes: [], blessures: 0 }; return refs[id]; };
+  const add = (id) => { if (!refs[id]) refs[id] = { matchs: new Set(), advs: [], minutes: 0, buts: 0, passes: 0, notes: [], blessures: 0, seances: 0 }; return refs[id]; };
   (db.matches || []).filter((m) => m.cat === cat).forEach((m) => {
     const present = ["tempsJeu", "buteurs", "passeurs", "notes", "jaunes", "rouges", "blancs", "blesses", "cartonsMin"];
     const idsM = new Set();
@@ -2581,11 +2581,12 @@ function donneesOrphelines(db, cat) {
     if (m.notes) Object.keys(m.notes).forEach((id) => { const nv = typeof m.notes[id] === "object" ? m.notes[id].note : m.notes[id]; if (nv != null && nv !== "") add(id).notes.push(+nv); });
   });
   (db.injuries || []).filter((i) => i.cat === cat).forEach((i) => { if (i.joueurId) add(i.joueurId).blessures++; });
+  (db.trainings || []).filter((t) => t.cat === cat && t.presence).forEach((t) => { Object.keys(t.presence).forEach((id) => { add(id).seances++; }); });
   return Object.keys(refs).filter((id) => !idsJoueurs.has(id)).map((id) => {
     const r = refs[id]; const moy = r.notes.length ? r.notes.reduce((a, b) => a + b, 0) / r.notes.length : null;
     const advs = r.advs.sort((a, b) => (a.date || "").localeCompare(b.date || "")).map((x) => x.adv);
-    return { id, nbMatchs: r.matchs.size, advs, minutes: r.minutes, buts: r.buts, passes: r.passes, moy, blessures: r.blessures };
-  }).filter((o) => o.nbMatchs > 0 || o.blessures > 0).sort((a, b) => b.nbMatchs - a.nbMatchs);
+    return { id, nbMatchs: r.matchs.size, advs, minutes: r.minutes, buts: r.buts, passes: r.passes, moy, blessures: r.blessures, seances: r.seances };
+  }).filter((o) => o.nbMatchs > 0 || o.blessures > 0 || o.seances > 0).sort((a, b) => (b.nbMatchs + b.seances) - (a.nbMatchs + a.seances));
 }
 
 // Moyennes des notes de match par aspect (mental, technique, tactique, athletique)
@@ -2948,6 +2949,10 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
         });
       });
       (d.injuries || []).forEach((i) => { if (i.cat === cat && i.joueurId === orphanId) i.joueurId = targetId; });
+      (d.trainings || []).forEach((t) => {
+        if (t.cat !== cat) return;
+        if (t.presence && t.presence[orphanId] !== undefined) { t.presence[targetId] = t.presence[orphanId]; delete t.presence[orphanId]; }
+      });
       Object.values(d.lineups || {}).forEach((lu) => {
         if (!lu) return;
         if (lu.slots) Object.keys(lu.slots).forEach((k) => { if (lu.slots[k] === orphanId) lu.slots[k] = targetId; });
@@ -3011,7 +3016,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
                 {orphelins.map((o) => (
                   <div key={o.id} style={{ border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: 11, background: "#fff" }}>
                     <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 4 }}>Joueur supprimé</div>
-                    <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 6 }}>{o.nbMatchs} match{o.nbMatchs > 1 ? "s" : ""} · {o.minutes} min · {o.buts} but{o.buts > 1 ? "s" : ""} · {o.passes} passe{o.passes > 1 ? "s" : ""}{o.moy != null ? ` · note ${o.moy.toFixed(1)}/7` : ""}{o.blessures ? ` · ${o.blessures} blessure${o.blessures > 1 ? "s" : ""}` : ""}</div>
+                    <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 6 }}>{o.nbMatchs} match{o.nbMatchs > 1 ? "s" : ""} · {o.minutes} min · {o.buts} but{o.buts > 1 ? "s" : ""} · {o.passes} passe{o.passes > 1 ? "s" : ""}{o.moy != null ? ` · note ${o.moy.toFixed(1)}/7` : ""}{o.seances ? ` · ${o.seances} séance${o.seances > 1 ? "s" : ""}` : ""}{o.blessures ? ` · ${o.blessures} blessure${o.blessures > 1 ? "s" : ""}` : ""}</div>
                     {o.advs && o.advs.length ? <div style={{ fontSize: 12, color: C.encre, marginBottom: 8 }}><span style={{ color: C.gris, fontWeight: 700 }}>Adversaires : </span>{o.advs.join(", ")}</div> : null}
                     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                       <Sel value={cibleRecup[o.id] || ""} onChange={(e) => setCibleRecup((c) => ({ ...c, [o.id]: e.target.value }))} style={{ flex: 1, minWidth: 160 }}>
