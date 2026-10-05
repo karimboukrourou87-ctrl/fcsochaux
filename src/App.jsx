@@ -1658,7 +1658,7 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
   }
 
   const assi = assiduiteJoueur(p, db, saison);
-  const nbSeances = (db.trainings || []).filter((t) => t.cat === p.cat && (!saison || saisonDe(t.date) === saison) && t.presence && Object.keys(t.presence).length > 0).length;
+  const nbSeances = assi.presences + assi.absences;
   const nbMatchsEq = (db.matches || []).filter((m) => m.cat === p.cat && (!saison || saisonDe(m.date) === saison) && m.scorePour != null && m.scoreContre != null && !(m.type || "").toLowerCase().includes("amical")).length;
   section("Assiduité" + (nbSeances ? ` (sur ${nbSeances} séance${nbSeances > 1 ? "s" : ""})` : ""));
   paires([
@@ -3341,7 +3341,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
   const educateurs = (db.encadrement || []).map((e) => e.nom).filter(Boolean);
   const bilansSaison = (p.bilans || []).filter((b) => saisonDe(b.date) === saisonSel).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const assi = assiduiteJoueur(p, db, saisonSel);
-  const nbSeancesSaison = (db.trainings || []).filter((t) => t.cat === p.cat && saisonDe(t.date) === saisonSel && t.presence && Object.keys(t.presence).length > 0).length;
+  const nbSeancesSaison = assi.presences + assi.absences;
   const nbMatchsEquipe = (db.matches || []).filter((m) => m.cat === p.cat && saisonDe(m.date) === saisonSel && m.scorePour != null && m.scoreContre != null && !(m.type || "").toLowerCase().includes("amical")).length;
   const moyGroupe = (() => {
     const moys = [];
@@ -6884,8 +6884,9 @@ function RecapPresences({ players, db, cat, annee, mois, onClose }) {
       const st = s.presence[p.id];
       if (st === "present") pr++; else if (st === "retard") { pr++; re++; } else if (st === "absent" || st === "malade") ab++; else if (st === "blesse") bl++;
     });
-    const taux = total ? Math.round((pr / total) * 100) : 0;
-    return { p, pr, ab, bl, re, taux };
+    const pointeJoueur = pr + ab + bl;
+    const taux = pointeJoueur ? Math.round((pr / pointeJoueur) * 100) : 0;
+    return { p, pr, ab, bl, re, taux, pointeJoueur };
   }).sort((a, b) => b.taux - a.taux || b.pr - a.pr);
 
   return (
@@ -6895,7 +6896,7 @@ function RecapPresences({ players, db, cat, annee, mois, onClose }) {
       ) : (
         <>
           <div style={{ fontSize: 13, color: C.gris, marginBottom: 12 }}>
-            {total} séance{total > 1 ? "s" : ""} pointée{total > 1 ? "s" : ""}. Taux = présences sur le total des séances.
+            {total} séance{total > 1 ? "s" : ""} pointée{total > 1 ? "s" : ""}. Taux = présences sur les séances où le joueur a été pointé.
           </div>
           <div style={{ display: "flex", gap: 12, marginBottom: 10, fontSize: 11.5, fontWeight: 700, color: C.gris, flexWrap: "wrap" }}>
             <span style={{ color: C.vert }}>● Présents</span>
