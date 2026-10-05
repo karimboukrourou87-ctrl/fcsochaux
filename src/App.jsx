@@ -6227,6 +6227,9 @@ function NoterJoueur({ match, player, db, mutate, onClose }) {
    ============================================================ */
 function Entrainements({ players, cat, db, mutate }) {
   const today = new Date();
+  // Ne compter que les présences des joueurs réellement dans l'effectif (évite les identifiants fantômes d'anciens joueurs supprimés)
+  const idsEffectif = new Set(players.map((p) => p.id));
+  const presEff = (t) => Object.entries((t && t.presence) || {}).filter(([id]) => idsEffectif.has(id)).map(([, v]) => v);
   const [sous, setSous] = useState("planning");
   const [annee, setAnnee] = useState(today.getFullYear());
   const [mois, setMois] = useState(today.getMonth());
@@ -6697,7 +6700,7 @@ function Entrainements({ players, cat, db, mutate }) {
                   );
                 }
                 const t = en.training;
-                const pres = Object.values(t?.presence || {});
+                const pres = presEff(t);
                 const nbPres = pres.filter((x) => x === "present" || x === "retard").length;
                 const nbAbs = pres.filter((x) => x === "absent" || x === "malade" || x === "blesse").length;
                 const nbBl = pres.filter((x) => x === "blesse").length;
@@ -6795,7 +6798,7 @@ function Entrainements({ players, cat, db, mutate }) {
             ) : (
               <div style={{ display: "grid", gap: 8 }}>
                 {toutes.map((t) => {
-                  const pres = Object.values(t.presence || {});
+                  const pres = presEff(t);
                   const nbPres = pres.filter((x) => x === "present" || x === "retard").length;
                   const nbAbs = pres.filter((x) => x === "absent" || x === "malade" || x === "blesse").length;
                   return (
@@ -6928,16 +6931,34 @@ function RecapPresences({ players, db, cat, annee, mois, onClose }) {
 
 function EditSeance({ seance, players, onClose, onSave }) {
   const [f, setF] = useState({ presence: {}, ...seance });
-  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  const setP = (id, v) => setF((p) => ({ ...p, presence: { ...p.presence, [id]: v } }));
-  const tousPresents = () => setF((o) => { const pr = { ...(o.presence || {}) }; players.forEach((p) => { if (pr[p.id] !== "blesse") pr[p.id] = "present"; }); return { ...o, presence: pr }; });
+  const [dirty, setDirty] = useState(false);
+  const [confirmQuitter, setConfirmQuitter] = useState(false);
+  const [confirmTous, setConfirmTous] = useState(false);
+  const set = (k, v) => { setDirty(true); setF((p) => ({ ...p, [k]: v })); };
+  const setP = (id, v) => { setDirty(true); setF((p) => ({ ...p, presence: { ...p.presence, [id]: v } })); };
+  const appliquerTous = () => { setDirty(true); setF((o) => { const pr = { ...(o.presence || {}) }; players.forEach((p) => { if (pr[p.id] !== "blesse") pr[p.id] = "present"; }); return { ...o, presence: pr }; }); setConfirmTous(false); };
+  const dejaPointe = players.some((p) => f.presence[p.id] && f.presence[p.id] !== "present");
+  const tousPresents = () => { if (dejaPointe) setConfirmTous(true); else appliquerTous(); };
+  const fermer = () => { if (dirty) setConfirmQuitter(true); else onClose(); };
   const opts = [["present", "Présent", C.vert], ["absent", "Absent", C.rouge], ["malade", "Malade", "#8E5AA8"], ["retard", "Retard", "#C67C3C"], ["blesse", "Blessé", C.jauneFonce]];
   const themesConnus = THEMES.flatMap((g) => g.items);
   const [autreTheme, setAutreTheme] = useState(!!(seance.theme && !themesConnus.includes(seance.theme)));
 
   return (
-    <Modal title={seance.id ? "Modifier la séance" : "Nouvelle séance"} onClose={onClose}
-      footer={<Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>}>
+    <Modal title={seance.id ? "Modifier la séance" : "Nouvelle séance"} onClose={fermer}
+      footer={<Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer les présences</Btn>}>
+      {confirmQuitter && (
+        <Modal title="Présences non enregistrées" onClose={() => setConfirmQuitter(false)}
+          footer={<><Btn variant="ghost" full onClick={() => { setConfirmQuitter(false); onClose(); }}>Quitter sans enregistrer</Btn><Btn variant="accent" full onClick={() => { setConfirmQuitter(false); onSave(f); }}><Save size={16} /> Enregistrer</Btn></>}>
+          <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.55 }}>Tu as modifié des présences qui ne sont <strong>pas encore enregistrées</strong>. Veux-tu les enregistrer avant de quitter ?</div>
+        </Modal>
+      )}
+      {confirmTous && (
+        <Modal title="Tout mettre présent ?" onClose={() => setConfirmTous(false)}
+          footer={<><Btn variant="ghost" full onClick={() => setConfirmTous(false)}>Annuler</Btn><Btn variant="accent" full onClick={appliquerTous}><Check size={16} /> Oui, tous présents</Btn></>}>
+          <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.55 }}>Des absences/retards sont déjà saisis. "Tous présents" va les remplacer (sauf les blessés). Continuer ?</div>
+        </Modal>
+      )}
       <Field label="Date"><Inp type="date" value={f.date || ""} onChange={(e) => set("date", e.target.value)} /></Field>
       <Field label="Thème de la séance">
         <Sel value={autreTheme ? "__autre__" : (f.theme || "")} onChange={(e) => {
