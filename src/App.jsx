@@ -2723,6 +2723,16 @@ function saisonDuBlob(blob) {
 }
 
 /* Assiduite d'un joueur sur une saison : matchs joues, presences, absences, retards */
+const STATUTS_PRESENCE = ["present", "absent", "malade", "blesse", "retard"];
+/* Une seance ne compte (total, assiduite, recap) que si son pointage a ete valide.
+   Les anciennes seances (sans drapeau "pointe") comptent si au moins un statut reel a ete saisi. */
+function seanceValidee(t) {
+  if (!t) return false;
+  if (t.pointe === true) return true;
+  if (t.pointe === false) return false;
+  return Object.values(t.presence || {}).some((v) => STATUTS_PRESENCE.includes(v));
+}
+
 function assiduiteJoueur(p, db, saison) {
   let matchs = 0, absences = 0, retards = 0, jaunes = 0, rouges = 0, seancesPointees = 0;
   (db.matches || []).forEach((m) => {
@@ -2735,9 +2745,9 @@ function assiduiteJoueur(p, db, saison) {
   (db.trainings || []).forEach((t) => {
     if (t.cat !== p.cat) return;
     if (saison && saisonDe(t.date) !== saison) return;
-    if (!t.presence || Object.keys(t.presence).length === 0) return; // seance non pointee : ignoree
+    if (!seanceValidee(t)) return; // seance non validee : ignoree
     seancesPointees++;
-    const st = t.presence[p.id];
+    const st = (t.presence || {})[p.id];
     if (st === "absent" || st === "malade" || st === "blesse") absences++;
     if (st === "retard") retards++;
   });
@@ -6647,7 +6657,7 @@ function Entrainements({ players, cat, db, mutate }) {
           {(() => {
             const prefixMois = `${annee}-${pad(mois + 1)}`;
             const seancesDuMois = db.trainings.filter((t) => t.cat === cat && t.date && t.date.startsWith(prefixMois));
-            const realisees = seancesDuMois.filter((t) => t.presence && Object.keys(t.presence).length > 0).length;
+            const realisees = seancesDuMois.filter((t) => seanceValidee(t)).length;
             const prevues = entries.filter((en) => en.type === "session").length;
             return (
               <Card style={{ marginBottom: 12, padding: 14, background: C.bleuNuit, borderColor: C.bleuNuit }}>
@@ -6739,15 +6749,16 @@ function Entrainements({ players, cat, db, mutate }) {
                   .filter(([id, st]) => statuts.includes(st) && idsEffectif.has(id))
                   .map(([id]) => nomDe(id)).filter(Boolean)
                   .sort((a, b) => a.localeCompare(b, "fr"));
-                const absentsNoms = t ? nomsParStatut("absent", "malade") : [];
-                const blessesNoms = t ? nomsParStatut("blesse") : [];
+                const valide = seanceValidee(t);
+                const absentsNoms = valide ? nomsParStatut("absent", "malade") : [];
+                const blessesNoms = valide ? nomsParStatut("blesse") : [];
                 return (
-                  <Card key={en.date} onClick={() => t ? setOpen(t) : setEdit({ cat, date: en.date, presence: {} })}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: t ? 8 : 0 }}>
+                  <Card key={en.date} onClick={() => valide ? setOpen(t) : setEdit(t || { cat, date: en.date, presence: {} })}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: valide ? 8 : 0 }}>
                       <div style={{ fontWeight: 800 }}>{jourLong(en.date)}</div>
-                      {t ? <Pastille bg="#E2F4E9" color={C.vert}>{nbPres} présents</Pastille> : <Pastille bg={C.jaune} color={C.bleuNuit}>À pointer</Pastille>}
+                      {valide ? <Pastille bg="#E2F4E9" color={C.vert}>{nbPres} présents</Pastille> : <Pastille bg={C.jaune} color={C.bleuNuit}>À pointer</Pastille>}
                     </div>
-                    {t && (
+                    {valide && (
                       <>
                         {t.theme && <div style={{ fontSize: 13, color: C.gris, marginBottom: 8 }}>{t.theme}</div>}
                         <div style={{ display: "flex", gap: 7 }}>
@@ -6828,7 +6839,7 @@ function Entrainements({ players, cat, db, mutate }) {
       {recap && <RecapPresences players={players} db={db} cat={cat} annee={annee} mois={mois} onClose={() => setRecap(false)} />}
 
       {histo && (() => {
-        const toutes = db.trainings.filter((t) => t.cat === cat && t.date).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+        const toutes = db.trainings.filter((t) => t.cat === cat && t.date && seanceValidee(t)).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
         const parDate = {};
         toutes.forEach((t) => { (parDate[t.date] = parDate[t.date] || []).push(t); });
         const datesDoublon = Object.keys(parDate).filter((dte) => parDate[dte].length > 1);
@@ -6880,11 +6891,9 @@ function Entrainements({ players, cat, db, mutate }) {
         const parMois = {};
         db.trainings.filter((t) => t.cat === cat && t.date).forEach((t) => {
           const k = t.date.slice(0, 7);
-          const pres = Object.values(t.presence || {});
-          const pointee = pres.length > 0;
-          if (!parMois[k]) parMois[k] = { total: 0, pointees: 0 };
-          parMois[k].total += 1;
-          if (pointee) parMois[k].pointees += 1;
+          if (!parMois[k]) parMois[k] = { total: 0, aPointer: 0 };
+          if (seanceValidee(t)) parMois[k].total += 1;
+          else parMois[k].aPointer += 1;
         });
         const cles = Object.keys(parMois).sort((a, b) => b.localeCompare(a));
         const totalSaisons = {};
@@ -6899,7 +6908,7 @@ function Entrainements({ players, cat, db, mutate }) {
         };
         return (
           <Modal title="Nombre d'entraînements par mois" onClose={() => setNbMois(false)}>
-            <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Nombre de séances enregistrées pour la catégorie, mois par mois. Le chiffre entre parenthèses correspond aux séances déjà pointées.</div>
+            <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Nombre de séances validées pour la catégorie, mois par mois. Une séance n'est comptée qu'une fois son pointage validé. Le chiffre en orange indique les séances encore à pointer.</div>
             {cles.length === 0 ? (
               <Empty icon={<CalendarDays size={24} color={C.gris} />} text="Aucune séance enregistrée" sub="Les séances apparaîtront ici une fois créées ou importées" />
             ) : (
@@ -6909,7 +6918,7 @@ function Entrainements({ players, cat, db, mutate }) {
                     <div style={{ fontWeight: 800, fontSize: 13.5, textTransform: "capitalize" }}>{libelleMois(k)}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <Pastille bg={C.bleu} color="#fff">{parMois[k].total} séance{parMois[k].total > 1 ? "s" : ""}</Pastille>
-                      <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>({parMois[k].pointees} pointée{parMois[k].pointees > 1 ? "s" : ""})</span>
+                      {parMois[k].aPointer > 0 && <span style={{ fontSize: 12, color: "#C67C3C", fontWeight: 800 }}>({parMois[k].aPointer} à pointer)</span>}
                     </div>
                   </div>
                 ))}
@@ -6931,7 +6940,7 @@ function Entrainements({ players, cat, db, mutate }) {
 function RecapPresences({ players, db, cat, annee, mois, onClose }) {
   const prefix = `${annee}-${pad(mois + 1)}`;
   const seancesMois = db.trainings.filter((t) => t.cat === cat && t.date && t.date.startsWith(prefix));
-  const pointees = seancesMois.filter((t) => t.presence && Object.keys(t.presence).length);
+  const pointees = seancesMois.filter((t) => seanceValidee(t));
   const total = pointees.length;
   const themes = [...new Set(seancesMois.map((t) => t.theme).filter(Boolean))];
 
@@ -6990,7 +6999,7 @@ function RecapPresences({ players, db, cat, annee, mois, onClose }) {
 }
 
 function EditSeance({ seance, players, onClose, onSave }) {
-  const [f, setF] = useState({ presence: {}, ...seance });
+  const [f, setF] = useState(() => ({ presence: {}, ...seance, pointe: seance.pointe !== undefined ? seance.pointe : (seance.id ? undefined : false) }));
   const [dirty, setDirty] = useState(false);
   const [confirmQuitter, setConfirmQuitter] = useState(false);
   const [confirmTous, setConfirmTous] = useState(false);
@@ -7004,13 +7013,19 @@ function EditSeance({ seance, players, onClose, onSave }) {
   const themesConnus = THEMES.flatMap((g) => g.items);
   const [autreTheme, setAutreTheme] = useState(!!(seance.theme && !themesConnus.includes(seance.theme)));
 
+  const valider = () => onSave({ ...f, pointe: true });
+  const enregistrerBrouillon = () => onSave({ ...f, pointe: false });
+
   return (
     <Modal title={seance.id ? "Modifier la séance" : "Nouvelle séance"} onClose={fermer}
-      footer={<Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer les présences</Btn>}>
+      footer={<div style={{ display: "grid", gap: 8 }}>
+        <Btn variant="accent" full onClick={valider}><Check size={16} /> Valider le pointage</Btn>
+        <Btn variant="ghost" full onClick={enregistrerBrouillon}><Save size={15} /> Enregistrer sans valider</Btn>
+      </div>}>
       {confirmQuitter && (
-        <Modal title="Présences non enregistrées" onClose={() => setConfirmQuitter(false)}
-          footer={<><Btn variant="ghost" full onClick={() => { setConfirmQuitter(false); onClose(); }}>Quitter sans enregistrer</Btn><Btn variant="accent" full onClick={() => { setConfirmQuitter(false); onSave(f); }}><Save size={16} /> Enregistrer</Btn></>}>
-          <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.55 }}>Tu as modifié des présences qui ne sont <strong>pas encore enregistrées</strong>. Veux-tu les enregistrer avant de quitter ?</div>
+        <Modal title="Pointage non enregistré" onClose={() => setConfirmQuitter(false)}
+          footer={<><Btn variant="ghost" full onClick={() => { setConfirmQuitter(false); onClose(); }}>Quitter sans enregistrer</Btn><Btn variant="accent" full onClick={() => { setConfirmQuitter(false); valider(); }}><Check size={16} /> Valider le pointage</Btn></>}>
+          <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.55 }}>Tu as modifié des présences qui ne sont <strong>pas encore enregistrées</strong>. Veux-tu valider le pointage avant de quitter ?</div>
         </Modal>
       )}
       {confirmTous && (
