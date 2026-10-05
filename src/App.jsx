@@ -1658,7 +1658,7 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
   }
 
   const assi = assiduiteJoueur(p, db, saison);
-  const nbSeances = (db.trainings || []).filter((t) => t.cat === p.cat && (!saison || saisonDe(t.date) === saison) && t.presence && Object.keys(t.presence).length > 0).length;
+  const nbSeances = assi.seancesPointees;
   const nbMatchsEq = (db.matches || []).filter((m) => m.cat === p.cat && (!saison || saisonDe(m.date) === saison) && m.scorePour != null && m.scoreContre != null && !(m.type || "").toLowerCase().includes("amical")).length;
   section("Assiduité" + (nbSeances ? ` (sur ${nbSeances} séance${nbSeances > 1 ? "s" : ""})` : ""));
   paires([
@@ -2724,7 +2724,7 @@ function saisonDuBlob(blob) {
 
 /* Assiduite d'un joueur sur une saison : matchs joues, presences, absences, retards */
 function assiduiteJoueur(p, db, saison) {
-  let matchs = 0, presences = 0, absences = 0, retards = 0, jaunes = 0, rouges = 0;
+  let matchs = 0, absences = 0, retards = 0, jaunes = 0, rouges = 0, seancesPointees = 0;
   (db.matches || []).forEach((m) => {
     if (m.cat !== p.cat) return;
     if (saison && saisonDe(m.date) !== saison) return;
@@ -2735,12 +2735,15 @@ function assiduiteJoueur(p, db, saison) {
   (db.trainings || []).forEach((t) => {
     if (t.cat !== p.cat) return;
     if (saison && saisonDe(t.date) !== saison) return;
-    const st = t.presence && t.presence[p.id];
-    if (st === "present" || st === "retard") presences++;
+    if (!t.presence || Object.keys(t.presence).length === 0) return; // seance non pointee : ignoree
+    seancesPointees++;
+    const st = t.presence[p.id];
     if (st === "absent" || st === "malade" || st === "blesse") absences++;
     if (st === "retard") retards++;
   });
-  return { matchs, presences, absences, retards, jaunes, rouges };
+  // Un joueur est present par defaut : une seance ou il n'est pas marque absent compte comme presence.
+  const presences = Math.max(0, seancesPointees - absences);
+  return { matchs, presences, absences, retards, jaunes, rouges, seancesPointees };
 }
 
 /* Suspensions : seuil de cartons jaunes selon la competition */
@@ -3341,7 +3344,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
   const educateurs = (db.encadrement || []).map((e) => e.nom).filter(Boolean);
   const bilansSaison = (p.bilans || []).filter((b) => saisonDe(b.date) === saisonSel).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const assi = assiduiteJoueur(p, db, saisonSel);
-  const nbSeancesSaison = (db.trainings || []).filter((t) => t.cat === p.cat && saisonDe(t.date) === saisonSel && t.presence && Object.keys(t.presence).length > 0).length;
+  const nbSeancesSaison = assi.seancesPointees;
   const nbMatchsEquipe = (db.matches || []).filter((m) => m.cat === p.cat && saisonDe(m.date) === saisonSel && m.scorePour != null && m.scoreContre != null && !(m.type || "").toLowerCase().includes("amical")).length;
   const moyGroupe = (() => {
     const moys = [];
@@ -6933,11 +6936,14 @@ function RecapPresences({ players, db, cat, annee, mois, onClose }) {
   const themes = [...new Set(seancesMois.map((t) => t.theme).filter(Boolean))];
 
   const rows = players.map((p) => {
-    let pr = 0, ab = 0, bl = 0, re = 0;
+    let ab = 0, bl = 0, re = 0;
     pointees.forEach((s) => {
       const st = s.presence[p.id];
-      if (st === "present") pr++; else if (st === "retard") { pr++; re++; } else if (st === "absent" || st === "malade") ab++; else if (st === "blesse") bl++;
+      if (st === "retard") re++;
+      else if (st === "absent" || st === "malade") ab++;
+      else if (st === "blesse") bl++;
     });
+    const pr = Math.max(0, total - ab - bl);
     const taux = total ? Math.round((pr / total) * 100) : 0;
     return { p, pr, ab, bl, re, taux };
   }).sort((a, b) => b.taux - a.taux || b.pr - a.pr);
