@@ -1658,7 +1658,7 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
   }
 
   const assi = assiduiteJoueur(p, db, saison);
-  const nbSeances = assi.presences + assi.absences;
+  const nbSeances = (db.trainings || []).filter((t) => t.cat === p.cat && (!saison || saisonDe(t.date) === saison) && t.presence && Object.keys(t.presence).length > 0).length;
   const nbMatchsEq = (db.matches || []).filter((m) => m.cat === p.cat && (!saison || saisonDe(m.date) === saison) && m.scorePour != null && m.scoreContre != null && !(m.type || "").toLowerCase().includes("amical")).length;
   section("Assiduité" + (nbSeances ? ` (sur ${nbSeances} séance${nbSeances > 1 ? "s" : ""})` : ""));
   paires([
@@ -3341,7 +3341,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
   const educateurs = (db.encadrement || []).map((e) => e.nom).filter(Boolean);
   const bilansSaison = (p.bilans || []).filter((b) => saisonDe(b.date) === saisonSel).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const assi = assiduiteJoueur(p, db, saisonSel);
-  const nbSeancesSaison = assi.presences + assi.absences;
+  const nbSeancesSaison = (db.trainings || []).filter((t) => t.cat === p.cat && saisonDe(t.date) === saisonSel && t.presence && Object.keys(t.presence).length > 0).length;
   const nbMatchsEquipe = (db.matches || []).filter((m) => m.cat === p.cat && saisonDe(m.date) === saisonSel && m.scorePour != null && m.scoreContre != null && !(m.type || "").toLowerCase().includes("amical")).length;
   const moyGroupe = (() => {
     const moys = [];
@@ -6242,6 +6242,7 @@ function Entrainements({ players, cat, db, mutate }) {
   const [coller, setColler] = useState(false);
   const [texteColle, setTexteColle] = useState("");
   const [nbMois, setNbMois] = useState(false);
+  const [confirmFusion, setConfirmFusion] = useState(false);
   const [confirmReinit, setConfirmReinit] = useState(false);
   const [gererExclus, setGererExclus] = useState(false);
   const [gererSurclasses, setGererSurclasses] = useState(false);
@@ -6494,6 +6495,32 @@ function Entrainements({ players, cat, db, mutate }) {
   });
   const ordreJours = [1, 2, 3, 4, 5, 6, 0];
 
+  // Fusionne les seances en double (meme categorie, meme date) en une seule, en conservant toutes les presences pointees
+  const fusionnerDoublons = () => {
+    mutate((d) => {
+      const grp = {};
+      (d.trainings || []).forEach((t) => { if (t.cat === cat && t.date) { (grp[t.date] = grp[t.date] || []).push(t); } });
+      const aSupprimer = new Set();
+      Object.values(grp).forEach((arr) => {
+        if (arr.length < 2) return;
+        arr.sort((a, b) => Object.keys(b.presence || {}).length - Object.keys(a.presence || {}).length);
+        const base = arr[0];
+        const mergedPres = { ...(base.presence || {}) };
+        for (let i = 1; i < arr.length; i++) {
+          const r = arr[i];
+          Object.entries(r.presence || {}).forEach(([id, st]) => { if (mergedPres[id] === undefined || mergedPres[id] === "") mergedPres[id] = st; });
+          if (!base.theme && r.theme) base.theme = r.theme;
+          if (!base.details && r.details) base.details = r.details;
+          aSupprimer.add(r.id);
+        }
+        base.presence = mergedPres;
+      });
+      d.trainings = (d.trainings || []).filter((t) => !aSupprimer.has(t.id));
+      return d;
+    });
+    setConfirmFusion(false);
+  };
+
   return (
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
@@ -6704,6 +6731,13 @@ function Entrainements({ players, cat, db, mutate }) {
                 const nbPres = pres.filter((x) => x === "present" || x === "retard").length;
                 const nbAbs = pres.filter((x) => x === "absent" || x === "malade" || x === "blesse").length;
                 const nbBl = pres.filter((x) => x === "blesse").length;
+                const nomDe = (id) => { const pl = players.find((x) => x.id === id); return pl ? `${pl.prenom} ${pl.nom}` : null; };
+                const nomsParStatut = (...statuts) => Object.entries((t && t.presence) || {})
+                  .filter(([id, st]) => statuts.includes(st) && idsEffectif.has(id))
+                  .map(([id]) => nomDe(id)).filter(Boolean)
+                  .sort((a, b) => a.localeCompare(b, "fr"));
+                const absentsNoms = t ? nomsParStatut("absent", "malade") : [];
+                const blessesNoms = t ? nomsParStatut("blesse") : [];
                 return (
                   <Card key={en.date} onClick={() => t ? setOpen(t) : setEdit({ cat, date: en.date, presence: {} })}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: t ? 8 : 0 }}>
@@ -6717,6 +6751,8 @@ function Entrainements({ players, cat, db, mutate }) {
                           <Pastille bg="#FBE3E3" color={C.rouge}>{nbAbs} absents</Pastille>
                           {nbBl > 0 && <Pastille bg="#FFF3DA" color={C.jauneFonce}>{nbBl} blessés</Pastille>}
                         </div>
+                        {absentsNoms.length > 0 && <div style={{ fontSize: 12.5, color: C.rouge, marginTop: 7, lineHeight: 1.45 }}><strong>Absents :</strong> {absentsNoms.join(", ")}</div>}
+                        {blessesNoms.length > 0 && <div style={{ fontSize: 12.5, color: C.jauneFonce, marginTop: 4, lineHeight: 1.45 }}><strong>Blessés :</strong> {blessesNoms.join(", ")}</div>}
                       </>
                     )}
                   </Card>
@@ -6790,9 +6826,20 @@ function Entrainements({ players, cat, db, mutate }) {
 
       {histo && (() => {
         const toutes = db.trainings.filter((t) => t.cat === cat && t.date).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+        const parDate = {};
+        toutes.forEach((t) => { (parDate[t.date] = parDate[t.date] || []).push(t); });
+        const datesDoublon = Object.keys(parDate).filter((dte) => parDate[dte].length > 1);
+        const nbEnTrop = datesDoublon.reduce((n, dte) => n + (parDate[dte].length - 1), 0);
         return (
           <Modal title="Historique des présences" onClose={() => setHisto(false)}>
             <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Toutes les séances pointées, toutes dates confondues. Rien n'est effacé quand tu changes de mois. Touche une séance pour revoir le détail.</div>
+            {nbEnTrop > 0 && (
+              <div style={{ background: "#FBEAD9", border: `1px solid #E6B980`, borderRadius: 12, padding: "12px 14px", marginBottom: 12 }}>
+                <div style={{ fontWeight: 800, fontSize: 13.5, color: "#9A5B1E", marginBottom: 4 }}>{nbEnTrop} séance{nbEnTrop > 1 ? "s" : ""} en double détectée{nbEnTrop > 1 ? "s" : ""}</div>
+                <div style={{ fontSize: 12.5, color: "#8A5A24", lineHeight: 1.5, marginBottom: 10 }}>{datesDoublon.length} date{datesDoublon.length > 1 ? "s" : ""} apparai{datesDoublon.length > 1 ? "ssent" : "t"} plusieurs fois (marquée{datesDoublon.length > 1 ? "s" : ""} en orange ci-dessous). La fusion garde une seule séance par date en conservant toutes les présences pointées.</div>
+                <Btn variant="accent" size="sm" onClick={() => setConfirmFusion(true)}><Save size={15} /> Fusionner les doublons</Btn>
+              </div>
+            )}
             {toutes.length === 0 ? (
               <Empty icon={<CalendarDays size={24} color={C.gris} />} text="Aucune séance pointée" sub="Les séances pointées apparaîtront ici" />
             ) : (
@@ -6801,10 +6848,11 @@ function Entrainements({ players, cat, db, mutate }) {
                   const pres = presEff(t);
                   const nbPres = pres.filter((x) => x === "present" || x === "retard").length;
                   const nbAbs = pres.filter((x) => x === "absent" || x === "malade" || x === "blesse").length;
+                  const estDoublon = parDate[t.date] && parDate[t.date].length > 1;
                   return (
-                    <div key={t.id} onClick={() => { setOpen(t); setHisto(false); }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "#fff", borderRadius: 11, border: `1px solid ${C.grisClair}`, cursor: "pointer" }}>
+                    <div key={t.id} onClick={() => { setOpen(t); setHisto(false); }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: estDoublon ? "#FBEAD9" : "#fff", borderRadius: 11, border: `1px solid ${estDoublon ? "#E6B980" : C.grisClair}`, cursor: "pointer" }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 800, fontSize: 13.5, textTransform: "capitalize" }}>{jourLong(t.date)}</div>
+                        <div style={{ fontWeight: 800, fontSize: 13.5, textTransform: "capitalize" }}>{jourLong(t.date)}{estDoublon ? <span style={{ fontSize: 10.5, fontWeight: 900, color: "#fff", background: "#C67C3C", borderRadius: 6, padding: "1px 6px", marginLeft: 7, textTransform: "none" }}>Doublon</span> : null}</div>
                         {t.theme ? <div style={{ fontSize: 12, color: C.gris, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.theme}</div> : null}
                       </div>
                       <Pastille bg="#E2F4E9" color={C.vert}>{nbPres}</Pastille>
@@ -6814,6 +6862,12 @@ function Entrainements({ players, cat, db, mutate }) {
                   );
                 })}
               </div>
+            )}
+            {confirmFusion && (
+              <Modal title="Fusionner les doublons" onClose={() => setConfirmFusion(false)}
+                footer={<Btn variant="accent" full onClick={fusionnerDoublons}><Save size={16} /> Oui, fusionner</Btn>}>
+                <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.55 }}>Veux-tu fusionner les <strong>{nbEnTrop} séance{nbEnTrop > 1 ? "s" : ""} en double</strong> ? Pour chaque date concernée, une seule séance sera conservée, avec toutes les présences réunies. Les présences ne sont pas perdues, seules les copies en trop sont supprimées.</div>
+              </Modal>
             )}
           </Modal>
         );
@@ -6884,9 +6938,8 @@ function RecapPresences({ players, db, cat, annee, mois, onClose }) {
       const st = s.presence[p.id];
       if (st === "present") pr++; else if (st === "retard") { pr++; re++; } else if (st === "absent" || st === "malade") ab++; else if (st === "blesse") bl++;
     });
-    const pointeJoueur = pr + ab + bl;
-    const taux = pointeJoueur ? Math.round((pr / pointeJoueur) * 100) : 0;
-    return { p, pr, ab, bl, re, taux, pointeJoueur };
+    const taux = total ? Math.round((pr / total) * 100) : 0;
+    return { p, pr, ab, bl, re, taux };
   }).sort((a, b) => b.taux - a.taux || b.pr - a.pr);
 
   return (
@@ -6896,7 +6949,7 @@ function RecapPresences({ players, db, cat, annee, mois, onClose }) {
       ) : (
         <>
           <div style={{ fontSize: 13, color: C.gris, marginBottom: 12 }}>
-            {total} séance{total > 1 ? "s" : ""} pointée{total > 1 ? "s" : ""}. Taux = présences sur les séances où le joueur a été pointé.
+            {total} séance{total > 1 ? "s" : ""} pointée{total > 1 ? "s" : ""}. Taux = présences sur le total des séances.
           </div>
           <div style={{ display: "flex", gap: 12, marginBottom: 10, fontSize: 11.5, fontWeight: 700, color: C.gris, flexWrap: "wrap" }}>
             <span style={{ color: C.vert }}>● Présents</span>
