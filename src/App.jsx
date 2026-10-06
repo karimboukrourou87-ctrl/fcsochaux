@@ -211,7 +211,8 @@ function Sauvegarde({ db, mutate, cat, demo, estAdmin, userId, onClose }) {
 }
 
 
-function FormTransport({ onSubmit, onClose, encadrement }) {
+function FormTransport({ onSubmit, onClose, encadrement, majEncadrement }) {
+  const [gererDir, setGererDir] = useState(false);
   const [date, setDate] = useState("");
   const [destination, setDestination] = useState("");
   const [mode, setMode] = useState("Minibus club");
@@ -322,7 +323,9 @@ function FormTransport({ onSubmit, onClose, encadrement }) {
           <Field label="Noms des parents qui conduisent"><Inp value={parents} onChange={(e) => setParents(e.target.value)} placeholder="Ex : Dupont, Martin, Diallo" /></Field>
         </div>
       )}
+      {majEncadrement && (mode === "Minibus club" || mode === "Bus en location") && <button type="button" onClick={() => setGererDir(true)} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline", marginBottom: 10 }}>Gérer les dirigeants (ajouter, renommer, supprimer)</button>}
       <Field label="Précision (optionnel)"><Inp value={note} onChange={(e) => setNote(e.target.value)} placeholder="Horaire de départ, nombre de places..." /></Field>
+      {gererDir && <GestionDirigeants liste={encadrement} maj={majEncadrement} onClose={() => setGererDir(false)} />}
     </Modal>
   );
 }
@@ -338,7 +341,7 @@ function resumeTransport(x) {
   return x.mode || "Transport";
 }
 
-function Transports({ db, mutate, cat, encadrement, onClose }) {
+function Transports({ db, mutate, cat, encadrement, majEncadrement, onClose }) {
   const [nouveau, setNouveau] = useState(false);
   const [refus, setRefus] = useState(null);
   const [cause, setCause] = useState("");
@@ -397,7 +400,7 @@ function Transports({ db, mutate, cat, encadrement, onClose }) {
         </div>
       )}
 
-      {nouveau && <FormTransport onClose={() => setNouveau(false)} onSubmit={creer} encadrement={encadrement} />}
+      {nouveau && <FormTransport onClose={() => setNouveau(false)} onSubmit={creer} encadrement={encadrement} majEncadrement={majEncadrement} />}
 
       {refus && (
         <Modal title="Refuser la demande" onClose={() => setRefus(null)}
@@ -1264,6 +1267,56 @@ function useEncadrementClub(demo, db, mutate) {
   return [liste, maj, !demo && listeRemote === null];
 }
 
+// Ecran commun de gestion des dirigeants / encadrants : ajouter, renommer, supprimer (securise).
+// Travaille sur la liste commune du club, via (liste, maj) fournis par l'appelant.
+function GestionDirigeants({ liste, maj, onClose }) {
+  const [nom, setNom] = useState("");
+  const [role, setRole] = useState("Dirigeant");
+  const [edit, setEdit] = useState(null);
+  const items = [...(liste || [])].sort((a, b) => (a.nom || "").localeCompare(b.nom || "", "fr"));
+  const ajouter = () => {
+    const n = nom.trim(); if (!n || !maj) return;
+    maj((l) => (l || []).some((x) => (x.nom || "").trim().toLowerCase() === n.toLowerCase() && (x.role || "") === role) ? (l || []) : [...(l || []), { id: uid(), nom: n, role, licence: "", email: "" }]);
+    setNom("");
+  };
+  const renommer = () => {
+    if (!edit || !maj) return; const n = (edit.nom || "").trim(); if (!n) return;
+    maj((l) => (l || []).map((x) => x.id === edit.id ? { ...x, nom: n, role: edit.role } : x));
+    setEdit(null);
+  };
+  const supprimer = (id) => { if (maj) maj((l) => (l || []).filter((x) => x.id !== id)); };
+  return (
+    <Modal title="Gérer les dirigeants" onClose={onClose}>
+      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Ajoute, renomme ou supprime une personne de la liste commune du club. Les changements sont repris partout : réunions, transports, bilans.</div>
+      <Field label="Nom et prénom"><Inp value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nom et prénom" /></Field>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "end", marginBottom: 4 }}>
+        <Field label="Rôle"><Sel value={role} onChange={(e) => setRole(e.target.value)}>{ROLES_ENCADREMENT.map((r) => <option key={r}>{r}</option>)}</Sel></Field>
+        <Btn variant="accent" onClick={ajouter} disabled={!nom.trim()}><Plus size={16} /> Ajouter</Btn>
+      </div>
+      <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+        {items.length === 0 ? <Empty icon={<Users size={22} color={C.gris} />} text="Aucun nom enregistré" /> :
+          items.map((x) => (
+            <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 11px", background: "#fff", borderRadius: 11, border: `1px solid ${C.grisClair}` }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700 }}>{x.nom}</div>
+                <div style={{ fontSize: 12, color: C.gris }}>{x.role || "Dirigeant"}</div>
+              </div>
+              <Edit3 size={16} color={C.bleu} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setEdit({ id: x.id, nom: x.nom, role: ROLES_ENCADREMENT.includes(x.role) ? x.role : "Dirigeant" })} />
+              <BtnSuppr nom={x.nom} onConfirm={() => supprimer(x.id)} size="sm" />
+            </div>
+          ))}
+      </div>
+      {edit && (
+        <Modal title="Modifier la personne" onClose={() => setEdit(null)}
+          footer={<Btn variant="accent" full disabled={!(edit.nom || "").trim()} onClick={renommer}><Save size={16} /> Enregistrer</Btn>}>
+          <Field label="Nom et prénom"><Inp value={edit.nom} onChange={(e) => setEdit({ ...edit, nom: e.target.value })} placeholder="Nom et prénom" /></Field>
+          <Field label="Rôle"><Sel value={edit.role} onChange={(e) => setEdit({ ...edit, role: e.target.value })}>{ROLES_ENCADREMENT.map((r) => <option key={r}>{r}</option>)}</Sel></Field>
+        </Modal>
+      )}
+    </Modal>
+  );
+}
+
 // Propage un carton rouge d'un joueur surclassé vers sa catégorie d'origine
 // (suspension automatique). Renvoie { ok } ou { ok:false, raison }.
 async function propagerRougeSurclasse(pid, pcat, dateMatch, ajouter) {
@@ -1852,7 +1905,7 @@ export default function App() {
   const [groupeSel, setGroupeSel] = useState(null);
   const [demo, setDemo] = useState(false);
   const cacheRef = useRef({});
-  const [encadrementClub] = useEncadrementClub(demo, db, mutate);
+  const [encadrementClub, majEncadrementClub] = useEncadrementClub(demo, db, mutate);
   const pendingRef = useRef(false);
   const saveQueueRef = useRef(Promise.resolve());
   const savingCountRef = useRef(0);
@@ -2085,7 +2138,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 06/10 · v2.1
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 06/10 · v2.2
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2204,7 +2257,7 @@ export default function App() {
       {showScores && <ScoresWeekend onClose={() => setShowScores(false)} localDb={demo ? db : null} />}
       {showDemandes && <Demandes demo={demo} db={db} mutate={mutate} cat={cat} session={session} onVu={() => setDemTick((t) => t + 1)} onClose={() => { setDemTick((t) => t + 1); setShowDemandes(false); }} />}
       {showClassement && <Classement cat={cat} db={db} mutate={mutate} onClose={() => setShowClassement(false)} />}
-      {showTransport && <Transports db={db} mutate={mutate} cat={cat} encadrement={encadrementClub} onClose={() => setShowTransport(false)} />}
+      {showTransport && <Transports db={db} mutate={mutate} cat={cat} encadrement={encadrementClub} majEncadrement={majEncadrementClub} onClose={() => setShowTransport(false)} />}
       {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
       {showPlanning && <Planning db={db} mutate={mutate} cats={cats} profil={profil} peutValider={peutValider} cat={cat} onClose={() => setShowPlanning(false)} />}
@@ -2215,8 +2268,8 @@ export default function App() {
       {showSuivi && <SuiviMedical db={db} mutate={mutate} cat={cat} onClose={() => setShowSuivi(false)} />}
       {showBilan && <BilanEquipe db={db} players={players} cat={cat} onClose={() => setShowBilan(false)} onTournois={() => setShowTournois(true)} />}
       {showTournois && <Tournois db={db} mutate={mutate} cat={cat} onClose={() => setShowTournois(false)} />}
-      {showReunions && <Reunions db={{ reunions: reunionsSource, acces: accesSource, encadrement: encadrementClub }} mutate={mutateReu} erreur={demo ? null : reunionsErr} onClose={() => setShowReunions(false)} />}
-      {showCalendrier && <Calendrier db={{ ...db, reunions: reunionsSource, encadrement: encadrementClub }} mutate={mutate} mutateReunions={mutateReu} peutValider={peutValider} onClose={() => setShowCalendrier(false)} />}
+      {showReunions && <Reunions db={{ reunions: reunionsSource, acces: accesSource, encadrement: encadrementClub }} majEncadrement={majEncadrementClub} mutate={mutateReu} erreur={demo ? null : reunionsErr} onClose={() => setShowReunions(false)} />}
+      {showCalendrier && <Calendrier db={{ ...db, reunions: reunionsSource, encadrement: encadrementClub }} majEncadrement={majEncadrementClub} mutate={mutate} mutateReunions={mutateReu} peutValider={peutValider} onClose={() => setShowCalendrier(false)} />}
     </div>
   );
 }
@@ -3308,9 +3361,10 @@ function CarteBilan({ b, moy, onEdit }) {
   );
 }
 
-function EditBilan({ bilan, educateurs, axesPrecedent, onClose, onSave, onDelete, onAjouterEncadrant }) {
+function EditBilan({ bilan, educateurs, axesPrecedent, onClose, onSave, onDelete, onAjouterEncadrant, encadrementListe, encadrementMaj }) {
   const [f, setF] = useState({ date: "", educateur: "", aspects: {}, axesProgres: "", ...bilan });
   const [autre, setAutre] = useState(!!bilan.educateur && educateurs.length > 0 && !educateurs.includes(bilan.educateur));
+  const [gererDir, setGererDir] = useState(false);
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
   const setAspect = (ak, champ, v) => setF((o) => ({ ...o, aspects: { ...(o.aspects || {}), [ak]: { ...((o.aspects || {})[ak] || {}), [champ]: v } } }));
   return (
@@ -3338,6 +3392,8 @@ function EditBilan({ bilan, educateurs, axesPrecedent, onClose, onSave, onDelete
           </>
         )}
       </Field>
+      {encadrementMaj && !autre && <button type="button" onClick={() => setGererDir(true)} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline", marginTop: -6, marginBottom: 12 }}>Gérer les dirigeants (ajouter, renommer, supprimer)</button>}
+      {gererDir && <GestionDirigeants liste={encadrementListe} maj={encadrementMaj} onClose={() => setGererDir(false)} />}
 
       {!bilan.id && axesPrecedent ? (
         <div style={{ background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 11, padding: 11, marginBottom: 12 }}>
@@ -3741,7 +3797,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
         </>
       )}
 
-      {bilanEdit && <EditBilan bilan={bilanEdit} educateurs={educateurs} onAjouterEncadrant={ajouterEncadrant} axesPrecedent={(() => { const autres = (p.bilans || []).filter((x) => x.id && x.id !== bilanEdit.id && x.axesProgres).sort((a, b) => (b.date || "").localeCompare(a.date || "")); return autres.length ? autres[0].axesProgres : ""; })()} onClose={() => setBilanEdit(null)}
+      {bilanEdit && <EditBilan bilan={bilanEdit} educateurs={educateurs} onAjouterEncadrant={ajouterEncadrant} encadrementListe={listeEnc} encadrementMaj={majEnc} axesPrecedent={(() => { const autres = (p.bilans || []).filter((x) => x.id && x.id !== bilanEdit.id && x.axesProgres).sort((a, b) => (b.date || "").localeCompare(a.date || "")); return autres.length ? autres[0].axesProgres : ""; })()} onClose={() => setBilanEdit(null)}
         onSave={(b) => {
           mutate((d) => {
             const pl = d.players.find((x) => x.id === p.id);
@@ -4819,7 +4875,7 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
                       {x.email ? <div style={{ fontSize: 12, color: C.gris }}>{x.email}</div> : null}
                     </div>
                     <Edit3 size={16} color={C.bleu} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setEdit({ id: x.id, nom: x.nom, role: ROLES_ENCADREMENT.includes(x.role) ? x.role : "Éducateur", licence: x.licence || "", email: x.email || "" })} />
-                    <X size={16} color={C.gris} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => retirer(x.id)} />
+                    <BtnSuppr nom={x.nom} onConfirm={() => retirer(x.id)} size="sm" />
                   </div>
                 ))}
               </div>
@@ -4916,7 +4972,8 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
   const r = cur.reservation || {};
   const exterieur = cur.lieu === "Extérieur";
   const domicile = cur.lieu === "Domicile";
-  const [liste] = useEncadrementClub(demo, db, mutate);
+  const [liste, majListe] = useEncadrementClub(demo, db, mutate);
+  const [gererDir, setGererDir] = useState(false);
   const conducteursDispo = [...new Set((liste || []).map((x) => (x.nom || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
   const setConducteurMinibus = (b, v) => majTransport({ conducteurs: { ...(t.conducteurs || {}), [b]: v } });
   const majNbLocationMatch = (v) => {
@@ -5147,6 +5204,7 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
             <Field label="Noms des parents qui conduisent"><Inp value={t.parents || ""} onChange={(ev) => majTransport({ parents: ev.target.value })} placeholder="Ex : Dupont, Martin, Diallo" /></Field>
           </div>
         )}
+        {(t.mode === "Minibus club" || t.mode === "Bus en location") && <button type="button" onClick={() => setGererDir(true)} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline", marginBottom: 10 }}>Gérer les dirigeants (ajouter, renommer, supprimer)</button>}
         {t.mode && (
           <div style={{ marginTop: 4 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -5199,6 +5257,7 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
       <Btn variant="ghost" full onClick={() => setRoster(true)}><Edit3 size={16} /> Modifier la liste des noms</Btn>
 
       {roster && <RosterEncadrement demo={demo} db={db} mutate={mutate} onClose={() => setRoster(false)} />}
+      {gererDir && <GestionDirigeants liste={liste} maj={majListe} onClose={() => setGererDir(false)} />}
       {convoc && <Convocation db={db} cat={cur.cat} match={match} mutate={mutate} onClose={() => setConvoc(false)} />}
     </Modal>
   );
@@ -9769,12 +9828,13 @@ function Tournois({ db, mutate, cat, onClose }) {
 const QUALITES = ["Président Association", "Directeur du centre", "Manager général", "Éducateur", "Dirigeant", "Responsable", "Comité", "Autre"];
 const RAPPELS = ["Aucun", "1 heure avant", "2 heures avant", "La veille", "2 jours avant"];
 
-function EditReunion({ reunion, educateurs, encadrement, onClose, onSave, onDelete }) {
+function EditReunion({ reunion, educateurs, encadrement, majEncadrement, onClose, onSave, onDelete }) {
   const [f, setF] = useState({ objet: "", date: "", heure: "", lieu: "", ordreJour: "", rappel: "La veille", participants: [], ...reunion });
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
   const [nom, setNom] = useState("");
   const [email, setEmail] = useState("");
   const [qualite, setQualite] = useState("Président Association");
+  const [gererDir, setGererDir] = useState(false);
   const ajouter = () => {
     if (!nom.trim()) return;
     set("participants", [...(f.participants || []), { id: uid(), nom: nom.trim(), email: email.trim(), qualite, reponse: "attente", motif: "" }]);
@@ -9832,6 +9892,7 @@ function EditReunion({ reunion, educateurs, encadrement, onClose, onSave, onDele
           </Sel>
         </Field>
       )}
+      {majEncadrement && <button type="button" onClick={() => setGererDir(true)} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline", marginBottom: 8 }}>Gérer les dirigeants (ajouter, renommer, supprimer)</button>}
       <div style={{ fontSize: 12.5, color: C.gris, margin: "2px 0 8px" }}>Ou ajoute une autre personne : président, membre du comité...</div>
       <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
         <div style={{ flex: 1 }}><Inp value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nom et prénom" /></div>
@@ -9852,6 +9913,7 @@ function EditReunion({ reunion, educateurs, encadrement, onClose, onSave, onDele
           ))}
         </div>
       )}
+      {gererDir && <GestionDirigeants liste={encadrement} maj={majEncadrement} onClose={() => setGererDir(false)} />}
     </Modal>
   );
 }
@@ -9877,7 +9939,7 @@ function ModalReponse({ participant, onClose, onSave }) {
   );
 }
 
-function Reunions({ db, mutate, erreur, onClose }) {
+function Reunions({ db, mutate, erreur, onClose, majEncadrement }) {
   const [edit, setEdit] = useState(null);
   const [selId, setSelId] = useState(null);
   const [rep, setRep] = useState(null);
@@ -10001,7 +10063,7 @@ function Reunions({ db, mutate, erreur, onClose }) {
         </div>
       )}
 
-      {edit && <EditReunion reunion={edit} educateurs={db.acces || []} encadrement={db.encadrement || []} onClose={() => setEdit(null)} onSave={enregistrer} onDelete={edit.id ? () => supprimer(edit.id) : null} />}
+      {edit && <EditReunion reunion={edit} educateurs={db.acces || []} encadrement={db.encadrement || []} majEncadrement={majEncadrement} onClose={() => setEdit(null)} onSave={enregistrer} onDelete={edit.id ? () => supprimer(edit.id) : null} />}
       {rep && sel && <ModalReponse participant={rep} onClose={() => setRep(null)} onSave={(reponse, motif) => repondre(sel.id, rep.id, reponse, motif)} />}
     </div>
   );
@@ -10013,7 +10075,7 @@ const LABELS_EV = { match: "Matchs", entrainement: "Entraînements", reunion: "R
 const MOIS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 const fmtISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-function Calendrier({ db, mutate, mutateReunions, peutValider, onClose }) {
+function Calendrier({ db, mutate, mutateReunions, peutValider, onClose, majEncadrement }) {
   const d0 = new Date();
   const todayStr = fmtISO(d0);
   const [vue, setVue] = useState("mois");
@@ -10171,7 +10233,7 @@ function Calendrier({ db, mutate, mutateReunions, peutValider, onClose }) {
 
       {edit && edit.kind === "match" && <EditMatch match={edit.obj} onClose={() => setEdit(null)} onSave={(m) => saveEvt("matches", m)} />}
       {edit && edit.kind === "entrainement" && <EditSeance seance={edit.obj} players={(db.players || []).filter((p) => p.cat === edit.obj.cat)} onClose={() => setEdit(null)} onSave={(s) => saveEvt("trainings", s)} />}
-      {edit && edit.kind === "reunion" && <EditReunion reunion={edit.obj} educateurs={db.acces || []} encadrement={db.encadrement || []} onClose={() => setEdit(null)} onSave={(r) => saveEvt("reunions", r)} onDelete={() => delEvt("reunions", edit.obj.id)} />}
+      {edit && edit.kind === "reunion" && <EditReunion reunion={edit.obj} educateurs={db.acces || []} encadrement={db.encadrement || []} majEncadrement={majEncadrement} onClose={() => setEdit(null)} onSave={(r) => saveEvt("reunions", r)} onDelete={() => delEvt("reunions", edit.obj.id)} />}
       {edit && edit.kind === "tournoi" && <EditTournoi tournoi={edit.obj} onClose={() => setEdit(null)} onSave={(t) => saveEvt("tournois", t)} onDelete={() => delEvt("tournois", edit.obj.id)} />}
     </div>
   );
