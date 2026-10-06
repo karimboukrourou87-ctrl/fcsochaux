@@ -2085,7 +2085,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 06/10 · v1.9
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 06/10 · v2.0
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3325,7 +3325,12 @@ function EditBilan({ bilan, educateurs, axesPrecedent, onClose, onSave, onDelete
             <option value="__autre__">Autre (saisir)</option>
           </Sel>
         ) : (
-          <Inp value={f.educateur} onChange={(e) => set("educateur", e.target.value)} placeholder="Nom de l'éducateur" />
+          <>
+            <Inp value={f.educateur} onChange={(e) => set("educateur", e.target.value)} placeholder="Nom de l'éducateur" />
+            {educateurs.length > 0 && (
+              <button type="button" onClick={() => { setAutre(false); set("educateur", ""); }} style={{ marginTop: 6, background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline" }}>← Revenir à la liste</button>
+            )}
+          </>
         )}
       </Field>
 
@@ -3400,7 +3405,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
     return statsJoueur(p, db, saison);
   }
   const stats = statsSaison(saisonSel);
-  const educateurs = (db.encadrement || []).map((e) => e.nom).filter(Boolean);
+  const educateurs = [...new Set((db.encadrement || []).map((e) => (e.nom || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
   const bilansSaison = (p.bilans || []).filter((b) => saisonDe(b.date) === saisonSel).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const assi = assiduiteJoueur(p, db, saisonSel);
   const nbSeancesSaison = assi.seancesPointees;
