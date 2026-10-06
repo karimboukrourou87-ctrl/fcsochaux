@@ -2085,7 +2085,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 06/10 · v1.5
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 06/10 · v1.7
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -8446,6 +8446,85 @@ function DocumentsAdmin({ players, cat, onClose }) {
 }
 
 
+function exporterBilanPDF(jsPDF, { cat, saison, nbMatchs, v, n, d, bp, bc, buteurs, passeurs, notes }) {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  try { doc.setProperties({ title: `Bilan de saison ${cat} ${saison}`, subject: "Bilan de saison", author: CLUB_LONG, creator: CLUB_LONG }); } catch (e) {}
+  const W = 595, H = 842, M = 40;
+  const NAVY = [14, 30, 51], BLEU = [26, 53, 83], OR = [198, 162, 76];
+  const ENCRE = [22, 32, 46], GRIS = [122, 130, 142], TRAIT = [228, 232, 238], FOND = [247, 248, 250];
+  const VERT = [39, 134, 82], ROUGE = [200, 62, 54], ORF = [184, 122, 43];
+  const sc = (c) => doc.setTextColor(c[0], c[1], c[2]);
+  const sd = (c) => doc.setDrawColor(c[0], c[1], c[2]);
+  const sf = (c) => doc.setFillColor(c[0], c[1], c[2]);
+
+  // En-tete
+  sf(NAVY); doc.rect(0, 0, W, 5, "F");
+  if (typeof LOGO_CLUB === "string" && LOGO_CLUB) {
+    try { const pr = doc.getImageProperties(LOGO_CLUB); const lh = 50, lw = lh * (pr.width / pr.height); doc.addImage(LOGO_CLUB, "PNG", W - M - lw, 20, lw, lh); } catch (e) {}
+  }
+  sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
+  doc.text(CLUB_LONG, M, 42);
+  sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+  doc.text(`${secteurLabel(cat).toUpperCase()}   ·   BILAN DE SAISON   ·   ${cat}   ·   ${saison}`, M, 56);
+  sd(OR); doc.setLineWidth(1); doc.line(M, 66, W - M, 66); doc.setLineWidth(0.5);
+
+  let y = 92;
+  const titreSection = (t) => { sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text(t.toUpperCase(), M, y); y += 12; };
+
+  const tuile = (x, ty, w, h, val, lab, col) => {
+    sf(FOND); doc.roundedRect(x, ty, w, h, 6, 6, "F"); sd(TRAIT); doc.roundedRect(x, ty, w, h, 6, 6);
+    sc(col || BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(20); doc.text(String(val), x + w / 2, ty + 28, { align: "center" });
+    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text(lab, x + w / 2, ty + h - 9, { align: "center" });
+  };
+
+  // Resultats
+  titreSection("Résultats");
+  const gap = 10, h1 = 54;
+  const w4 = (W - 2 * M - 3 * gap) / 4;
+  [["Matchs", nbMatchs, BLEU], ["Victoires", v, VERT], ["Nuls", n, ORF], ["Défaites", d, ROUGE]].forEach((t, i) => tuile(M + i * (w4 + gap), y, w4, h1, t[1], t[0], t[2]));
+  y += h1 + gap;
+  const w3 = (W - 2 * M - 2 * gap) / 3;
+  const diff = bp - bc;
+  [["Buts marqués", bp, BLEU], ["Buts encaissés", bc, BLEU], ["Différence", (diff > 0 ? "+" : "") + diff, diff >= 0 ? VERT : ROUGE]].forEach((t, i) => tuile(M + i * (w3 + gap), y, w3, h1, t[1], t[0], t[2]));
+  y += h1 + 20;
+
+  // Classements
+  const classement = (titre, rows, unite) => {
+    if (y > H - 120) { doc.addPage(); y = 56; }
+    titreSection(titre);
+    if (!rows.length) { sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.text("Aucune donnée pour cette saison.", M, y + 4); y += 20; return; }
+    rows.forEach((r, i) => {
+      if (y > H - 60) { doc.addPage(); y = 56; }
+      const rh = 22;
+      if (i % 2 === 0) { sf(FOND); doc.rect(M, y - 10, W - 2 * M, rh, "F"); }
+      // rang
+      sf(i === 0 ? OR : TRAIT); doc.circle(M + 11, y + 1, 8, "F");
+      sc(i === 0 ? NAVY : GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(String(i + 1), M + 11, y + 4, { align: "center" });
+      // nom
+      sc(ENCRE); doc.setFont("helvetica", "normal"); doc.setFontSize(11); doc.text(r.nom, M + 28, y + 4);
+      // valeur
+      sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(`${r.val} ${unite}`, W - M - 4, y + 4, { align: "right" });
+      y += rh;
+    });
+    y += 14;
+  };
+  classement("Meilleurs buteurs", buteurs, "buts");
+  classement("Meilleurs passeurs", passeurs, "passes");
+  classement("Meilleures notes moyennes", notes, "/ 7");
+
+  // Pied de page sur chaque page
+  const pages = doc.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    sd(OR); doc.setLineWidth(0.8); doc.line(M, H - 28, W - M, H - 28); doc.setLineWidth(0.5);
+    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.text(`Bilan édité le ${new Date().toLocaleDateString("fr-FR")}`, M, H - 19);
+    doc.text(CLUB_LONG, W - M, H - 19, { align: "right" });
+  }
+
+  doc.save(`Bilan_${cat}_${saison}.pdf`.replace(/\s+/g, "_"));
+}
+
 function BilanEquipe({ db, players, cat, onClose, onTournois }) {
   const saisons = useMemo(() => {
     const s = new Set([saisonCourante()]);
@@ -8453,6 +8532,7 @@ function BilanEquipe({ db, players, cat, onClose, onTournois }) {
     return [...s].sort().reverse();
   }, [db, cat]);
   const [saison, setSaison] = useState(saisons[0]);
+  const [pdfMsg, setPdfMsg] = useState(null);
 
   const joues = (db.matches || []).filter((m) => m.cat === cat && saisonDe(m.date) === saison && m.scorePour != null && m.scoreContre != null && m.scorePour !== "" && m.scoreContre !== "");
   let v = 0, n = 0, d = 0, bp = 0, bc = 0;
@@ -8467,6 +8547,23 @@ function BilanEquipe({ db, players, cat, onClose, onTournois }) {
   const buteurs = statsJ.filter((x) => x.s.buts > 0).sort((a, b) => b.s.buts - a.s.buts).slice(0, 8);
   const passeurs = statsJ.filter((x) => x.s.passes > 0).sort((a, b) => b.s.passes - a.s.passes).slice(0, 8);
   const notes = statsJ.filter((x) => x.s.moy != null).sort((a, b) => b.s.moy - a.s.moy).slice(0, 5);
+
+  async function telechargerBilan() {
+    setPdfMsg("Préparation du PDF...");
+    try {
+      const jsPDF = await chargerJsPDF();
+      const nom = (x) => `${x.p.prenom || ""} ${x.p.nom || ""}`.trim();
+      exporterBilanPDF(jsPDF, {
+        cat, saison, nbMatchs, v, n, d, bp, bc,
+        buteurs: buteurs.map((x) => ({ nom: nom(x), val: x.s.buts })),
+        passeurs: passeurs.map((x) => ({ nom: nom(x), val: x.s.passes })),
+        notes: notes.map((x) => ({ nom: nom(x), val: x.s.moy.toFixed(1) })),
+      });
+      setPdfMsg(null);
+    } catch (e) {
+      setPdfMsg("Téléchargement du module PDF impossible (vérifie la connexion). Réessaie.");
+    }
+  }
 
   const Tuile = ({ val, lab, col }) => (
     <div style={{ background: "#fff", borderRadius: 12, padding: "12px 6px", textAlign: "center", border: `1px solid ${C.grisClair}`, flex: 1 }}>
@@ -8507,7 +8604,8 @@ function BilanEquipe({ db, players, cat, onClose, onTournois }) {
             {saisons.map((s) => <option key={s} value={s}>{s}</option>)}
           </Sel>
         </Field>
-        <Btn variant="ghost" full style={{ margin: "2px 0 14px" }} onClick={onTournois}><Award size={16} /> Ajouter ou gérer les tournois</Btn>
+        {nbMatchs > 0 && <Btn variant="accent" full style={{ margin: "2px 0 6px" }} onClick={telechargerBilan}><FileDown size={16} /> Exporter le bilan en PDF</Btn>}
+        {pdfMsg && <div style={{ fontSize: 12.5, color: pdfMsg.includes("impossible") ? C.rouge : C.gris, marginBottom: 10, textAlign: "center" }}>{pdfMsg}</div>}
 
         {nbMatchs === 0 ? (
           <Empty icon={<Trophy size={26} color={C.gris} />} text="Aucun match joué cette saison" sub="Les résultats apparaîtront une fois les scores saisis" />
