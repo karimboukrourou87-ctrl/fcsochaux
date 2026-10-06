@@ -2085,7 +2085,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 06/10 · v1.8
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 06/10 · v1.9
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -8460,7 +8460,7 @@ function exporterBilanPDF(jsPDF, { cat, saison, nbMatchs, v, n, d, bp, bc, buteu
   // En-tete
   sf(NAVY); doc.rect(0, 0, W, 5, "F");
   if (typeof LOGO_CLUB === "string" && LOGO_CLUB) {
-    try { const pr = doc.getImageProperties(LOGO_CLUB); const lh = 34, lw = lh * (pr.width / pr.height); doc.addImage(LOGO_CLUB, "PNG", W - M - lw, 16, lw, lh); } catch (e) {}
+    try { const pr = doc.getImageProperties(LOGO_CLUB); const lh = 42, lw = lh * (pr.width / pr.height); doc.addImage(LOGO_CLUB, "PNG", W - M - lw, 22, lw, lh); } catch (e) {}
   }
   sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
   doc.text(CLUB_LONG, M, 42);
