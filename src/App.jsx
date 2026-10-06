@@ -221,14 +221,21 @@ function FormTransport({ onSubmit, onClose, encadrement }) {
   const [parents, setParents] = useState("");
   const [note, setNote] = useState("");
   const [conducteurs, setConducteurs] = useState({});
-  const [conducteurBus, setConducteurBus] = useState("");
+  const [nbLocation, setNbLocation] = useState("");
+  const [locations, setLocations] = useState([]);
   const toggle = (b) => setMinibus((a) => a.includes(b) ? a.filter((x) => x !== b) : [...a, b]);
   const setConducteur = (b, v) => setConducteurs((o) => ({ ...o, [b]: v }));
+  const majNbLocation = (v) => {
+    const n = Math.max(0, Math.min(10, parseInt(v, 10) || 0));
+    setNbLocation(v === "" ? "" : String(n));
+    setLocations((prev) => { const arr = [...prev]; while (arr.length < n) arr.push({ immat: "", conducteur: "" }); arr.length = n; return arr; });
+  };
+  const setLoc = (i, k, val) => setLocations((prev) => prev.map((x, j) => j === i ? { ...x, [k]: val } : x));
   // Dirigeants/encadrants pouvant conduire (liste importée du club)
   const conducteursDispo = [...new Set((encadrement || []).map((e) => (e.nom || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
   return (
     <Modal title="Nouvelle demande de transport" onClose={onClose}
-      footer={<Btn variant="accent" full disabled={!date} onClick={() => onSubmit({ date, destination, mode, minibus, loueur, nbVoitures, parents, note, conducteurs, conducteurBus })}><Send size={16} /> Envoyer la demande</Btn>}>
+      footer={<Btn variant="accent" full disabled={!date} onClick={() => onSubmit({ date, destination, mode, minibus, loueur, nbVoitures, parents, note, conducteurs, nbLocation, locations })}><Send size={16} /> Envoyer la demande</Btn>}>
       <Field label="Date du déplacement"><Inp type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
       <Field label="Destination ou adversaire (optionnel)"><Inp value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Lieu ou équipe" /></Field>
       <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Mode de transport</div>
@@ -293,12 +300,19 @@ function FormTransport({ onSubmit, onClose, encadrement }) {
             })}
           </div>
           <div style={{ marginTop: 10 }}>
-            <Field label="Dirigeant qui conduit">
-              <Sel value={conducteurBus} onChange={(e) => setConducteurBus(e.target.value)}>
-                <option value="">Choisir le conducteur</option>
-                {conducteursDispo.map((n) => <option key={n} value={n}>{n}</option>)}
-              </Sel>
-            </Field>
+            <Field label="Nombre de minibus loués"><Inp type="number" inputMode="numeric" value={nbLocation} onChange={(e) => majNbLocation(e.target.value)} placeholder="Ex : 2" /></Field>
+            {locations.map((loc, i) => (
+              <div key={i} style={{ border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: 11, marginBottom: 8, background: "#fff" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, marginBottom: 6 }}>Minibus loué {i + 1}</div>
+                <Field label="Immatriculation"><Inp value={loc.immat} onChange={(e) => setLoc(i, "immat", e.target.value)} placeholder="Ex : AB-123-CD" /></Field>
+                <Field label="Dirigeant qui conduit">
+                  <Sel value={loc.conducteur} onChange={(e) => setLoc(i, "conducteur", e.target.value)}>
+                    <option value="">Choisir le conducteur</option>
+                    {conducteursDispo.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </Sel>
+                </Field>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -315,7 +329,11 @@ function FormTransport({ onSubmit, onClose, encadrement }) {
 
 function resumeTransport(x) {
   if (x.mode === "Minibus club") { const parts = (x.minibus || []).map((b) => { const c = (x.conducteurs || {})[b]; return c ? `${b} (${c})` : b; }); return `Minibus ${parts.join(", ") || "à préciser"}`; }
-  if (x.mode === "Bus en location") return `Bus en location ${x.loueur || ""}${x.conducteurBus ? " · conduit par " + x.conducteurBus : ""}`.trim();
+  if (x.mode === "Bus en location") {
+    const locs = (x.locations || []).filter((l) => l && (l.immat || l.conducteur));
+    const detail = locs.length ? " · " + locs.map((l) => `${l.immat || "?"}${l.conducteur ? " (" + l.conducteur + ")" : ""}`).join(", ") : (x.conducteurBus ? " · conduit par " + x.conducteurBus : "");
+    return `Bus en location ${x.loueur || ""}${x.nbLocation ? " ×" + x.nbLocation : ""}${detail}`.trim();
+  }
   if (x.mode === "Voitures des parents") return `Voitures des parents${x.nbVoitures ? ` (${x.nbVoitures})` : ""}${x.parents ? " : " + x.parents : ""}`;
   return x.mode || "Transport";
 }
@@ -2067,7 +2085,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 06/10 · v1.4
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 06/10 · v1.5
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -4886,6 +4904,12 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
   const [liste] = useEncadrementClub(demo, db, mutate);
   const conducteursDispo = [...new Set((liste || []).map((x) => (x.nom || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
   const setConducteurMinibus = (b, v) => majTransport({ conducteurs: { ...(t.conducteurs || {}), [b]: v } });
+  const majNbLocationMatch = (v) => {
+    const n = Math.max(0, Math.min(10, parseInt(v, 10) || 0));
+    const arr = [...(t.locations || [])]; while (arr.length < n) arr.push({ immat: "", conducteur: "" }); arr.length = n;
+    majTransport({ nbLocation: v === "" ? "" : String(n), locations: arr });
+  };
+  const setLocMatch = (i, k, val) => majTransport({ locations: (t.locations || []).map((x, j) => j === i ? { ...x, [k]: val } : x) });
   const parRole = (rl) => liste.filter((x) => x.role === rl);
   const ciOrga = CATEGORIES.find((x) => x.id === cur.cat);
   const u17plus = !!(ciOrga && (ciOrga.groupe === "Formation" || ciOrga.groupe === "PRO"));
@@ -5086,12 +5110,19 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
               })}
             </div>
             <div style={{ marginTop: 10 }}>
-              <Field label="Dirigeant qui conduit">
-                <Sel value={t.conducteurBus || ""} onChange={(ev) => majTransport({ conducteurBus: ev.target.value })}>
-                  <option value="">Choisir le conducteur</option>
-                  {conducteursDispo.map((n) => <option key={n} value={n}>{n}</option>)}
-                </Sel>
-              </Field>
+              <Field label="Nombre de minibus loués"><Inp type="number" inputMode="numeric" value={t.nbLocation || ""} onChange={(ev) => majNbLocationMatch(ev.target.value)} placeholder="Ex : 2" /></Field>
+              {(t.locations || []).map((loc, i) => (
+                <div key={i} style={{ border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: 11, marginBottom: 8, background: "#fff" }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, marginBottom: 6 }}>Minibus loué {i + 1}</div>
+                  <Field label="Immatriculation"><Inp value={loc.immat || ""} onChange={(ev) => setLocMatch(i, "immat", ev.target.value)} placeholder="Ex : AB-123-CD" /></Field>
+                  <Field label="Dirigeant qui conduit">
+                    <Sel value={loc.conducteur || ""} onChange={(ev) => setLocMatch(i, "conducteur", ev.target.value)}>
+                      <option value="">Choisir le conducteur</option>
+                      {conducteursDispo.map((n) => <option key={n} value={n}>{n}</option>)}
+                    </Sel>
+                  </Field>
+                </div>
+              ))}
             </div>
           </div>
         )}
