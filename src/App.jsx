@@ -211,7 +211,7 @@ function Sauvegarde({ db, mutate, cat, demo, estAdmin, userId, onClose }) {
 }
 
 
-function FormTransport({ onSubmit, onClose }) {
+function FormTransport({ onSubmit, onClose, encadrement }) {
   const [date, setDate] = useState("");
   const [destination, setDestination] = useState("");
   const [mode, setMode] = useState("Minibus club");
@@ -220,10 +220,15 @@ function FormTransport({ onSubmit, onClose }) {
   const [nbVoitures, setNbVoitures] = useState("");
   const [parents, setParents] = useState("");
   const [note, setNote] = useState("");
+  const [conducteurs, setConducteurs] = useState({});
+  const [conducteurBus, setConducteurBus] = useState("");
   const toggle = (b) => setMinibus((a) => a.includes(b) ? a.filter((x) => x !== b) : [...a, b]);
+  const setConducteur = (b, v) => setConducteurs((o) => ({ ...o, [b]: v }));
+  // Dirigeants/encadrants pouvant conduire (liste importée du club)
+  const conducteursDispo = [...new Set((encadrement || []).map((e) => (e.nom || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
   return (
     <Modal title="Nouvelle demande de transport" onClose={onClose}
-      footer={<Btn variant="accent" full disabled={!date} onClick={() => onSubmit({ date, destination, mode, minibus, loueur, nbVoitures, parents, note })}><Send size={16} /> Envoyer la demande</Btn>}>
+      footer={<Btn variant="accent" full disabled={!date} onClick={() => onSubmit({ date, destination, mode, minibus, loueur, nbVoitures, parents, note, conducteurs, conducteurBus })}><Send size={16} /> Envoyer la demande</Btn>}>
       <Field label="Date du déplacement"><Inp type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
       <Field label="Destination ou adversaire (optionnel)"><Inp value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Lieu ou équipe" /></Field>
       <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Mode de transport</div>
@@ -252,6 +257,24 @@ function FormTransport({ onSubmit, onClose }) {
               );
             })}
           </div>
+          {minibus.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Dirigeant qui conduit</div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {minibus.map((b) => (
+                  <div key={b} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ width: 32, flex: "0 0 auto", fontWeight: 900, color: C.bleu }}>{b}</span>
+                    <div style={{ flex: 1 }}>
+                      <Sel value={conducteurs[b] || ""} onChange={(e) => setConducteur(b, e.target.value)}>
+                        <option value="">Choisir le conducteur</option>
+                        {conducteursDispo.map((n) => <option key={n} value={n}>{n}</option>)}
+                      </Sel>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
       {mode === "Bus en location" && (
@@ -269,6 +292,14 @@ function FormTransport({ onSubmit, onClose }) {
               );
             })}
           </div>
+          <div style={{ marginTop: 10 }}>
+            <Field label="Dirigeant qui conduit">
+              <Sel value={conducteurBus} onChange={(e) => setConducteurBus(e.target.value)}>
+                <option value="">Choisir le conducteur</option>
+                {conducteursDispo.map((n) => <option key={n} value={n}>{n}</option>)}
+              </Sel>
+            </Field>
+          </div>
         </div>
       )}
       {mode === "Voitures des parents" && (
@@ -283,13 +314,13 @@ function FormTransport({ onSubmit, onClose }) {
 }
 
 function resumeTransport(x) {
-  if (x.mode === "Minibus club") return `Minibus ${(x.minibus || []).join(", ") || "à préciser"}`;
-  if (x.mode === "Bus en location") return `Bus en location ${x.loueur || ""}`.trim();
+  if (x.mode === "Minibus club") { const parts = (x.minibus || []).map((b) => { const c = (x.conducteurs || {})[b]; return c ? `${b} (${c})` : b; }); return `Minibus ${parts.join(", ") || "à préciser"}`; }
+  if (x.mode === "Bus en location") return `Bus en location ${x.loueur || ""}${x.conducteurBus ? " · conduit par " + x.conducteurBus : ""}`.trim();
   if (x.mode === "Voitures des parents") return `Voitures des parents${x.nbVoitures ? ` (${x.nbVoitures})` : ""}${x.parents ? " : " + x.parents : ""}`;
   return x.mode || "Transport";
 }
 
-function Transports({ db, mutate, cat, onClose }) {
+function Transports({ db, mutate, cat, encadrement, onClose }) {
   const [nouveau, setNouveau] = useState(false);
   const [refus, setRefus] = useState(null);
   const [cause, setCause] = useState("");
@@ -348,7 +379,7 @@ function Transports({ db, mutate, cat, onClose }) {
         </div>
       )}
 
-      {nouveau && <FormTransport onClose={() => setNouveau(false)} onSubmit={creer} />}
+      {nouveau && <FormTransport onClose={() => setNouveau(false)} onSubmit={creer} encadrement={encadrement} />}
 
       {refus && (
         <Modal title="Refuser la demande" onClose={() => setRefus(null)}
@@ -2036,7 +2067,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 06/10 · v1.2
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 06/10 · v1.4
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2155,7 +2186,7 @@ export default function App() {
       {showScores && <ScoresWeekend onClose={() => setShowScores(false)} localDb={demo ? db : null} />}
       {showDemandes && <Demandes demo={demo} db={db} mutate={mutate} cat={cat} session={session} onVu={() => setDemTick((t) => t + 1)} onClose={() => { setDemTick((t) => t + 1); setShowDemandes(false); }} />}
       {showClassement && <Classement cat={cat} db={db} mutate={mutate} onClose={() => setShowClassement(false)} />}
-      {showTransport && <Transports db={db} mutate={mutate} cat={cat} onClose={() => setShowTransport(false)} />}
+      {showTransport && <Transports db={db} mutate={mutate} cat={cat} encadrement={encadrementClub} onClose={() => setShowTransport(false)} />}
       {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
       {showPlanning && <Planning db={db} mutate={mutate} cats={cats} profil={profil} peutValider={peutValider} cat={cat} onClose={() => setShowPlanning(false)} />}
@@ -4853,6 +4884,8 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
   const exterieur = cur.lieu === "Extérieur";
   const domicile = cur.lieu === "Domicile";
   const [liste] = useEncadrementClub(demo, db, mutate);
+  const conducteursDispo = [...new Set((liste || []).map((x) => (x.nom || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
+  const setConducteurMinibus = (b, v) => majTransport({ conducteurs: { ...(t.conducteurs || {}), [b]: v } });
   const parRole = (rl) => liste.filter((x) => x.role === rl);
   const ciOrga = CATEGORIES.find((x) => x.id === cur.cat);
   const u17plus = !!(ciOrga && (ciOrga.groupe === "Formation" || ciOrga.groupe === "PRO"));
@@ -5017,6 +5050,24 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
                 );
               })}
             </div>
+            {(t.minibus || []).length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Dirigeant qui conduit</div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {(t.minibus || []).map((b) => (
+                    <div key={b} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ width: 32, flex: "0 0 auto", fontWeight: 900, color: C.bleu }}>{b}</span>
+                      <div style={{ flex: 1 }}>
+                        <Sel value={(t.conducteurs || {})[b] || ""} onChange={(ev) => setConducteurMinibus(b, ev.target.value)}>
+                          <option value="">Choisir le conducteur</option>
+                          {conducteursDispo.map((n) => <option key={n} value={n}>{n}</option>)}
+                        </Sel>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
         {t.mode === "Bus en location" && (
@@ -5033,6 +5084,14 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
                   }}>{l}</button>
                 );
               })}
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <Field label="Dirigeant qui conduit">
+                <Sel value={t.conducteurBus || ""} onChange={(ev) => majTransport({ conducteurBus: ev.target.value })}>
+                  <option value="">Choisir le conducteur</option>
+                  {conducteursDispo.map((n) => <option key={n} value={n}>{n}</option>)}
+                </Sel>
+              </Field>
             </div>
           </div>
         )}
