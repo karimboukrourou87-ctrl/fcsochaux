@@ -1207,7 +1207,7 @@ function useEncadrementClub(demo, db, mutate) {
     loadEncadrementClub().then((l) => { if (!annule) setListeRemote(l); }).catch(() => { if (!annule) setListeRemote([]); });
     return () => { annule = true; };
   }, [demo]);
-  const liste = demo ? ((db && db.encadrement) || []) : (listeRemote || []);
+  const liste = demo ? (db.encadrement || []) : (listeRemote || []);
   const maj = (fn) => {
     if (demo) { mutate((d) => { d.encadrement = fn(d.encadrement || []); return d; }); return; }
     setListeRemote((prev) => { const next = fn(prev || []); saveEncadrementClub(next).catch(() => {}); return next; });
@@ -1803,7 +1803,6 @@ export default function App() {
   const [groupeSel, setGroupeSel] = useState(null);
   const [demo, setDemo] = useState(false);
   const cacheRef = useRef({});
-  const [encadrementClub] = useEncadrementClub(demo, db, mutate);
   const pendingRef = useRef(false);
   const saveQueueRef = useRef(Promise.resolve());
   const savingCountRef = useRef(0);
@@ -2166,8 +2165,8 @@ export default function App() {
       {showSuivi && <SuiviMedical db={db} mutate={mutate} cat={cat} onClose={() => setShowSuivi(false)} />}
       {showBilan && <BilanEquipe db={db} players={players} cat={cat} onClose={() => setShowBilan(false)} onTournois={() => setShowTournois(true)} />}
       {showTournois && <Tournois db={db} mutate={mutate} cat={cat} onClose={() => setShowTournois(false)} />}
-      {showReunions && <Reunions db={{ reunions: reunionsSource, acces: accesSource, encadrement: encadrementClub }} mutate={mutateReu} erreur={demo ? null : reunionsErr} onClose={() => setShowReunions(false)} />}
-      {showCalendrier && <Calendrier db={{ ...db, reunions: reunionsSource, encadrement: encadrementClub }} mutate={mutate} mutateReunions={mutateReu} peutValider={peutValider} onClose={() => setShowCalendrier(false)} />}
+      {showReunions && <Reunions db={{ reunions: reunionsSource, acces: accesSource }} mutate={mutateReu} erreur={demo ? null : reunionsErr} onClose={() => setShowReunions(false)} />}
+      {showCalendrier && <Calendrier db={{ ...db, reunions: reunionsSource }} mutate={mutate} mutateReunions={mutateReu} peutValider={peutValider} onClose={() => setShowCalendrier(false)} />}
     </div>
   );
 }
@@ -4556,9 +4555,9 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }
                   <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>{fmtDate(m.date)} · {m.lieu}{m.type ? ` · ${m.type}` : ""}</span>
                   {res ? <Pastille bg={bg} color={col}>{res}</Pastille> : <Pastille bg={C.jaune} color={C.bleuNuit}>À venir</Pastille>}
                 </div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ fontWeight: 800, fontSize: 15 }}>{m.lieu === "Domicile" ? CLUB : (m.adversaire || "Adversaire")} <span style={{ color: C.gris, fontWeight: 600 }}>contre</span> {m.lieu === "Domicile" ? (m.adversaire || "Adversaire") : CLUB}</div>
-                  {joue && <div style={{ fontWeight: 900, fontSize: 18, color: C.bleu }}>{m.lieu === "Domicile" ? `${m.scorePour} - ${m.scoreContre}` : `${m.scoreContre} - ${m.scorePour}`}</div>}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ fontWeight: 800, fontSize: 15, flex: 1, minWidth: 0 }}>{m.lieu === "Domicile" ? CLUB : (m.adversaire || "Adversaire")} <span style={{ color: C.gris, fontWeight: 600 }}>contre</span> {m.lieu === "Domicile" ? (m.adversaire || "Adversaire") : CLUB}</div>
+                  {joue && <div style={{ fontWeight: 900, fontSize: 18, color: C.bleu, flex: "0 0 auto", whiteSpace: "nowrap", display: "flex", gap: 12 }}><span>{m.lieu === "Domicile" ? m.scorePour : m.scoreContre}</span><span>{m.lieu === "Domicile" ? m.scoreContre : m.scorePour}</span></div>}
                 </div>
                 {(m.type === "Plateau" || m.type === "Tournoi") && (
                   <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 10 }}>
@@ -4634,7 +4633,6 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
   const [nom, setNom] = useState("");
   const [role, setRole] = useState(ROLES_ENCADREMENT[0]);
   const [licence, setLicence] = useState("");
-  const [emailEnc, setEmailEnc] = useState("");
   const [importMsg, setImportMsg] = useState(null);
   const [coller, setColler] = useState(false);
   const [texteColle, setTexteColle] = useState("");
@@ -4642,8 +4640,8 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
   const [edit, setEdit] = useState(null);
   function ajouter() {
     const n = nom.trim(); if (!n) return;
-    majEnc((l) => [...l, { id: uid(), nom: n, role, licence: licence.trim(), email: emailEnc.trim() }]);
-    setNom(""); setLicence(""); setEmailEnc("");
+    majEnc((l) => [...l, { id: uid(), nom: n, role, licence: licence.trim() }]);
+    setNom(""); setLicence("");
   }
   function retirer(id) {
     majEnc((l) => l.filter((x) => x.id !== id));
@@ -4651,7 +4649,7 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
   function enregistrerEdit() {
     if (!edit) return;
     const n = (edit.nom || "").trim(); if (!n) return;
-    majEnc((l) => l.map((x) => x.id === edit.id ? { ...x, nom: n, role: edit.role, licence: (edit.licence || "").trim(), email: (edit.email || "").trim() } : x));
+    majEnc((l) => l.map((x) => x.id === edit.id ? { ...x, nom: n, role: edit.role, licence: (edit.licence || "").trim() } : x));
     setEdit(null);
   }
   function traiterImport(texte) {
@@ -4668,11 +4666,10 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
       arr.forEach((x) => {
         const n = String((x && x.nom) || "").trim(); if (!n) { ignore++; return; }
         const lic = String((x && x.licence) || "").trim();
-        const em = String((x && (x.email || x.mail)) || "").trim();
         const rl = ROLES_ENCADREMENT.includes(x && x.role) ? x.role : "Éducateur";
-        const existant = base.find((e) => (lic && e.licence === lic) || (e.nom.toLowerCase() === n.toLowerCase() && e.role === rl));
-        if (existant) { if (em && !existant.email) { existant.email = em; } ignore++; return; }
-        base.push({ id: uid(), nom: n, role: rl, licence: lic, email: em });
+        const existe = base.some((e) => (lic && e.licence === lic) || (e.nom.toLowerCase() === n.toLowerCase() && e.role === rl));
+        if (existe) { ignore++; return; }
+        base.push({ id: uid(), nom: n, role: rl, licence: lic });
         ajout++;
       });
       majEnc(() => base);
@@ -4701,7 +4698,6 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
         </Field>
         <Field label="N° de licence"><Inp value={licence} onChange={(e) => setLicence(e.target.value)} placeholder="Optionnel" /></Field>
       </div>
-      <Field label="Adresse email"><Inp type="email" value={emailEnc} onChange={(e) => setEmailEnc(e.target.value)} placeholder="Pour recevoir les convocations aux réunions (optionnel)" /></Field>
       <Btn variant="accent" full onClick={ajouter}><Plus size={16} /> Ajouter à la liste</Btn>
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
         <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "10px 12px", fontWeight: 700, fontSize: 13, color: C.encre, background: "#fff" }}>
@@ -4715,7 +4711,7 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
         <Modal title="Coller le JSON de l'encadrement" onClose={() => setColler(false)}
           footer={<Btn variant="accent" full disabled={!texteColle.trim()} onClick={() => { if (traiterImport(texteColle)) setColler(false); }}><Save size={16} /> Importer</Btn>}>
           <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Colle ici le contenu du fichier JSON de l'encadrement, puis touche Importer.</div>
-          <textarea value={texteColle} onChange={(e) => setTexteColle(e.target.value)} rows={10} placeholder='{ "encadrement": [ { "nom": "...", "role": "Éducateur", "licence": "...", "email": "..." } ] }' style={{ width: "100%", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 11, fontSize: 12.5, fontFamily: "monospace", resize: "vertical", boxSizing: "border-box" }} />
+          <textarea value={texteColle} onChange={(e) => setTexteColle(e.target.value)} rows={10} placeholder='{ "encadrement": [ { "nom": "...", "role": "Éducateur", "licence": "..." } ] }' style={{ width: "100%", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 11, fontSize: 12.5, fontFamily: "monospace", resize: "vertical", boxSizing: "border-box" }} />
         </Modal>
       )}
       {liste.length > 0 && (
@@ -4745,9 +4741,8 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700 }}>{x.nom}</div>
                       {x.licence ? <div style={{ fontSize: 12, color: C.gris }}>Licence {x.licence}</div> : null}
-                      {x.email ? <div style={{ fontSize: 12, color: C.gris }}>{x.email}</div> : null}
                     </div>
-                    <Edit3 size={16} color={C.bleu} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setEdit({ id: x.id, nom: x.nom, role: ROLES_ENCADREMENT.includes(x.role) ? x.role : "Éducateur", licence: x.licence || "", email: x.email || "" })} />
+                    <Edit3 size={16} color={C.bleu} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setEdit({ id: x.id, nom: x.nom, role: ROLES_ENCADREMENT.includes(x.role) ? x.role : "Éducateur", licence: x.licence || "" })} />
                     <X size={16} color={C.gris} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => retirer(x.id)} />
                   </div>
                 ))}
@@ -4767,7 +4762,6 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
             </Field>
             <Field label="N° de licence"><Inp value={edit.licence} onChange={(e) => setEdit({ ...edit, licence: e.target.value })} placeholder="Optionnel" /></Field>
           </div>
-          <Field label="Adresse email"><Inp type="email" value={edit.email || ""} onChange={(e) => setEdit({ ...edit, email: e.target.value })} placeholder="Pour les convocations aux réunions (optionnel)" /></Field>
         </Modal>
       )}
     </Modal>
@@ -9556,35 +9550,22 @@ function Tournois({ db, mutate, cat, onClose }) {
 }
 
 
-const QUALITES = ["Président Association", "Directeur du centre", "Manager général", "Éducateur", "Dirigeant", "Responsable", "Comité", "Autre"];
+const QUALITES = ["Éducateur", "Comité", "Président", "Autre"];
 const RAPPELS = ["Aucun", "1 heure avant", "2 heures avant", "La veille", "2 jours avant"];
 
-function EditReunion({ reunion, educateurs, encadrement, onClose, onSave, onDelete }) {
+function EditReunion({ reunion, educateurs, onClose, onSave, onDelete }) {
   const [f, setF] = useState({ objet: "", date: "", heure: "", lieu: "", ordreJour: "", rappel: "La veille", participants: [], ...reunion });
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
   const [nom, setNom] = useState("");
   const [email, setEmail] = useState("");
-  const [qualite, setQualite] = useState("Président Association");
+  const [qualite, setQualite] = useState("Éducateur");
   const ajouter = () => {
     if (!nom.trim()) return;
     set("participants", [...(f.participants || []), { id: uid(), nom: nom.trim(), email: email.trim(), qualite, reponse: "attente", motif: "" }]);
     setNom(""); setEmail("");
   };
   const retirer = (id) => set("participants", (f.participants || []).filter((p) => p.id !== id));
-  // Personnes convocables : accès de connexion + encadrement (éducateurs, coachs, dirigeants...), sans doublon de nom
-  const convocables = (() => {
-    const out = []; const vus = new Set();
-    const ajout = (nm, em, fonction, id, categories) => {
-      const cle = (nm || "").trim().toLowerCase();
-      if (!cle || vus.has(cle)) return;
-      vus.add(cle);
-      out.push({ id: id || ("enc-" + cle), nom: (nm || "").trim(), email: em || "", fonction: fonction || "Éducateur", categories: categories || [] });
-    };
-    (educateurs || []).forEach((e) => ajout(e.nom, e.email, e.fonction || "Éducateur", e.id, e.categories));
-    (encadrement || []).forEach((e) => ajout(e.nom, e.email, e.role || "Dirigeant", e.id, []));
-    return out.sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
-  })();
-  const educsDispo = convocables.filter((e) => !(f.participants || []).some((p) => p.nom === e.nom));
+  const educsDispo = (educateurs || []).filter((e) => e.nom && !(f.participants || []).some((p) => p.nom === e.nom));
   const ajouterEduc = (ed) => { const cats = (ed.categories || []); const fn = ed.fonction || "Éducateur"; const q = (fn === "Éducateur" && cats.length) ? `Éducateur (${cats.join(", ")})` : fn; set("participants", [...(f.participants || []), { id: uid(), nom: ed.nom, email: ed.email || "", qualite: q, reponse: "attente", motif: "" }]); };
   const finaliser = () => {
     let parts = f.participants || [];
@@ -9607,18 +9588,13 @@ function EditReunion({ reunion, educateurs, encadrement, onClose, onSave, onDele
       <div style={{ fontWeight: 800, color: C.bleu, margin: "8px 0" }}>Personnes conviées</div>
       {educsDispo.length > 0 && (
         <Field label="Membres du club">
-          <Sel value="" onChange={(e) => { const ed = convocables.find((x) => x.id === e.target.value); if (ed) ajouterEduc(ed); }}>
+          <Sel value="" onChange={(e) => { const ed = (educateurs || []).find((x) => x.id === e.target.value); if (ed) ajouterEduc(ed); }}>
             <option value="">Choisir une personne à convier</option>
-            {(() => {
-              const ORDRE = ["Président Association", "Directeur du centre", "Manager général", "Responsable", "Coach des gardiens", "Préparateur physique", "Dirigeant", "Éducateur"];
-              const presentes = [...new Set(educsDispo.map((ed) => ed.fonction || "Éducateur"))];
-              const ordre = [...ORDRE.filter((fn) => presentes.includes(fn)), ...presentes.filter((fn) => !ORDRE.includes(fn))];
-              return ordre.map((fn) => {
-                const membres = educsDispo.filter((ed) => (ed.fonction || "Éducateur") === fn);
-                if (!membres.length) return null;
-                return <optgroup key={fn} label={fn}>{membres.map((ed) => <option key={ed.id} value={ed.id}>{ed.nom}{fn === "Éducateur" && ed.categories && ed.categories.length ? ` (${ed.categories.join(", ")})` : ""}</option>)}</optgroup>;
-              });
-            })()}
+            {ORDRE_FONCTIONS.map((fn) => {
+              const membres = educsDispo.filter((ed) => (ed.fonction || "Éducateur") === fn);
+              if (!membres.length) return null;
+              return <optgroup key={fn} label={fn}>{membres.map((ed) => <option key={ed.id} value={ed.id}>{ed.nom}{fn === "Éducateur" && ed.categories && ed.categories.length ? ` (${ed.categories.join(", ")})` : ""}</option>)}</optgroup>;
+            })}
           </Sel>
         </Field>
       )}
@@ -9791,7 +9767,7 @@ function Reunions({ db, mutate, erreur, onClose }) {
         </div>
       )}
 
-      {edit && <EditReunion reunion={edit} educateurs={db.acces || []} encadrement={db.encadrement || []} onClose={() => setEdit(null)} onSave={enregistrer} onDelete={edit.id ? () => supprimer(edit.id) : null} />}
+      {edit && <EditReunion reunion={edit} educateurs={db.acces || []} onClose={() => setEdit(null)} onSave={enregistrer} onDelete={edit.id ? () => supprimer(edit.id) : null} />}
       {rep && sel && <ModalReponse participant={rep} onClose={() => setRep(null)} onSave={(reponse, motif) => repondre(sel.id, rep.id, reponse, motif)} />}
     </div>
   );
@@ -9961,7 +9937,7 @@ function Calendrier({ db, mutate, mutateReunions, peutValider, onClose }) {
 
       {edit && edit.kind === "match" && <EditMatch match={edit.obj} onClose={() => setEdit(null)} onSave={(m) => saveEvt("matches", m)} />}
       {edit && edit.kind === "entrainement" && <EditSeance seance={edit.obj} players={(db.players || []).filter((p) => p.cat === edit.obj.cat)} onClose={() => setEdit(null)} onSave={(s) => saveEvt("trainings", s)} />}
-      {edit && edit.kind === "reunion" && <EditReunion reunion={edit.obj} educateurs={db.acces || []} encadrement={db.encadrement || []} onClose={() => setEdit(null)} onSave={(r) => saveEvt("reunions", r)} onDelete={() => delEvt("reunions", edit.obj.id)} />}
+      {edit && edit.kind === "reunion" && <EditReunion reunion={edit.obj} educateurs={db.acces || []} onClose={() => setEdit(null)} onSave={(r) => saveEvt("reunions", r)} onDelete={() => delEvt("reunions", edit.obj.id)} />}
       {edit && edit.kind === "tournoi" && <EditTournoi tournoi={edit.obj} onClose={() => setEdit(null)} onSave={(t) => saveEvt("tournois", t)} onDelete={() => delEvt("tournois", edit.obj.id)} />}
     </div>
   );
