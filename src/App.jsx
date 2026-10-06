@@ -2036,7 +2036,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 29/09 PLATEAU
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 06/10 · v1.2
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2404,7 +2404,6 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
     { titre: "Documents administratifs", sous: "Licences et contrôle médical à surveiller", icon: ShieldAlert, action: onDocuments, badge: alerteDocs },
     { titre: "Suivi médical", sous: "Blessés suivis par l'équipe médicale (U17 aux pros)", icon: Activity, action: priseEnChargeMedicale(cat) !== "parents" ? onSuivi : null, badge: priseEnChargeMedicale(cat) !== "parents" ? enSuiviMedical : 0 },
     { titre: "Bilan de saison de l'équipe", sous: "Résultats, buteurs et passeurs de la saison", icon: Trophy, action: onBilan },
-    { titre: "Plateaux et tournois", sous: "Équipes, poules, terrains, planning et classement", icon: Award, action: onPlateaux },
     { titre: "Réunions", sous: "Programmer les réunions et recueillir les présences", icon: Users, action: onReunions, badge: alerteReunions },
     { titre: "Calendrier du club", sous: "Tous les événements, toutes catégories réunies", icon: CalendarDays, action: onCalendrier },
     { titre: "Planning hebdomadaire", sous: "Créneaux d'entraînement de la semaine, par catégorie", icon: CalendarDays, action: onPlanningHebdo },
