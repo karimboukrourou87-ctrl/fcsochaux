@@ -2085,7 +2085,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 06/10 · v2.0
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 06/10 · v2.1
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2160,7 +2160,7 @@ export default function App() {
           </div>
         )}
         {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
-        {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} />}
+        {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} demo={demo} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} />}
         {tab === "entrainements" && <Entrainements players={players} cat={cat} db={db} mutate={mutate} />}
@@ -2956,7 +2956,7 @@ function choisirResponsablesMat(players, db, cat, cfg, w) {
   return [tri[0] || null, tri[1] || null];
 }
 
-function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
+function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, demo }) {
   const [q, setQ] = useState("");
   const [edit, setEdit] = useState(null);
   const [fiche, setFiche] = useState(null);
@@ -3175,7 +3175,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule }) {
         setEdit(null);
       }} />}
 
-      {ficheJoueur && <FicheJoueur p={ficheJoueur} db={db} mutate={mutate} lectureSeule={lectureSeule} onClose={() => setFiche(null)} onEdit={() => { setEdit(ficheJoueur); setFiche(null); }} onDelete={() => {
+      {ficheJoueur && <FicheJoueur p={ficheJoueur} db={db} mutate={mutate} lectureSeule={lectureSeule} demo={demo} onClose={() => setFiche(null)} onEdit={() => { setEdit(ficheJoueur); setFiche(null); }} onDelete={() => {
         mutate((d) => { d.players = d.players.filter((x) => x.id !== ficheJoueur.id); return d; });
         setFiche(null);
       }} />}
@@ -3308,7 +3308,7 @@ function CarteBilan({ b, moy, onEdit }) {
   );
 }
 
-function EditBilan({ bilan, educateurs, axesPrecedent, onClose, onSave, onDelete }) {
+function EditBilan({ bilan, educateurs, axesPrecedent, onClose, onSave, onDelete, onAjouterEncadrant }) {
   const [f, setF] = useState({ date: "", educateur: "", aspects: {}, axesProgres: "", ...bilan });
   const [autre, setAutre] = useState(!!bilan.educateur && educateurs.length > 0 && !educateurs.includes(bilan.educateur));
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
@@ -3326,10 +3326,15 @@ function EditBilan({ bilan, educateurs, axesPrecedent, onClose, onSave, onDelete
           </Sel>
         ) : (
           <>
-            <Inp value={f.educateur} onChange={(e) => set("educateur", e.target.value)} placeholder="Nom de l'éducateur" />
-            {educateurs.length > 0 && (
-              <button type="button" onClick={() => { setAutre(false); set("educateur", ""); }} style={{ marginTop: 6, background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline" }}>← Revenir à la liste</button>
-            )}
+            <Inp value={f.educateur} onChange={(e) => set("educateur", e.target.value)} placeholder="Nom et prénom" />
+            <div style={{ display: "flex", gap: 16, marginTop: 6, flexWrap: "wrap" }}>
+              {onAjouterEncadrant && (
+                <button type="button" disabled={!f.educateur.trim()} onClick={() => { onAjouterEncadrant(f.educateur); setAutre(false); }} style={{ background: "none", border: "none", color: f.educateur.trim() ? C.vert : C.gris, fontWeight: 700, fontSize: 12.5, cursor: f.educateur.trim() ? "pointer" : "default", padding: 0, textDecoration: "underline" }}>+ Ajouter à l'encadrement</button>
+              )}
+              {educateurs.length > 0 && (
+                <button type="button" onClick={() => { setAutre(false); set("educateur", ""); }} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline" }}>← Revenir à la liste</button>
+              )}
+            </div>
           </>
         )}
       </Field>
@@ -3379,12 +3384,13 @@ function EditBilan({ bilan, educateurs, axesPrecedent, onClose, onSave, onDelete
   );
 }
 
-function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete }) {
+function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, demo }) {
   const [confirmer, setConfirmer] = useState(false);
   const [testEdit, setTestEdit] = useState(false);
   const [pdfMsg, setPdfMsg] = useState(null);
   const [saisonSel, setSaisonSel] = useState(saisonCourante());
   const [bilanEdit, setBilanEdit] = useState(null);
+  const [listeEnc, majEnc] = useEncadrementClub(demo, db, mutate);
   const saisonsJoueur = (() => {
     const set = new Set();
     db.matches.forEach((m) => {
@@ -3405,7 +3411,11 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
     return statsJoueur(p, db, saison);
   }
   const stats = statsSaison(saisonSel);
-  const educateurs = [...new Set((db.encadrement || []).map((e) => (e.nom || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
+  const educateurs = [...new Set([...(listeEnc || []), ...(db.encadrement || [])].map((e) => (e.nom || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
+  const ajouterEncadrant = (nom) => {
+    const n = (nom || "").trim(); if (!n) return;
+    majEnc((l) => (l || []).some((x) => (x.nom || "").trim().toLowerCase() === n.toLowerCase()) ? l : [...(l || []), { id: uid(), nom: n, role: "Dirigeant", licence: "", email: "" }]);
+  };
   const bilansSaison = (p.bilans || []).filter((b) => saisonDe(b.date) === saisonSel).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const assi = assiduiteJoueur(p, db, saisonSel);
   const nbSeancesSaison = assi.seancesPointees;
@@ -3731,7 +3741,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete })
         </>
       )}
 
-      {bilanEdit && <EditBilan bilan={bilanEdit} educateurs={educateurs} axesPrecedent={(() => { const autres = (p.bilans || []).filter((x) => x.id && x.id !== bilanEdit.id && x.axesProgres).sort((a, b) => (b.date || "").localeCompare(a.date || "")); return autres.length ? autres[0].axesProgres : ""; })()} onClose={() => setBilanEdit(null)}
+      {bilanEdit && <EditBilan bilan={bilanEdit} educateurs={educateurs} onAjouterEncadrant={ajouterEncadrant} axesPrecedent={(() => { const autres = (p.bilans || []).filter((x) => x.id && x.id !== bilanEdit.id && x.axesProgres).sort((a, b) => (b.date || "").localeCompare(a.date || "")); return autres.length ? autres[0].axesProgres : ""; })()} onClose={() => setBilanEdit(null)}
         onSave={(b) => {
           mutate((d) => {
             const pl = d.players.find((x) => x.id === p.id);
