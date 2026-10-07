@@ -946,6 +946,18 @@ function minutesSurclassementJoueur(p, db, saison) {
   });
   return total;
 }
+// Répartition des minutes de surclassement par catégorie supérieure : { "U14": 40 }
+function surclassementParCat(p, db, saison) {
+  const map = {};
+  (db.matches || []).filter((m) => m.cat === p.cat && (!saison || saisonDe(m.date) === saison)).forEach((m) => {
+    const s = m.surclasses && m.surclasses[p.id];
+    if (s && s.minutes) { const c = s.cat || "sup."; map[c] = (map[c] || 0) + (+s.minutes || 0); }
+  });
+  return map;
+}
+function surclassementTexte(p, db, saison) {
+  return Object.entries(surclassementParCat(p, db, saison)).map(([c, mm]) => `${c} (${mm})`).join(" · ");
+}
 
 // Catégories qu'une catégorie peut demander (joueur surclassé de deux ans en dessous)
 const VOISINS_SPECIAUX = {
@@ -2150,7 +2162,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v2.9
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v3.0
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3186,7 +3198,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, demo }) {
 
       {moyMinutes > 0 && (
         <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 12, display: "flex", alignItems: "center", gap: 5, lineHeight: 1.4 }}>
-          <Timer size={13} /> Temps de jeu de la saison, surclassement inclus · <span style={{ color: "#E67E22", fontWeight: 800 }}>en orange</span> sous la moyenne ({Math.round(moyMinutes)} min) · <span style={{ color: C.bleu, fontWeight: 700 }}>(+X)</span> minutes en catégorie supérieure
+          <Timer size={13} /> Temps de jeu total de la saison, surclassement compris · <span style={{ color: "#E67E22", fontWeight: 800 }}>en orange</span> sous la moyenne ({Math.round(moyMinutes)} min) · la ligne bleue (ex. <span style={{ color: C.bleu, fontWeight: 700 }}>U14 (40)</span>) indique les minutes jouées en catégorie supérieure
         </div>
       )}
 
@@ -3243,7 +3255,8 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, demo }) {
                 <div style={{ textAlign: "right", flex: "0 0 auto" }}>
                   <div style={{ fontSize: 12, color: C.gris }}>{st.buts} b · {st.passes} p</div>
                   {st.moy != null && <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu }}>{st.moy.toFixed(1)}/7</div>}
-                  <div style={{ fontSize: 11.5, fontWeight: 800, marginTop: 2, display: "flex", alignItems: "center", gap: 3, justifyContent: "flex-end", color: (moyMinutes > 0 && totMin < moyMinutes) ? "#E67E22" : C.gris }}><Timer size={11} /> {totMin} min{surcl > 0 && <span style={{ color: C.bleu, fontWeight: 700, marginLeft: 3 }}>(+{surcl})</span>}</div>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, marginTop: 2, display: "flex", alignItems: "center", gap: 3, justifyContent: "flex-end", color: (moyMinutes > 0 && totMin < moyMinutes) ? "#E67E22" : C.gris }}><Timer size={11} /> {totMin} min</div>
+                  {surcl > 0 && <div style={{ fontSize: 10, fontWeight: 700, color: C.bleu, marginTop: 1 }}>{surclassementTexte(p, db, saisonCourante())}</div>}
                 </div>
               </Card>
             );
@@ -3644,7 +3657,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
         )}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginBottom: 12 }}>
-        {[["Matchs", nbMatchsEquipe >= assi.matchs && nbMatchsEquipe > 0 ? `${assi.matchs}/${nbMatchsEquipe}` : assi.matchs], ["Minutes", <span key="min">{minutesTotalFiche}{minSurclFiche > 0 && <span style={{ fontSize: 11, color: C.bleu, fontWeight: 800 }}> (+{minSurclFiche})</span>}</span>], ["Buts", stats.buts], ["Passes", stats.passes], ["Note", stats.moy != null ? stats.moy.toFixed(1) : "-"]].map(([l, v]) => (
+        {[["Matchs", nbMatchsEquipe >= assi.matchs && nbMatchsEquipe > 0 ? `${assi.matchs}/${nbMatchsEquipe}` : assi.matchs], ["Minutes", minutesTotalFiche], ["Buts", stats.buts], ["Passes", stats.passes], ["Note", stats.moy != null ? stats.moy.toFixed(1) : "-"]].map(([l, v]) => (
           <div key={l} style={{ background: "#fff", borderRadius: 12, padding: "12px 4px", textAlign: "center", border: `1px solid ${C.grisClair}` }}>
             <div style={{ fontSize: 18, fontWeight: 900, color: C.bleu }}>{v}</div>
             <div style={{ fontSize: 9.5, color: C.gris, marginTop: 2 }}>{l}</div>
@@ -3653,7 +3666,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
       </div>
       {minSurclFiche > 0 && (
         <div style={{ fontSize: 12, color: C.gris, marginTop: -6, marginBottom: 12, display: "flex", alignItems: "center", gap: 5 }}>
-          <Timer size={13} color={C.bleu} /> Le <span style={{ color: C.bleu, fontWeight: 800 }}>(+{minSurclFiche})</span> correspond aux minutes jouées en surclassement
+          <Timer size={13} color={C.bleu} /> Surclassement : <span style={{ color: C.bleu, fontWeight: 800 }}>{surclassementTexte(p, db, saisonSel)}</span> · compris dans le total de {minutesTotalFiche} min
         </div>
       )}
       {moyGroupe && (
@@ -4635,7 +4648,10 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
                     <div style={{ fontSize: 12, color: (susp || rge) ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(p.suspensionFin)}` : "")) : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
                     {p.licence ? <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 700, marginTop: 1 }}>Licence {p.licence}</div> : null}
                   </div>
-                  <div style={{ fontSize: 11.5, fontWeight: 800, flex: "0 0 auto", display: "flex", alignItems: "center", gap: 3, color: (moyMinutesCompo > 0 && mn < moyMinutesCompo) ? "#E67E22" : C.gris }}><Timer size={11} /> {mn} min{mnSurcl > 0 && <span style={{ color: C.bleu, fontWeight: 700, marginLeft: 2 }}>(+{mnSurcl})</span>}</div>
+                  <div style={{ flex: "0 0 auto", textAlign: "right" }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 800, display: "flex", alignItems: "center", gap: 3, justifyContent: "flex-end", color: (moyMinutesCompo > 0 && mn < moyMinutesCompo) ? "#E67E22" : C.gris }}><Timer size={11} /> {mn} min</div>
+                    {mnSurcl > 0 && <div style={{ fontSize: 10, fontWeight: 700, color: C.bleu }}>{surclassementTexte(p, db, saisonCourante())}</div>}
+                  </div>
                   {estSurcl ? <Pastille bg="#E7EEF6" color={C.bleu}>{p.cat}</Pastille> : null}
                   {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : rge ? <Pastille bg="#FBE3E3" color={C.rouge}>Rouge</Pastille> : null}
                 </button>
