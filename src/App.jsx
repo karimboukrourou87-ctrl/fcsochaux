@@ -2162,7 +2162,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v3.0
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v3.2
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3251,12 +3251,13 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, demo }) {
                     {susp && <span style={{ fontSize: 10.5, fontWeight: 800, color: C.rouge, background: "#FBE3E3", borderRadius: 6, padding: "1px 6px" }}>Suspendu</span>}
                   </div>
                   <div style={{ fontSize: 12.5, color: C.gris, marginTop: 1 }}>{p.poste || "Poste non défini"}{p.pied ? ` · ${p.pied}` : ""}</div>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, marginTop: 4, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", color: (moyMinutes > 0 && totMin < moyMinutes) ? "#E67E22" : C.gris }}>
+                    <Timer size={12} /> {totMin} min{surcl > 0 && <span style={{ color: C.bleu, fontWeight: 700 }}>· {surclassementTexte(p, db, saisonCourante())}</span>}
+                  </div>
                 </div>
                 <div style={{ textAlign: "right", flex: "0 0 auto" }}>
                   <div style={{ fontSize: 12, color: C.gris }}>{st.buts} b · {st.passes} p</div>
                   {st.moy != null && <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu }}>{st.moy.toFixed(1)}/7</div>}
-                  <div style={{ fontSize: 11.5, fontWeight: 800, marginTop: 2, display: "flex", alignItems: "center", gap: 3, justifyContent: "flex-end", color: (moyMinutes > 0 && totMin < moyMinutes) ? "#E67E22" : C.gris }}><Timer size={11} /> {totMin} min</div>
-                  {surcl > 0 && <div style={{ fontSize: 10, fontWeight: 700, color: C.bleu, marginTop: 1 }}>{surclassementTexte(p, db, saisonCourante())}</div>}
                 </div>
               </Card>
             );
@@ -3665,8 +3666,8 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
         ))}
       </div>
       {minSurclFiche > 0 && (
-        <div style={{ fontSize: 12, color: C.gris, marginTop: -6, marginBottom: 12, display: "flex", alignItems: "center", gap: 5 }}>
-          <Timer size={13} color={C.bleu} /> Surclassement : <span style={{ color: C.bleu, fontWeight: 800 }}>{surclassementTexte(p, db, saisonSel)}</span> · compris dans le total de {minutesTotalFiche} min
+        <div style={{ fontSize: 12, color: C.gris, marginTop: -6, marginBottom: 12, display: "flex", alignItems: "flex-start", gap: 5, flexWrap: "wrap", lineHeight: 1.45 }}>
+          <Timer size={13} color={C.bleu} style={{ marginTop: 1, flex: "0 0 auto" }} /> <span>En {p.cat} : <strong>{stats.minutes} min</strong> · surclassement : <span style={{ color: C.bleu, fontWeight: 800 }}>{surclassementTexte(p, db, saisonSel)}</span> · total <strong>{minutesTotalFiche} min</strong></span>
         </div>
       )}
       {moyGroupe && (
@@ -4647,10 +4648,9 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
                     <div style={{ fontWeight: 800 }}>{p.prenom} {p.nom}</div>
                     <div style={{ fontSize: 12, color: (susp || rge) ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(p.suspensionFin)}` : "")) : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
                     {p.licence ? <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 700, marginTop: 1 }}>Licence {p.licence}</div> : null}
-                  </div>
-                  <div style={{ flex: "0 0 auto", textAlign: "right" }}>
-                    <div style={{ fontSize: 11.5, fontWeight: 800, display: "flex", alignItems: "center", gap: 3, justifyContent: "flex-end", color: (moyMinutesCompo > 0 && mn < moyMinutesCompo) ? "#E67E22" : C.gris }}><Timer size={11} /> {mn} min</div>
-                    {mnSurcl > 0 && <div style={{ fontSize: 10, fontWeight: 700, color: C.bleu }}>{surclassementTexte(p, db, saisonCourante())}</div>}
+                    <div style={{ fontSize: 11, fontWeight: 700, marginTop: 3, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", color: (moyMinutesCompo > 0 && mn < moyMinutesCompo) ? "#E67E22" : C.gris }}>
+                      <Timer size={11} /> {mn} min{mnSurcl > 0 && <span style={{ color: C.bleu, fontWeight: 700 }}>· {surclassementTexte(p, db, saisonCourante())}</span>}
+                    </div>
                   </div>
                   {estSurcl ? <Pastille bg="#E7EEF6" color={C.bleu}>{p.cat}</Pastille> : null}
                   {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : rge ? <Pastille bg="#FBE3E3" color={C.rouge}>Rouge</Pastille> : null}
