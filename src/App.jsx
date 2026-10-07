@@ -1886,6 +1886,7 @@ export default function App() {
   const [demResume, setDemResume] = useState({ recues: 0, envoyees: 0, reponses: 0 });
   const [demTick, setDemTick] = useState(0);
   const [saveStatus, setSaveStatus] = useState(null);
+  const [dirty, setDirty] = useState(false);
   const [showScores, setShowScores] = useState(false);
   const [showDemandes, setShowDemandes] = useState(false);
   const [showClassement, setShowClassement] = useState(false);
@@ -1909,6 +1910,7 @@ export default function App() {
   const pendingRef = useRef(false);
   const saveQueueRef = useRef(Promise.resolve());
   const savingCountRef = useRef(0);
+  const dirtyCatsRef = useRef(new Set());
 
   useEffect(() => {
     if (!estConfigure()) { setSession(null); return; }
@@ -1964,12 +1966,20 @@ export default function App() {
       // ce qui evite d'ecraser une modification en cours.
       saveQueueRef.current = saveQueueRef.current.then(async () => {
         if (savingCountRef.current > 0) return;
+        if (dirtyCatsRef.current.has(cat)) return; // ne pas écraser des modifications non enregistrées
         try { const fresh = await loadCat(cat); if (fresh) { cacheRef.current[cat] = fresh; setDb(fresh); } } catch (e) {}
       });
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [session, cat, demo]);
+
+  useEffect(() => {
+    if (demo) return;
+    const h = (e) => { if (dirtyCatsRef.current.size > 0) { e.preventDefault(); e.returnValue = ""; } };
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
+  }, [demo]);
 
   useEffect(() => {
     if (!demo) return;
@@ -2031,25 +2041,32 @@ export default function App() {
       return next;
     });
     if (demo || !session || !cat) return;
-    // Enregistrement sécurisé : au moment d'écrire, on relit la version la plus
-    // recente du serveur et on y applique uniquement cette modification. Ainsi,
-    // meme si un autre appareil a enregistre entre-temps, son travail n'est pas ecrase.
+    // Enregistrement manuel : la modification reste locale et visible, mais
+    // n'est envoyee au serveur que lorsque l'utilisateur appuie sur "Enregistrer".
+    dirtyCatsRef.current.add(cat);
+    setDirty(true);
+  }
+
+  function enregistrerManuel() {
+    if (demo) { try { saveLocal(db); } catch (e) {} dirtyCatsRef.current.clear(); setDirty(false); setSaveStatus("ok"); return; }
+    if (!session) return;
+    const cats = Array.from(dirtyCatsRef.current);
+    if (!cats.length) { setSaveStatus("ok"); return; }
     const capCat = cat, capUser = session.user.id;
     savingCountRef.current += 1;
     pendingRef.current = true;
     setSaveStatus("saving");
+    // On enregistre chaque catégorie modifiée (toutes les modifications en attente),
+    // puis on recharge la catégorie courante pour l'afficher à jour.
     saveQueueRef.current = saveQueueRef.current.then(async () => {
       try {
-        let aEcrire;
-        try {
-          const frais = await loadCat(capCat);
-          aEcrire = fn(structuredClone(frais));
-        } catch (e) {
-          // Repli : si la relecture echoue, on garde notre version locale
-          aEcrire = cacheRef.current[capCat];
+        for (const c of cats) {
+          const blob = cacheRef.current[c];
+          if (blob) await saveCat(c, blob, capUser);
+          dirtyCatsRef.current.delete(c);
         }
-        await saveCat(capCat, aEcrire, capUser);
-        cacheRef.current[capCat] = aEcrire;
+        try { const frais = await loadCat(capCat); if (frais) { cacheRef.current[capCat] = frais; setDb(frais); } } catch (e) {}
+        setDirty(dirtyCatsRef.current.size > 0);
         setSaveStatus("ok");
       } catch (e) {
         console.error("Sauvegarde:", e);
@@ -2058,22 +2075,6 @@ export default function App() {
         savingCountRef.current = Math.max(0, savingCountRef.current - 1);
         if (savingCountRef.current === 0) pendingRef.current = false;
       }
-    });
-  }
-
-  function enregistrerManuel() {
-    if (demo) { try { saveLocal(db); } catch (e) {} setSaveStatus("ok"); return; }
-    if (!session || !cat || !db) return;
-    const capCat = cat;
-    setSaveStatus("saving");
-    // On attend que tous les enregistrements en cours soient termines, puis on
-    // recharge la version consolidee du serveur pour l'afficher a l'ecran.
-    saveQueueRef.current = saveQueueRef.current.then(async () => {
-      try {
-        const frais = await loadCat(capCat);
-        if (frais) { cacheRef.current[capCat] = frais; setDb(frais); }
-        setSaveStatus("ok");
-      } catch (e) { console.error("Sauvegarde:", e); setSaveStatus("error"); }
     });
   }
   async function mutateReunions(fn) {
@@ -2138,7 +2139,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 07/10 · v2.3
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v2.4
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2219,7 +2220,9 @@ export default function App() {
         {tab === "entrainements" && <Entrainements players={players} cat={cat} db={db} mutate={mutate} />}
         {tab === "detection" && <Detection cat={cat} db={db} mutate={mutate} />}
         <div style={{ display: "flex", justifyContent: "center", padding: "10px 16px 26px" }}>
-          <button onClick={enregistrerManuel} style={{ background: "transparent", border: `1px solid ${C.grisClair}`, color: C.gris, borderRadius: 9, padding: "7px 15px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700 }}><Save size={14} /> Enregistrer</button>
+          {(dirty || demo)
+            ? <button onClick={enregistrerManuel} style={{ background: C.jaune, border: "none", color: C.bleuNuit, borderRadius: 10, padding: "11px 22px", cursor: "pointer", display: "flex", alignItems: "center", gap: 7, fontSize: 14, fontWeight: 800 }}><Save size={16} /> Enregistrer les modifications</button>
+            : <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.gris, fontSize: 12.5, fontWeight: 700 }}><Check size={14} /> À jour</div>}
         </div>
       </main>
 
@@ -2244,6 +2247,15 @@ export default function App() {
           })}
         </div>
       </nav>
+
+      {dirty && !demo && saveStatus !== "saving" && (
+        <div style={{ position: "fixed", bottom: 72, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 40, padding: "0 12px", pointerEvents: "none" }}>
+          <div style={{ pointerEvents: "auto", width: "100%", maxWidth: 760, background: C.bleuNuit, color: "#fff", borderRadius: 12, padding: "10px 14px", boxShadow: "0 6px 18px rgba(0,0,0,0.22)", display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>Modifications non enregistrées</span>
+            <button onClick={enregistrerManuel} style={{ border: "none", background: C.jaune, color: C.bleuNuit, borderRadius: 9, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}><Save size={15} /> Enregistrer</button>
+          </div>
+        </div>
+      )}
 
       {saveStatus && !demo && (
         <div style={{ position: "fixed", bottom: 88, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 45, padding: "0 16px", pointerEvents: "none" }}>
