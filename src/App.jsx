@@ -2162,7 +2162,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v3.2
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v3.4
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3196,12 +3196,6 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, demo }) {
         ))}
       </div>
 
-      {moyMinutes > 0 && (
-        <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 12, display: "flex", alignItems: "center", gap: 5, lineHeight: 1.4 }}>
-          <Timer size={13} /> Temps de jeu total de la saison, surclassement compris · <span style={{ color: "#E67E22", fontWeight: 800 }}>en orange</span> sous la moyenne ({Math.round(moyMinutes)} min) · la ligne bleue (ex. <span style={{ color: C.bleu, fontWeight: 700 }}>U14 (40)</span>) indique les minutes jouées en catégorie supérieure
-        </div>
-      )}
-
       {liste.length === 0 ? (
         <Empty icon={<Users size={24} color={C.gris} />} text="Aucun joueur" sub="Touche + pour ajouter un joueur à l'effectif" />
       ) : (
@@ -3250,8 +3244,9 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, demo }) {
                     {cartonsRow}
                     {susp && <span style={{ fontSize: 10.5, fontWeight: 800, color: C.rouge, background: "#FBE3E3", borderRadius: 6, padding: "1px 6px" }}>Suspendu</span>}
                   </div>
-                  <div style={{ fontSize: 12.5, color: C.gris, marginTop: 1 }}>{p.poste || "Poste non défini"}{p.pied ? ` · ${p.pied}` : ""}</div>
-                  <div style={{ fontSize: 11.5, fontWeight: 700, marginTop: 4, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", color: (moyMinutes > 0 && totMin < moyMinutes) ? "#E67E22" : C.gris }}>
+                  <div style={{ fontSize: 12.5, color: C.gris, marginTop: 1, textAlign: "center" }}>{p.poste || "Poste non défini"}{p.pied ? ` · ${p.pied}` : ""}</div>
+                  {p.licence ? <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 700, marginTop: 2, textAlign: "center" }}>Licence {p.licence}</div> : null}
+                  <div style={{ fontSize: 11.5, fontWeight: 700, marginTop: 4, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, flexWrap: "wrap", color: (moyMinutes > 0 && totMin < moyMinutes) ? "#E67E22" : C.gris }}>
                     <Timer size={12} /> {totMin} min{surcl > 0 && <span style={{ color: C.bleu, fontWeight: 700 }}>· {surclassementTexte(p, db, saisonCourante())}</span>}
                   </div>
                 </div>
