@@ -2138,7 +2138,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 06/10 · v2.2
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · MAJ 07/10 · v2.3
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -6212,12 +6212,18 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
       </>}>
       <Card style={{ marginBottom: 14, textAlign: "center" }}>
         <div style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>{fmtDate(match.date)} · {match.lieu}{match.type ? ` · ${match.type}` : ""}{match.competition ? ` · ${match.competition}` : ""}</div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 8 }}>
-          <strong style={{ fontSize: 16 }}>{match.lieu === "Domicile" ? CLUB : match.adversaire}</strong>
-          {joue
-            ? <span style={{ fontSize: 26, fontWeight: 900, color: C.bleu }}>{match.lieu === "Domicile" ? `${match.scorePour} - ${match.scoreContre}` : `${match.scoreContre} - ${match.scorePour}`}</span>
-            : <span style={{ fontSize: 14, fontWeight: 800, color: C.gris }}>à venir</span>}
-          <strong style={{ fontSize: 16 }}>{match.lieu === "Domicile" ? match.adversaire : CLUB}</strong>
+        <div style={{ display: "grid", gap: 4, marginTop: 10 }}>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <span style={{ width: 40, flex: "0 0 auto" }} />
+            <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: 800, fontSize: 16, padding: "0 6px" }}>{CLUB}</span>
+            <span style={{ width: 40, flex: "0 0 auto", textAlign: "right", fontWeight: 900, fontSize: 24, color: C.bleu }}>{joue ? match.scorePour : ""}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <span style={{ width: 40, flex: "0 0 auto" }} />
+            <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: 800, fontSize: 16, padding: "0 6px" }}>{match.adversaire || "Adversaire"}</span>
+            <span style={{ width: 40, flex: "0 0 auto", textAlign: "right", fontWeight: 900, fontSize: 24, color: C.bleu }}>{joue ? match.scoreContre : ""}</span>
+          </div>
+          {!joue && <div style={{ textAlign: "center", fontSize: 13, fontWeight: 800, color: C.gris, marginTop: 2 }}>Score à venir</div>}
         </div>
       </Card>
 
