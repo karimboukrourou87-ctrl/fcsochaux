@@ -1646,27 +1646,27 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
 
   const sautPage = (besoin) => { if (y + besoin > H - 46) { doc.addPage(); y = 56; } };
   const section = (titre) => {
-    y += 4;
-    sautPage(30);
-    sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+    y += 16;
+    sautPage(40);
+    sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5);
     doc.text(titre.toUpperCase(), M, y);
     const tw = doc.getTextWidth(titre.toUpperCase());
-    sd(OR); doc.setLineWidth(1.3); doc.line(M, y + 4, M + tw, y + 4); doc.setLineWidth(0.5);
-    y += 13;
+    sd(OR); doc.setLineWidth(1.4); doc.line(M, y + 6, M + tw, y + 6); doc.setLineWidth(0.5);
+    y += 22;
   };
   const cellule = (x, label, val) => {
     if (val == null || val === "") val = "n.c.";
-    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
     doc.text(String(label), x, y);
-    sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+    sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
     doc.text(String(val), x + colW, y, { align: "right" });
   };
   const paires = (arr) => {
     for (let i = 0; i < arr.length; i += 2) {
       cellule(cols[0], arr[i][0], arr[i][1]);
       if (arr[i + 1]) cellule(cols[1], arr[i + 1][0], arr[i + 1][1]);
-      sd(TRAIT); doc.line(M, y + 4, W - M, y + 4);
-      y += 14;
+      sd(TRAIT); doc.line(M, y + 7, W - M, y + 7);
+      y += 20;
     }
   };
 
@@ -1735,22 +1735,32 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
   }
 
   section("Statistiques" + (saison ? ` de la saison ${saison}` : " de saison"));
+  const surclMin = minutesSurclassementJoueur(p, db, saison);
+  const minsTot = (stats.minutes ?? 0) + surclMin;
   const tiles = [
-    ["Minutes", String(stats.minutes ?? 0)],
+    ["Minutes", String(minsTot)],
     ["Buts", String(stats.buts ?? 0)],
     ["Passes déc.", String(stats.passes ?? 0)],
     ["Note moy.", stats.moy != null ? `${stats.moy.toFixed(1)}/7` : "n.c."],
   ];
-  const gap = 8, tw2 = (W - 2 * M - 3 * gap) / 4, th = 36;
+  const gap = 10, tw2 = (W - 2 * M - 3 * gap) / 4, th = 44;
   tiles.forEach((t, i) => {
     const x = M + i * (tw2 + gap);
-    sf(FOND); doc.roundedRect(x, y, tw2, th, 5, 5, "F");
-    sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
-    doc.text(t[1], x + tw2 / 2, y + 19, { align: "center" });
-    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
-    doc.text(t[0], x + tw2 / 2, y + 30, { align: "center" });
+    sf(FOND); doc.roundedRect(x, y, tw2, th, 6, 6, "F");
+    sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(17);
+    doc.text(t[1], x + tw2 / 2, y + 24, { align: "center" });
+    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.text(t[0], x + tw2 / 2, y + 36, { align: "center" });
   });
-  y += th + 4;
+  y += th + 12;
+  if (surclMin > 0) {
+    const supTxt = Object.entries(surclassementParCat(p, db, saison)).map(([c, mm]) => `${mm} min en ${c}`).join(", ");
+    sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+    doc.text(`Temps de jeu total : ${minsTot} min`, M, y);
+    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+    doc.text(`${stats.minutes ?? 0} min en ${p.cat}, ${supTxt} (surclassement)`, M + 130, y);
+    y += 18;
+  }
   {
     const moysG = [];
     (db.players || []).filter((x) => x.cat === p.cat).forEach((j) => { const s = statsJoueur(j, db, saison); if (s && s.moy != null) moysG.push(s.moy); });
@@ -1770,15 +1780,32 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
     const fn2 = (v) => (v == null ? "-" : (Math.round(v * 10) / 10).toFixed(1));
     if (AXES.some((a) => mj[a.k] != null)) {
       section("Notes de match par aspect");
-      AXES.forEach((a) => {
-        if (mj[a.k] == null) return;
-        sautPage(14);
-        sc(GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(a.label + " :", M, y);
-        sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.text(fn2(mj[a.k]) + "/7", M + 70, y);
-        if (mgr[a.k] != null) { sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.text("groupe " + fn2(mgr[a.k]) + "/7", M + 110, y); }
-        y += 12;
-      });
-      y += 2;
+      const axesAvec = AXES.filter((a) => mj[a.k] != null);
+      const perRow = 4, cg3 = 10;
+      const cw3 = (W - 2 * M - (perRow - 1) * cg3) / perRow;
+      const chh3 = 58;
+      for (let i = 0; i < axesAvec.length; i += perRow) {
+        sautPage(chh3 + 12);
+        const rowY = y;
+        axesAvec.slice(i, i + perRow).forEach((a, j) => {
+          const x = M + j * (cw3 + cg3);
+          sf(FOND); doc.roundedRect(x, rowY, cw3, chh3, 6, 6, "F");
+          sc(GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+          doc.text(a.label.toUpperCase(), x + cw3 / 2, rowY + 14, { align: "center" });
+          // note du joueur, en évidence
+          sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(17);
+          doc.text(fn2(mj[a.k]) + "/7", x + cw3 / 2, rowY + 35, { align: "center" });
+          // moyenne du groupe, mise en évidence (pastille dorée)
+          const gTxt = mgr[a.k] != null ? "Groupe " + fn2(mgr[a.k]) + "/7" : "Groupe n.c.";
+          doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+          const gw = doc.getTextWidth(gTxt) + 12;
+          sf(mgr[a.k] != null ? [247, 240, 220] : [240, 242, 245]);
+          doc.roundedRect(x + (cw3 - gw) / 2, rowY + 42, gw, 13, 3, 3, "F");
+          sc(mgr[a.k] != null ? [150, 118, 40] : GRIS);
+          doc.text(gTxt, x + cw3 / 2, rowY + 50.5, { align: "center" });
+        });
+        y = rowY + chh3 + 12;
+      }
     }
   }
 
@@ -2162,7 +2189,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v3.4
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v3.6
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
