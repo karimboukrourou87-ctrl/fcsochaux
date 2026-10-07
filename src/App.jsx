@@ -1807,12 +1807,12 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
   const surclMin = minutesSurclassementJoueur(p, db, saison);
   const minsTot = (stats.minutes ?? 0) + surclMin;
   const catsSurcl = Object.keys(surclassementParCat(p, db, saison));
-  const labSurcl = catsSurcl.length === 1 ? "Temps " + catsSurcl[0] : "Surclassement";
+  const catSup = catsSurcl.length ? catsSurcl.join("/") : (categoriesAuDessus(p.cat)[0] || "sup.");
   const tiles = [
     ["Minutes", String(minsTot)],
     ["Buts", String(stats.buts ?? 0)],
     ["Passes déc.", String(stats.passes ?? 0)],
-    surclMin > 0 ? [labSurcl, `${surclMin} min`] : ["Note moy.", stats.moy != null ? `${stats.moy.toFixed(1)}/7` : "n.c."],
+    ["Temps " + catSup, `${surclMin} min`],
   ];
   const gap = 10, tw2 = (W - 2 * M - 3 * gap) / 4, th = 44;
   tiles.forEach((t, i) => {
@@ -2237,7 +2237,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v3.9
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v4.1
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2762,6 +2762,16 @@ function jumpActif(cat) {
   return info.groupe === "Formation" || info.groupe === "PRO" || cat === "U14" || cat === "U15";
 }
 
+// Note globale d'un match = moyenne des 4 aspects (Mental, Technique, Tactique, Athlétique).
+// Repli sur l'ancienne note globale saisie à la main si aucun aspect n'est renseigné.
+function noteGlobaleMatch(no) {
+  if (no == null) return null;
+  if (typeof no !== "object") return (no === "" ? null : +no);
+  const vals = AXES.map((a) => no[a.k]).filter((v) => v != null && v !== "").map(Number);
+  if (vals.length) return vals.reduce((x, y) => x + y, 0) / vals.length;
+  return (no.note == null || no.note === "") ? null : +no.note;
+}
+
 function statsJoueur(p, db, saison) {
   let minutes = 0, buts = 0, passes = 0, notes = [];
   db.matches.filter((m) => m.cat === p.cat && (!saison || saisonDe(m.date) === saison)).forEach((m) => {
@@ -2769,8 +2779,8 @@ function statsJoueur(p, db, saison) {
     buts += (m.buteurs && m.buteurs[p.id]) || 0;
     passes += (m.passeurs && m.passeurs[p.id]) || 0;
     if (m.notes && m.notes[p.id] != null) {
-      const nv = typeof m.notes[p.id] === "object" ? m.notes[p.id].note : m.notes[p.id];
-      if (nv != null && nv !== "") notes.push(+nv);
+      const nv = noteGlobaleMatch(m.notes[p.id]);
+      if (nv != null) notes.push(nv);
     }
   });
   const moy = notes.length ? notes.reduce((a, b) => a + b, 0) / notes.length : null;
@@ -2790,7 +2800,7 @@ function donneesOrphelines(db, cat) {
     if (m.tempsJeu) Object.keys(m.tempsJeu).forEach((id) => { add(id).minutes += (+m.tempsJeu[id] || 0); });
     if (m.buteurs) Object.keys(m.buteurs).forEach((id) => { add(id).buts += (+m.buteurs[id] || 0); });
     if (m.passeurs) Object.keys(m.passeurs).forEach((id) => { add(id).passes += (+m.passeurs[id] || 0); });
-    if (m.notes) Object.keys(m.notes).forEach((id) => { const nv = typeof m.notes[id] === "object" ? m.notes[id].note : m.notes[id]; if (nv != null && nv !== "") add(id).notes.push(+nv); });
+    if (m.notes) Object.keys(m.notes).forEach((id) => { const nv = noteGlobaleMatch(m.notes[id]); if (nv != null) add(id).notes.push(nv); });
   });
   (db.injuries || []).filter((i) => i.cat === cat).forEach((i) => { if (i.joueurId) add(i.joueurId).blessures++; });
   (db.trainings || []).filter((t) => t.cat === cat && t.presence).forEach((t) => { Object.keys(t.presence).forEach((id) => { add(id).seances++; }); });
@@ -6578,11 +6588,16 @@ function NoterJoueur({ match, player, db, mutate, onClose }) {
   const [n, setN] = useState({ note: existing.note || "", commentaire: existing.commentaire || "", ...AXES.reduce((o, a) => ({ ...o, [a.k]: existing[a.k] || "" }), {}) });
   const [minutes, setMinutes] = useState((m0.tempsJeu && m0.tempsJeu[player.id] != null) ? m0.tempsJeu[player.id] : "");
 
+  const noteAuto = (() => {
+    const vals = AXES.map((a) => n[a.k]).filter((v) => v != null && v !== "").map(Number);
+    return vals.length ? Math.round((vals.reduce((x, y) => x + y, 0) / vals.length) * 10) / 10 : null;
+  })();
+
   function save() {
     mutate((d) => {
       const m = d.matches.find((x) => x.id === match.id);
       m.notes = m.notes || {};
-      m.notes[player.id] = { ...n };
+      m.notes[player.id] = { ...n, note: noteAuto != null ? noteAuto : "" };
       m.tempsJeu = m.tempsJeu || {};
       if (minutes === "" || +minutes === 0) delete m.tempsJeu[player.id]; else m.tempsJeu[player.id] = +minutes;
       return d;
@@ -6607,11 +6622,13 @@ function NoterJoueur({ match, player, db, mutate, onClose }) {
       <Field label="Minutes jouées">
         <Inp type="number" min="0" inputMode="numeric" value={minutes} onChange={(e) => setMinutes(e.target.value)} placeholder="Temps de jeu en minutes" />
       </Field>
-      <Field label="Note globale (1 à 7)">{echelle(n.note, (v) => setN((p) => ({ ...p, note: v })))}</Field>
-      <div style={{ height: 6 }} />
       {AXES.map((a) => (
         <Field key={a.k} label={a.label}>{echelle(n[a.k], (v) => setN((p) => ({ ...p, [a.k]: v })))}</Field>
       ))}
+      <div style={{ background: C.fond, borderRadius: 10, padding: "11px 13px", margin: "6px 0 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 13, color: C.gris, fontWeight: 700 }}>Note globale (moyenne des aspects)</span>
+        <span style={{ fontSize: 17, fontWeight: 900, color: C.bleu }}>{noteAuto != null ? `${noteAuto}/7` : "—"}</span>
+      </div>
       <Field label="Commentaire">
         <textarea value={n.commentaire} onChange={(e) => setN((p) => ({ ...p, commentaire: e.target.value }))} rows={3}
           placeholder="Qualités observées, points à travailler..." style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
