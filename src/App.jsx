@@ -1644,7 +1644,56 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
   const colW = (W - 2 * M - 24) / 2;
   const cols = [M, M + colW + 26];
 
-  const sautPage = (besoin) => { if (y + besoin > H - 46) { doc.addPage(); y = 56; } };
+  const entetePage = () => {
+    sf(NAVY); doc.rect(0, 0, W, 5, "F");
+    sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
+    doc.text(CLUB_LONG, M, 30);
+    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.text(secteurLabel(p.cat).toUpperCase() + "   ·   FICHE JOUEUR   ·   " + `${p.prenom || ""} ${p.nom || ""}`.trim(), M, 41);
+    if (typeof LOGO_CLUB === "string" && LOGO_CLUB) {
+      try { const pr = doc.getImageProperties(LOGO_CLUB); const lh = 30, lw = lh * (pr.width / pr.height); doc.addImage(LOGO_CLUB, "PNG", W - M - lw, 12, lw, lh); } catch (e) {}
+    }
+    sd(OR); doc.setLineWidth(1); doc.line(M, 48, W - M, 48); doc.setLineWidth(0.5);
+    return 68;
+  };
+  const sautPage = (besoin) => { if (y + besoin > H - 46) { doc.addPage(); y = entetePage(); } };
+  // Moyenne du groupe pour un test physique (dernier test de chaque joueur de la catégorie)
+  const moyGroupeTest = (k) => {
+    const vals = [];
+    (db.players || []).filter((x) => x.cat === p.cat).forEach((j) => {
+      const ts = (j.tests || []).slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+      const last = ts[ts.length - 1];
+      const v = last && last[k];
+      if (v != null && v !== "" && !isNaN(+v)) vals.push(+v);
+    });
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  };
+  // Rangée de cartes : valeur du joueur en grand + moyenne du groupe en pastille dorée
+  const cartesMesures = (items) => {
+    const per = 4, g = 10, cw = (W - 2 * M - (per - 1) * g) / per, hh = 58;
+    for (let i = 0; i < items.length; i += per) {
+      sautPage(hh + 12);
+      const rowY = y;
+      items.slice(i, i + per).forEach((it, j) => {
+        const x = M + j * (cw + g);
+        sf(FOND); doc.roundedRect(x, rowY, cw, hh, 6, 6, "F");
+        sc(GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+        doc.text(String(it.label).toUpperCase(), x + cw / 2, rowY + 14, { align: "center" });
+        const vtxt = (it.val != null && it.val !== "") ? String(it.val) : "n.c.";
+        sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(vtxt.length > 7 ? 12 : 15);
+        doc.text(vtxt, x + cw / 2, rowY + 34, { align: "center" });
+        if (it.groupe != null) {
+          const gtxt = "Groupe " + it.groupe;
+          doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+          const gw = doc.getTextWidth(gtxt) + 12;
+          sf([247, 240, 220]); doc.roundedRect(x + (cw - gw) / 2, rowY + 42, gw, 13, 3, 3, "F");
+          sc([150, 118, 40]); doc.text(gtxt, x + cw / 2, rowY + 50.5, { align: "center" });
+        }
+      });
+      y = rowY + hh + 12;
+    }
+  };
+  const fmtG = (v, unit) => v != null ? `${Math.round(v * 100) / 100}${unit}` : null;
   const section = (titre) => {
     y += 16;
     sautPage(40);
@@ -1693,10 +1742,10 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
   if (jonglagesActifs(p.cat)) {
     section("Jonglages (max 50)");
     const jo = p.jonglages || {};
-    paires([
-      ["Pied fort", jo.fort],
-      ["Pied faible", jo.faible],
-      ["Jonglage alterné", jo.tete],
+    cartesMesures([
+      { label: "Pied fort", val: (jo.fort != null && jo.fort !== "") ? jo.fort : null },
+      { label: "Pied faible", val: (jo.faible != null && jo.faible !== "") ? jo.faible : null },
+      { label: "Alterné", val: (jo.tete != null && jo.tete !== "") ? jo.tete : null },
     ]);
   }
 
@@ -1712,20 +1761,20 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
     doc.text(t.toUpperCase(), M, y); y += 13;
   };
   sousTitre("Vitesse");
-  paires([
-    ["VMA", dernier.vma ? `${dernier.vma} km/h` : null],
-    ["Vitesse 10 m", dernier.v10 ? `${dernier.v10} s` : null],
-    ["Vitesse 20 m", dernier.v20 ? `${dernier.v20} s` : null],
-    ["Vitesse 40 m", dernier.v40 ? `${dernier.v40} s` : null],
+  cartesMesures([
+    { label: "VMA", val: dernier.vma ? `${dernier.vma} km/h` : null, groupe: fmtG(moyGroupeTest("vma"), " km/h") },
+    { label: "10 m", val: dernier.v10 ? `${dernier.v10} s` : null, groupe: fmtG(moyGroupeTest("v10"), " s") },
+    { label: "20 m", val: dernier.v20 ? `${dernier.v20} s` : null, groupe: fmtG(moyGroupeTest("v20"), " s") },
+    { label: "40 m", val: dernier.v40 ? `${dernier.v40} s` : null, groupe: fmtG(moyGroupeTest("v40"), " s") },
   ]);
   if (jumpActif(p.cat)) {
-    y += 2;
+    y += 4;
     sousTitre("Détente (sauts)");
-    paires([
-      ["SJ (Squat Jump)", dernier.sj ? `${dernier.sj} cm` : null],
-      ["CMJ", dernier.cmj ? `${dernier.cmj} cm` : null],
-      ["CMJB (bras)", dernier.cmjb ? `${dernier.cmjb} cm` : null],
-      ["DJ (Drop Jump)", dernier.dj ? `${dernier.dj} cm` : null],
+    cartesMesures([
+      { label: "SJ", val: dernier.sj ? `${dernier.sj} cm` : null, groupe: fmtG(moyGroupeTest("sj"), " cm") },
+      { label: "CMJ", val: dernier.cmj ? `${dernier.cmj} cm` : null, groupe: fmtG(moyGroupeTest("cmj"), " cm") },
+      { label: "CMJB", val: dernier.cmjb ? `${dernier.cmjb} cm` : null, groupe: fmtG(moyGroupeTest("cmjb"), " cm") },
+      { label: "DJ", val: dernier.dj ? `${dernier.dj} cm` : null, groupe: fmtG(moyGroupeTest("dj"), " cm") },
     ]);
   }
   if (tests.length > 1) {
@@ -1813,28 +1862,28 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
   const nbSeances = assi.seancesPointees;
   const nbMatchsEq = (db.matches || []).filter((m) => m.cat === p.cat && (!saison || saisonDe(m.date) === saison) && m.scorePour != null && m.scoreContre != null && !(m.type || "").toLowerCase().includes("amical")).length;
   section("Assiduité" + (nbSeances ? ` (sur ${nbSeances} séance${nbSeances > 1 ? "s" : ""})` : ""));
-  paires([
-    ["Matchs joués", nbMatchsEq >= assi.matchs && nbMatchsEq > 0 ? `${assi.matchs} / ${nbMatchsEq}` : String(assi.matchs)],
-    ["Présences", nbSeances ? `${assi.presences} / ${nbSeances} (${Math.round((assi.presences / nbSeances) * 100)}%)` : String(assi.presences)],
-    ["Absences", assi.absences],
-    ["Retards", assi.retards],
+  cartesMesures([
+    { label: "Matchs joués", val: nbMatchsEq >= assi.matchs && nbMatchsEq > 0 ? `${assi.matchs}/${nbMatchsEq}` : String(assi.matchs) },
+    { label: "Présences", val: nbSeances ? `${assi.presences}/${nbSeances}` : String(assi.presences) },
+    { label: "Absences", val: String(assi.absences) },
+    { label: "Retards", val: String(assi.retards) },
   ]);
 
   const cartonsActifs = (() => { const ci = CATEGORIES.find((x) => x.id === p.cat); return (ci && ci.type === 11) || p.cat === "U13"; })();
   if (cartonsActifs || assi.jaunes || assi.rouges) {
     section("Discipline");
-    paires([
-      ["Cartons jaunes", assi.jaunes],
-      ["Cartons rouges", assi.rouges],
+    cartesMesures([
+      { label: "Cartons jaunes", val: String(assi.jaunes) },
+      { label: "Cartons rouges", val: String(assi.rouges) },
     ]);
   }
 
   const passagesM = matTot ? matTot.passages : passagesMat(db.config || {}, p.cat, p.id);
   const oublisM = matTot ? matTot.oublis : oublisMat(db.config || {}, p.cat, p.id);
   section("Responsable matériel");
-  paires([
-    ["Passages matériel", passagesM],
-    ["Oublis matériel", oublisM],
+  cartesMesures([
+    { label: "Passages matériel", val: String(passagesM) },
+    { label: "Oublis matériel", val: String(oublisM) },
   ]);
 
   const blessures = db.injuries.filter((i) => i.joueurId === p.id && (!i.debut || saisonDe(i.debut) === saison));
@@ -2189,7 +2238,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v3.6
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v3.7
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
