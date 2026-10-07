@@ -1616,14 +1616,32 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
   const sd = (c) => doc.setDrawColor(c[0], c[1], c[2]);
   const sf = (c) => doc.setFillColor(c[0], c[1], c[2]);
 
-  sf(NAVY); doc.rect(0, 0, W, 5, "F");
-  sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
-  doc.text(CLUB_LONG, M, 42);
-  sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
-  doc.text(secteurLabel(p.cat).toUpperCase() + "   ·   FICHE JOUEUR", M, 55);
-  sd(OR); doc.setLineWidth(1); doc.line(M, 64, W - M, 64); doc.setLineWidth(0.5);
+  let y = 0;
+  const colW = (W - 2 * M - 24) / 2;
+  const cols = [M, M + colW + 26];
 
-  const by = 68, bw = 70, bh = 88, bx = W - M - bw;
+  // En-tête identique en haut de CHAQUE page (sans logo)
+  const enteteClub = () => {
+    sf(NAVY); doc.rect(0, 0, W, 5, "F");
+    sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
+    doc.text(CLUB_LONG, M, 44);
+    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+    doc.text("ÉCOLE DE FOOT   ·   FICHE JOUEUR", M, 57);
+    sd(OR); doc.setLineWidth(1); doc.line(M, 65, W - M, 65); doc.setLineWidth(0.5);
+  };
+  const sautPage = (besoin) => {
+    if (y + besoin > H - 54) {
+      doc.addPage();
+      enteteClub();
+      sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+      doc.text((`${p.prenom || ""} ${p.nom || ""}`.trim() || "Joueur") + `   ·   ${p.cat}${p.numero ? "   ·   N° " + p.numero : ""}`, M, 86);
+      y = 104;
+    }
+  };
+
+  // ----- Page 1 : en-tête + identité du joueur -----
+  enteteClub();
+  const by = 80, bw = 72, bh = 90, bx = W - M - bw;
   if (p.photo) {
     sf(FOND); doc.rect(bx, by, bw, bh, "F");
     sd(TRAIT); doc.rect(bx, by, bw, bh);
@@ -1635,28 +1653,11 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
       doc.addImage(p.photo, "JPEG", bx + (bw - iw) / 2, by + (bh - ih) / 2, iw, ih);
     } catch (e) { try { doc.addImage(p.photo, "JPEG", bx, by, bw, bh); } catch (e2) {} }
   }
-  sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(19);
-  doc.text(`${p.prenom || ""} ${p.nom || ""}`.trim() || "Joueur", M, 88);
+  sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(20);
+  doc.text(`${p.prenom || ""} ${p.nom || ""}`.trim() || "Joueur", M, 102);
   sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
-  doc.text(`${p.poste || "Poste non défini"}   ·   ${p.cat}${p.numero ? `   ·   N° ${p.numero}` : ""}`, M, 104);
-
-  let y = p.photo ? 168 : 130;
-  const colW = (W - 2 * M - 24) / 2;
-  const cols = [M, M + colW + 26];
-
-  const entetePage = () => {
-    sf(NAVY); doc.rect(0, 0, W, 5, "F");
-    sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
-    doc.text(CLUB_LONG, M, 30);
-    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-    doc.text(secteurLabel(p.cat).toUpperCase() + "   ·   FICHE JOUEUR   ·   " + `${p.prenom || ""} ${p.nom || ""}`.trim(), M, 41);
-    if (typeof LOGO_CLUB === "string" && LOGO_CLUB) {
-      try { const pr = doc.getImageProperties(LOGO_CLUB); const lh = 30, lw = lh * (pr.width / pr.height); doc.addImage(LOGO_CLUB, "PNG", W - M - lw, 12, lw, lh); } catch (e) {}
-    }
-    sd(OR); doc.setLineWidth(1); doc.line(M, 48, W - M, 48); doc.setLineWidth(0.5);
-    return 68;
-  };
-  const sautPage = (besoin) => { if (y + besoin > H - 46) { doc.addPage(); y = entetePage(); } };
+  doc.text(`${p.poste || "Poste non défini"}   ·   ${p.cat}${p.numero ? `   ·   N° ${p.numero}` : ""}`, M, 118);
+  y = p.photo ? 188 : 156;
   // Moyenne du groupe pour un test physique (dernier test de chaque joueur de la catégorie)
   const moyGroupeTest = (k) => {
     const vals = [];
@@ -1669,34 +1670,53 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
     return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
   };
   // Rangée de cartes : valeur du joueur en grand + moyenne du groupe en pastille dorée
+  const carteMesure = (x, cw, it) => {
+    const hh = 58, rowY = y;
+    sf(FOND); doc.roundedRect(x, rowY, cw, hh, 6, 6, "F");
+    sc(GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+    doc.text(String(it.label).toUpperCase(), x + cw / 2, rowY + 14, { align: "center" });
+    const vtxt = (it.val != null && it.val !== "") ? String(it.val) : "n.c.";
+    sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(vtxt.length > 7 ? 12 : 15);
+    doc.text(vtxt, x + cw / 2, rowY + 34, { align: "center" });
+    if (it.groupe != null) {
+      const gtxt = "Groupe " + it.groupe;
+      doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+      const gw = doc.getTextWidth(gtxt) + 12;
+      sf([247, 240, 220]); doc.roundedRect(x + (cw - gw) / 2, rowY + 42, gw, 13, 3, 3, "F");
+      sc([150, 118, 40]); doc.text(gtxt, x + cw / 2, rowY + 50.5, { align: "center" });
+    }
+  };
+  // Rangée de cartes : s'étale sur toute la largeur (pas de blanc à droite)
   const cartesMesures = (items) => {
-    const per = 4, g = 10, cw = (W - 2 * M - (per - 1) * g) / per, hh = 58;
+    const per = Math.min(items.length, 4), g = 10, cw = (W - 2 * M - (per - 1) * g) / per, hh = 58;
     for (let i = 0; i < items.length; i += per) {
       sautPage(hh + 12);
       const rowY = y;
-      items.slice(i, i + per).forEach((it, j) => {
-        const x = M + j * (cw + g);
-        sf(FOND); doc.roundedRect(x, rowY, cw, hh, 6, 6, "F");
-        sc(GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
-        doc.text(String(it.label).toUpperCase(), x + cw / 2, rowY + 14, { align: "center" });
-        const vtxt = (it.val != null && it.val !== "") ? String(it.val) : "n.c.";
-        sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(vtxt.length > 7 ? 12 : 15);
-        doc.text(vtxt, x + cw / 2, rowY + 34, { align: "center" });
-        if (it.groupe != null) {
-          const gtxt = "Groupe " + it.groupe;
-          doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
-          const gw = doc.getTextWidth(gtxt) + 12;
-          sf([247, 240, 220]); doc.roundedRect(x + (cw - gw) / 2, rowY + 42, gw, 13, 3, 3, "F");
-          sc([150, 118, 40]); doc.text(gtxt, x + cw / 2, rowY + 50.5, { align: "center" });
-        }
-      });
+      items.slice(i, i + per).forEach((it, j) => carteMesure(M + j * (cw + g), cw, it));
       y = rowY + hh + 12;
     }
   };
   const fmtG = (v, unit) => v != null ? `${Math.round(v * 100) / 100}${unit}` : null;
+  // Deux sections côte à côte, alignées sur la grille de 4 cartes
+  const sectionDouble = (titreG, itemsG, titreD, itemsD) => {
+    y += 18;
+    sautPage(92);
+    const g = 10, cw = (W - 2 * M - 3 * g) / 4;
+    const xD = M + 2 * (cw + g);
+    sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5);
+    doc.text(titreG.toUpperCase(), M, y);
+    let tw = doc.getTextWidth(titreG.toUpperCase());
+    sd(OR); doc.setLineWidth(1.4); doc.line(M, y + 6, M + tw, y + 6);
+    doc.text(titreD.toUpperCase(), xD, y);
+    tw = doc.getTextWidth(titreD.toUpperCase());
+    doc.line(xD, y + 6, xD + tw, y + 6); doc.setLineWidth(0.5);
+    y += 22;
+    [...itemsG.slice(0, 2), ...itemsD.slice(0, 2)].forEach((it, j) => carteMesure(M + j * (cw + g), cw, it));
+    y += 58 + 12;
+  };
   const section = (titre) => {
-    y += 16;
-    sautPage(40);
+    y += 18;
+    sautPage(92);
     sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5);
     doc.text(titre.toUpperCase(), M, y);
     const tw = doc.getTextWidth(titre.toUpperCase());
@@ -1786,41 +1806,24 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
   section("Statistiques" + (saison ? ` de la saison ${saison}` : " de saison"));
   const surclMin = minutesSurclassementJoueur(p, db, saison);
   const minsTot = (stats.minutes ?? 0) + surclMin;
+  const catsSurcl = Object.keys(surclassementParCat(p, db, saison));
+  const labSurcl = catsSurcl.length === 1 ? "Temps " + catsSurcl[0] : "Surclassement";
   const tiles = [
     ["Minutes", String(minsTot)],
     ["Buts", String(stats.buts ?? 0)],
     ["Passes déc.", String(stats.passes ?? 0)],
-    ["Note moy.", stats.moy != null ? `${stats.moy.toFixed(1)}/7` : "n.c."],
+    surclMin > 0 ? [labSurcl, `${surclMin} min`] : ["Note moy.", stats.moy != null ? `${stats.moy.toFixed(1)}/7` : "n.c."],
   ];
   const gap = 10, tw2 = (W - 2 * M - 3 * gap) / 4, th = 44;
   tiles.forEach((t, i) => {
     const x = M + i * (tw2 + gap);
     sf(FOND); doc.roundedRect(x, y, tw2, th, 6, 6, "F");
-    sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(17);
+    sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(t[1].length > 6 ? 14 : 17);
     doc.text(t[1], x + tw2 / 2, y + 24, { align: "center" });
     sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
     doc.text(t[0], x + tw2 / 2, y + 36, { align: "center" });
   });
   y += th + 12;
-  if (surclMin > 0) {
-    const supTxt = Object.entries(surclassementParCat(p, db, saison)).map(([c, mm]) => `${mm} min en ${c}`).join(", ");
-    sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-    doc.text(`Temps de jeu total : ${minsTot} min`, M, y);
-    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-    doc.text(`${stats.minutes ?? 0} min en ${p.cat}, ${supTxt} (surclassement)`, M + 130, y);
-    y += 18;
-  }
-  {
-    const moysG = [];
-    (db.players || []).filter((x) => x.cat === p.cat).forEach((j) => { const s = statsJoueur(j, db, saison); if (s && s.moy != null) moysG.push(s.moy); });
-    if (moysG.length) {
-      const mg = moysG.reduce((a, b) => a + b, 0) / moysG.length;
-      sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-      let txt = `Note moyenne du groupe : ${mg.toFixed(1)}/7  (sur ${moysG.length} joueur${moysG.length > 1 ? "s" : ""} noté${moysG.length > 1 ? "s" : ""})`;
-      if (stats.moy != null) txt += stats.moy >= mg ? "  -  ce joueur est au-dessus de la moyenne." : "  -  ce joueur est en dessous de la moyenne.";
-      doc.text(txt, M, y, { maxWidth: W - 2 * M }); y += 14;
-    }
-  }
 
   // Notes de match par aspect (comparaison au groupe)
   {
@@ -1861,7 +1864,7 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
   const assi = assiduiteJoueur(p, db, saison);
   const nbSeances = assi.seancesPointees;
   const nbMatchsEq = (db.matches || []).filter((m) => m.cat === p.cat && (!saison || saisonDe(m.date) === saison) && m.scorePour != null && m.scoreContre != null && !(m.type || "").toLowerCase().includes("amical")).length;
-  section("Assiduité" + (nbSeances ? ` (sur ${nbSeances} séance${nbSeances > 1 ? "s" : ""})` : ""));
+  section("Assiduité");
   cartesMesures([
     { label: "Matchs joués", val: nbMatchsEq >= assi.matchs && nbMatchsEq > 0 ? `${assi.matchs}/${nbMatchsEq}` : String(assi.matchs) },
     { label: "Présences", val: nbSeances ? `${assi.presences}/${nbSeances}` : String(assi.presences) },
@@ -1869,22 +1872,14 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
     { label: "Retards", val: String(assi.retards) },
   ]);
 
-  const cartonsActifs = (() => { const ci = CATEGORIES.find((x) => x.id === p.cat); return (ci && ci.type === 11) || p.cat === "U13"; })();
-  if (cartonsActifs || assi.jaunes || assi.rouges) {
-    section("Discipline");
-    cartesMesures([
-      { label: "Cartons jaunes", val: String(assi.jaunes) },
-      { label: "Cartons rouges", val: String(assi.rouges) },
-    ]);
-  }
-
   const passagesM = matTot ? matTot.passages : passagesMat(db.config || {}, p.cat, p.id);
   const oublisM = matTot ? matTot.oublis : oublisMat(db.config || {}, p.cat, p.id);
-  section("Responsable matériel");
-  cartesMesures([
-    { label: "Passages matériel", val: String(passagesM) },
-    { label: "Oublis matériel", val: String(oublisM) },
-  ]);
+  sectionDouble(
+    "Discipline",
+    [{ label: "Cartons jaunes", val: String(assi.jaunes) }, { label: "Cartons rouges", val: String(assi.rouges) }],
+    "Responsable matériel",
+    [{ label: "Passages matériel", val: String(passagesM) }, { label: "Oublis matériel", val: String(oublisM) }]
+  );
 
   const blessures = db.injuries.filter((i) => i.joueurId === p.id && (!i.debut || saisonDe(i.debut) === saison));
   if (blessures.length) {
@@ -1950,10 +1945,14 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
     });
   }
 
-  sd(OR); doc.setLineWidth(0.8); doc.line(M, H - 28, W - M, H - 28); doc.setLineWidth(0.5);
-  sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-  doc.text(`Fiche éditée le ${new Date().toLocaleDateString("fr-FR")}`, M, H - 19);
-  doc.text(CLUB_LONG, W - M, H - 19, { align: "right" });
+  const nbPagesFiche = doc.getNumberOfPages();
+  for (let pn = 1; pn <= nbPagesFiche; pn++) {
+    doc.setPage(pn);
+    sd(OR); doc.setLineWidth(0.8); doc.line(M, H - 28, W - M, H - 28); doc.setLineWidth(0.5);
+    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.text(`Fiche éditée le ${new Date().toLocaleDateString("fr-FR")}`, M, H - 19);
+    doc.text(`${CLUB_LONG}   ·   Page ${pn} / ${nbPagesFiche}`, W - M, H - 19, { align: "right" });
+  }
 
   const fichier = nomPdf("Fiche", (p.nom || "joueur").toUpperCase(), p.prenom || "");
   try {
@@ -2238,7 +2237,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v3.7
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v3.9
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
