@@ -1831,7 +1831,29 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
     const mgr = moyGroupeMatchAspects(db, p.cat, saison);
     const fn2 = (v) => (v == null ? "-" : (Math.round(v * 10) / 10).toFixed(1));
     if (AXES.some((a) => mj[a.k] != null)) {
-      section("Notes de match par aspect");
+      // Titre + moyenne globale /match (joueur et groupe) à droite
+      y += 18;
+      sautPage(92);
+      sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5);
+      doc.text("NOTES DE MATCH PAR ASPECT", M, y);
+      const twTitreAsp = doc.getTextWidth("NOTES DE MATCH PAR ASPECT");
+      sd(OR); doc.setLineWidth(1.4); doc.line(M, y + 6, M + twTitreAsp, y + 6); doc.setLineWidth(0.5);
+      {
+        const gJoueur = stats.moy;
+        const moysG = [];
+        (db.players || []).filter((x) => x.cat === p.cat).forEach((j) => { const s = statsJoueur(j, db, saison); if (s && s.moy != null) moysG.push(s.moy); });
+        const gGroupe = moysG.length ? moysG.reduce((a, b) => a + b, 0) / moysG.length : null;
+        const vJ = gJoueur != null ? fn2(gJoueur) + "/7" : "n.c.";
+        const vG = gGroupe != null ? fn2(gGroupe) + "/7" : "n.c.";
+        // valeurs à droite : Joueur en bleu, Groupe en doré
+        doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+        let xr = W - M;
+        sc([150, 118, 40]); doc.text("Groupe " + vG, xr, y, { align: "right" }); xr -= doc.getTextWidth("Groupe " + vG) + 10;
+        sc(GRIS); doc.setFont("helvetica", "normal"); doc.text("·", xr, y, { align: "right" }); xr -= doc.getTextWidth("·") + 10;
+        sc(BLEU); doc.setFont("helvetica", "bold"); doc.text("Joueur " + vJ, xr, y, { align: "right" }); xr -= doc.getTextWidth("Joueur " + vJ) + 10;
+        sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text("Moyenne /match", xr, y, { align: "right" });
+      }
+      y += 22;
       const axesAvec = AXES.filter((a) => mj[a.k] != null);
       const perRow = 4, cg3 = 10;
       const cw3 = (W - 2 * M - (perRow - 1) * cg3) / perRow;
@@ -2237,7 +2259,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v4.1
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v4.2
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
