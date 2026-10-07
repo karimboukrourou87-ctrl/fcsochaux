@@ -2139,7 +2139,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v2.4
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v2.5
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3100,6 +3100,10 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, demo }) {
       return `${a.nom}${a.prenom}`.localeCompare(`${b.nom}${b.prenom}`);
     });
 
+  // Temps de jeu : moyenne de l'effectif, pour repérer ceux qui jouent le moins
+  const minutesSquad = players.map((p) => statsJoueur(p, db, saisonCourante()).minutes);
+  const moyMinutes = minutesSquad.length ? minutesSquad.reduce((a, b) => a + b, 0) / minutesSquad.length : 0;
+
   const ficheJoueur = fiche ? players.find((p) => p.id === fiche) : null;
 
   function cloturerSaison() {
@@ -3169,6 +3173,12 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, demo }) {
         ))}
       </div>
 
+      {moyMinutes > 0 && (
+        <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 12, display: "flex", alignItems: "center", gap: 5, lineHeight: 1.4 }}>
+          <Timer size={13} /> Temps de jeu de la saison · <span style={{ color: "#E67E22", fontWeight: 800 }}>en orange</span> sous la moyenne ({Math.round(moyMinutes)} min)
+        </div>
+      )}
+
       {liste.length === 0 ? (
         <Empty icon={<Users size={24} color={C.gris} />} text="Aucun joueur" sub="Touche + pour ajouter un joueur à l'effectif" />
       ) : (
@@ -3220,6 +3230,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, demo }) {
                 <div style={{ textAlign: "right", flex: "0 0 auto" }}>
                   <div style={{ fontSize: 12, color: C.gris }}>{st.buts} b · {st.passes} p</div>
                   {st.moy != null && <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu }}>{st.moy.toFixed(1)}/7</div>}
+                  <div style={{ fontSize: 11.5, fontWeight: 800, marginTop: 2, display: "flex", alignItems: "center", gap: 3, justifyContent: "flex-end", color: (moyMinutes > 0 && st.minutes < moyMinutes) ? "#E67E22" : C.gris }}><Timer size={11} /> {st.minutes} min</div>
                 </div>
               </Card>
             );
@@ -4343,6 +4354,9 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
   const convoques = used.length + remplacants.length;
   const benchDispo = players.filter((p) => !used.includes(p.id) && !remplacants.includes(p.id));
   const benchDispoTous = [...benchDispo, ...surclasses.filter((p) => !used.includes(p.id) && !remplacants.includes(p.id))];
+  // Temps de jeu moyen de l'effectif, pour aider à équilibrer
+  const minutesSquadCompo = players.map((p) => statsJoueur(p, db, saisonCourante()).minutes);
+  const moyMinutesCompo = minutesSquadCompo.length ? minutesSquadCompo.reduce((a, b) => a + b, 0) / minutesSquadCompo.length : 0;
 
   return (
     <div>
@@ -4574,12 +4588,16 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
           {remplacants.length >= maxRempl
             ? <div style={{ fontSize: 12.5, color: "#B87A2B", fontWeight: 700, marginBottom: 10, lineHeight: 1.5, background: "#FFF7E6", border: "1px solid #F0DBA8", borderRadius: 10, padding: 10 }}>Banc complet ({maxRempl}). Voici les joueurs non convoqués. Pour en ajouter un, retire d'abord un remplaçant.</div>
             : <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>Banc jusqu'à {maxRempl} joueurs (convoqués {convoques}/{maxConvoques}).</div>}
+          {moyMinutesCompo > 0 && benchDispoTous.length > 0 && (
+            <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 10, display: "flex", alignItems: "center", gap: 5 }}><Timer size={12} /> Temps de jeu · <span style={{ color: "#E67E22", fontWeight: 800 }}>en orange</span> sous la moyenne ({Math.round(moyMinutesCompo)} min)</div>
+          )}
           {benchDispoTous.length === 0 ? (
             <Empty icon={<Users size={24} color={C.gris} />} text="Aucun joueur disponible" sub="Tous les joueurs sont déjà titulaires ou sur le banc" />
           ) : (
             <div style={{ display: "grid", gap: 8 }}>
               {benchDispoTous.map((p) => {
                 const estSurcl = p.cat !== cat;
+                const mn = statsJoueur(p, db, saisonCourante()).minutes;
                 const susp = estSuspendu(p);
                 const rge = !susp && rougeDirectActif(p, db);
                 const bancPlein = remplacants.length >= maxRempl;
@@ -4595,6 +4613,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
                     <div style={{ fontSize: 12, color: (susp || rge) ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(p.suspensionFin)}` : "")) : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
                     {p.licence ? <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 700, marginTop: 1 }}>Licence {p.licence}</div> : null}
                   </div>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, flex: "0 0 auto", display: "flex", alignItems: "center", gap: 3, color: (moyMinutesCompo > 0 && mn < moyMinutesCompo) ? "#E67E22" : C.gris }}><Timer size={11} /> {mn} min</div>
                   {estSurcl ? <Pastille bg="#E7EEF6" color={C.bleu}>{p.cat}</Pastille> : null}
                   {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : rge ? <Pastille bg="#FBE3E3" color={C.rouge}>Rouge</Pastille> : null}
                 </button>
