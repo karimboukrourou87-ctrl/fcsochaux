@@ -2152,7 +2152,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v2.6
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v2.8
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3524,6 +3524,25 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
     return statsJoueur(p, db, saison);
   }
   const stats = statsSaison(saisonSel);
+  // Temps de jeu joué en surclassement (catégories supérieures) pour la saison affichée
+  const catsSupFiche = useMemo(() => categoriesAuDessus(p.cat), [p.cat]);
+  const [dbsSupFiche, setDbsSupFiche] = useState([]);
+  useEffect(() => {
+    if (demo || !catsSupFiche.length) { setDbsSupFiche([]); return; }
+    let annule = false;
+    (async () => {
+      try { const res = await Promise.all(catsSupFiche.map((c) => loadCat(c).then((d) => d).catch(() => null))); if (!annule) setDbsSupFiche(res.filter(Boolean)); }
+      catch (e) { if (!annule) setDbsSupFiche([]); }
+    })();
+    return () => { annule = true; };
+  }, [p.cat, demo, catsSupFiche]);
+  const minSurclFiche = (() => {
+    const man = (p.minSurcl && p.minSurcl[saisonSel]) || 0;
+    if (man > 0) return man;
+    if (demo) return (minutesSurclassementMap([{ matches: (db.matches || []).filter((m) => catsSupFiche.includes(m.cat)) }], saisonSel))[p.id] || 0;
+    return (minutesSurclassementMap(dbsSupFiche, saisonSel))[p.id] || 0;
+  })();
+  const minutesTotalFiche = (stats.minutes || 0) + minSurclFiche;
   const educateurs = [...new Set([...(listeEnc || []), ...(db.encadrement || [])].map((e) => (e.nom || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
   const ajouterEncadrant = (nom) => {
     const n = (nom || "").trim(); if (!n) return;
@@ -3662,13 +3681,18 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
         )}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginBottom: 12 }}>
-        {[["Matchs", nbMatchsEquipe >= assi.matchs && nbMatchsEquipe > 0 ? `${assi.matchs}/${nbMatchsEquipe}` : assi.matchs], ["Minutes", stats.minutes], ["Buts", stats.buts], ["Passes", stats.passes], ["Note", stats.moy != null ? stats.moy.toFixed(1) : "-"]].map(([l, v]) => (
+        {[["Matchs", nbMatchsEquipe >= assi.matchs && nbMatchsEquipe > 0 ? `${assi.matchs}/${nbMatchsEquipe}` : assi.matchs], ["Minutes", minutesTotalFiche], ["Buts", stats.buts], ["Passes", stats.passes], ["Note", stats.moy != null ? stats.moy.toFixed(1) : "-"]].map(([l, v]) => (
           <div key={l} style={{ background: "#fff", borderRadius: 12, padding: "12px 4px", textAlign: "center", border: `1px solid ${C.grisClair}` }}>
             <div style={{ fontSize: 18, fontWeight: 900, color: C.bleu }}>{v}</div>
             <div style={{ fontSize: 9.5, color: C.gris, marginTop: 2 }}>{l}</div>
           </div>
         ))}
       </div>
+      {minSurclFiche > 0 && (
+        <div style={{ fontSize: 12, color: C.gris, marginTop: -6, marginBottom: 12, display: "flex", alignItems: "center", gap: 5 }}>
+          <Timer size={13} color={C.bleu} /> Dont <span style={{ color: C.bleu, fontWeight: 800 }}>{minSurclFiche} min</span> en surclassement (catégorie supérieure)
+        </div>
+      )}
       {moyGroupe && (
         <div style={{ background: "#EAF0F7", borderRadius: 12, padding: "10px 12px", marginBottom: 12, fontSize: 12.5, lineHeight: 1.5 }}>
           <span style={{ color: C.gris }}>Note moyenne du groupe : </span>
@@ -3967,6 +3991,8 @@ function EditJoueur({ joueur, cat, onClose, onSave }) {
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
   const setJo = (k, v) => setF((o) => ({ ...o, jonglages: { ...(o.jonglages || {}), [k]: v } }));
   const fileRef = useRef(null);
+  const saisonAct = saisonCourante();
+  const setMinSurcl = (v) => setF((o) => ({ ...o, minSurcl: { ...(o.minSurcl || {}), [saisonAct]: v === "" ? "" : Math.max(0, +v) } }));
 
   function choisirPhoto(e) {
     const file = e.target.files && e.target.files[0];
@@ -4011,6 +4037,10 @@ function EditJoueur({ joueur, cat, onClose, onSave }) {
         </Field>
         <Field label={`Numéro (1 à ${maxNumero(f.cat)})`}><Inp type="number" inputMode="numeric" min={1} max={maxNumero(f.cat)} value={f.numero} onChange={(e) => set("numero", e.target.value)} /></Field>
       </div>
+      <Field label="Minutes en surclassement (saison en cours)">
+        <Inp type="number" inputMode="numeric" min={0} value={(f.minSurcl && f.minSurcl[saisonAct]) ?? ""} onChange={(e) => setMinSurcl(e.target.value)} />
+        <div style={{ fontSize: 11.5, color: C.gris, marginTop: 4, lineHeight: 1.4 }}>Minutes jouées en catégorie supérieure, ajoutées au temps de jeu total. Laisse vide pour utiliser le calcul automatique.</div>
+      </Field>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <Field label="Numéro de licence"><Inp value={f.licence} onChange={(e) => set("licence", e.target.value)} /></Field>
         <Field label="Statut de la licence">
@@ -6153,6 +6183,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
   // Joueurs surclassés présents dans la composition de ce match (catégories du dessous)
   const catsBasRap = SURCLASSEMENT[match.cat] || [];
   const [surclassesRap, setSurclassesRap] = useState([]);
+  const [pickSurcl, setPickSurcl] = useState(false);
   useEffect(() => {
     let annule = false;
     if (!catsBasRap.length) { setSurclassesRap([]); return; }
@@ -6178,8 +6209,22 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
     ...Object.keys((cur && cur.passeurs) || {}),
     ...Object.keys((cur && cur.notes) || {}),
   ]);
-  const surclassesPresents = surclassesRap.filter((p) => idsCompo.has(p.id) && !players.some((q) => q.id === p.id));
+  const addedSurcl = new Set((cur && cur.surclassesAjoutes) || []);
+  const surclassesPresents = surclassesRap.filter((p) => (idsCompo.has(p.id) || addedSurcl.has(p.id)) && !players.some((q) => q.id === p.id));
+  const surclassesCandidats = surclassesRap.filter((p) => !idsCompo.has(p.id) && !addedSurcl.has(p.id) && !players.some((q) => q.id === p.id));
   const joueursRapport = [...players, ...surclassesPresents];
+  function ajouterSurclasse(pid) {
+    mutate((d) => { const m = d.matches.find((x) => x.id === match.id); m.surclassesAjoutes = m.surclassesAjoutes || []; if (!m.surclassesAjoutes.includes(pid)) m.surclassesAjoutes.push(pid); return d; });
+    setPickSurcl(false);
+  }
+  function retirerSurclasse(pid) {
+    mutate((d) => {
+      const m = d.matches.find((x) => x.id === match.id);
+      m.surclassesAjoutes = (m.surclassesAjoutes || []).filter((x) => x !== pid);
+      ["tempsJeu", "buteurs", "passeurs", "notes", "jaunes", "rouges", "blancs", "blesses", "cartonsMin"].forEach((ch) => { if (m[ch]) delete m[ch][pid]; });
+      return d;
+    });
+  }
 
   // Joueurs de la catégorie non retenus (ni titulaire, ni remplaçant, sans stats)
   const nonRetenusDispo = players.filter((p) => !idsCompo.has(p.id));
@@ -6212,7 +6257,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
       <Card key={p.id} style={{ padding: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: C.bleu, color: C.jaune, display: "grid", placeItems: "center", fontWeight: 900, fontSize: 12 }}>{initials(p)}</div>
-          <div style={{ flex: 1, fontWeight: 800 }}>{p.prenom} {p.nom}{p.surclasse ? <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 800, color: C.bleu, background: "#EAF0F7", borderRadius: 6, padding: "2px 6px" }}>Surclassé {p.cat}</span> : null}</div>
+          <div style={{ flex: 1, fontWeight: 800 }}>{p.prenom} {p.nom}{p.surclasse ? <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 800, color: C.bleu, background: "#EAF0F7", borderRadius: 6, padding: "2px 6px" }}>Surclassé {p.cat}</span> : null}{p.surclasse && addedSurcl.has(p.id) ? <button onClick={() => retirerSurclasse(p.id)} style={{ marginLeft: 7, border: "none", background: "transparent", color: C.rouge, fontSize: 11, fontWeight: 800, cursor: "pointer", textDecoration: "underline" }}>Retirer</button> : null}</div>
           <button onClick={() => setNoteFor(p)} style={{
             border: "none", cursor: "pointer", borderRadius: 10, padding: "6px 11px", fontWeight: 900,
             background: note ? C.jaune : C.grisClair, color: note ? C.bleuNuit : C.gris, fontSize: 14,
@@ -6361,6 +6406,11 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
       <div style={{ fontWeight: 800, marginBottom: 8 }}>Feuille de match</div>
       {joueursRapport.length === 0 ? <Empty icon={<Users size={22} color={C.gris} />} text="Aucun joueur" /> :
         <div style={{ display: "grid", gap: 9 }}>{joueursRapport.map(ligne)}</div>}
+      {catsBasRap.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <Btn variant="ghost" full size="sm" onClick={() => setPickSurcl(true)}><Plus size={15} /> Ajouter un joueur surclassé</Btn>
+        </div>
+      )}
       {msgSurclasse && <div style={{ fontSize: 12.5, fontWeight: 700, color: msgSurclasse.includes("n'a pas pu") || msgSurclasse.includes("introuvable") ? C.rouge : C.vert, background: C.fond, borderRadius: 10, padding: 10, marginTop: 10 }}>{msgSurclasse}</div>}
 
       {(() => {
@@ -6438,6 +6488,27 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
       {jong && (/^U13/.test(match.cat)
         ? <DefiJonglageLigue match={match} players={players} db={db} mutate={mutate} onClose={() => setJong(false)} />
         : <DefiJonglage match={match} players={players} db={db} mutate={mutate} onClose={() => setJong(false)} />)}
+      {pickSurcl && (
+        <Modal title="Ajouter un joueur surclassé" onClose={() => setPickSurcl(false)}>
+          <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Joueurs des catégories {catsBasRap.join(", ")} que tu peux faire jouer en surclassement sur ce match. Les minutes saisies compteront dans leur temps de jeu total.</div>
+          {surclassesCandidats.length === 0 ? (
+            <Empty icon={<Users size={24} color={C.gris} />} text="Aucun joueur disponible" sub="Tous les joueurs surclassables sont déjà sur la feuille de match" />
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              {surclassesCandidats.map((p) => (
+                <button key={p.id} onClick={() => ajouterSurclasse(p.id)} style={{ display: "flex", alignItems: "center", gap: 11, padding: 11, borderRadius: 12, border: `1px solid ${C.grisClair}`, background: "#fff", cursor: "pointer", textAlign: "left" }}>
+                  <Avatar p={p} size={38} radius={10} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 800 }}>{p.prenom} {p.nom}</div>
+                    <div style={{ fontSize: 12, color: C.gris }}>{p.poste || "Poste libre"}</div>
+                  </div>
+                  <Pastille bg="#E7EEF6" color={C.bleu}>{p.cat}</Pastille>
+                </button>
+              ))}
+            </div>
+          )}
+        </Modal>
+      )}
     </Modal>
   );
 }
