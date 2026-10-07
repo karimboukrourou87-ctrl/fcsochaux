@@ -936,6 +936,19 @@ function categoriesAuDessus(cat) {
   return c ? [c] : [];
 }
 
+// Minutes jouées en catégorie supérieure (surclassement), par identifiant de joueur,
+// à additionner au temps de jeu de sa propre catégorie.
+function minutesSurclassementMap(dbsSup, saison) {
+  const map = {};
+  (dbsSup || []).forEach((d) => {
+    if (!d || !d.matches) return;
+    d.matches.filter((m) => !saison || saisonDe(m.date) === saison).forEach((m) => {
+      Object.keys(m.tempsJeu || {}).forEach((pid) => { map[pid] = (map[pid] || 0) + (+m.tempsJeu[pid] || 0); });
+    });
+  });
+  return map;
+}
+
 // Catégories qu'une catégorie peut demander (joueur surclassé de deux ans en dessous)
 const VOISINS_SPECIAUX = {
   "U17 NAT": ["U15"],
@@ -2139,7 +2152,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v2.5
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v2.6
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3100,9 +3113,28 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, demo }) {
       return `${a.nom}${a.prenom}`.localeCompare(`${b.nom}${b.prenom}`);
     });
 
-  // Temps de jeu : moyenne de l'effectif, pour repérer ceux qui jouent le moins
-  const minutesSquad = players.map((p) => statsJoueur(p, db, saisonCourante()).minutes);
-  const moyMinutes = minutesSquad.length ? minutesSquad.reduce((a, b) => a + b, 0) / minutesSquad.length : 0;
+  // Temps de jeu de la saison, en incluant les minutes jouées en surclassement
+  // (catégories supérieures), pour repérer ceux qui jouent le moins.
+  const catsSup = useMemo(() => categoriesAuDessus(cat), [cat]);
+  const [dbsSup, setDbsSup] = useState([]);
+  useEffect(() => {
+    if (demo || !catsSup.length) { setDbsSup([]); return; }
+    let annule = false;
+    (async () => {
+      try {
+        const res = await Promise.all(catsSup.map((c) => loadCat(c).then((d) => d).catch(() => null)));
+        if (!annule) setDbsSup(res.filter(Boolean));
+      } catch (e) { if (!annule) setDbsSup([]); }
+    })();
+    return () => { annule = true; };
+  }, [cat, demo, catsSup]);
+  const minSurcl = useMemo(() => {
+    const saison = saisonCourante();
+    if (demo) return minutesSurclassementMap([{ matches: (db.matches || []).filter((m) => catsSup.includes(m.cat)) }], saison);
+    return minutesSurclassementMap(dbsSup, saison);
+  }, [demo, db.matches, dbsSup, catsSup]);
+  const minutesTotales = (p) => statsJoueur(p, db, saisonCourante()).minutes + (minSurcl[p.id] || 0);
+  const moyMinutes = players.length ? players.reduce((s, p) => s + minutesTotales(p), 0) / players.length : 0;
 
   const ficheJoueur = fiche ? players.find((p) => p.id === fiche) : null;
 
@@ -3175,7 +3207,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, demo }) {
 
       {moyMinutes > 0 && (
         <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 12, display: "flex", alignItems: "center", gap: 5, lineHeight: 1.4 }}>
-          <Timer size={13} /> Temps de jeu de la saison · <span style={{ color: "#E67E22", fontWeight: 800 }}>en orange</span> sous la moyenne ({Math.round(moyMinutes)} min)
+          <Timer size={13} /> Temps de jeu de la saison, surclassement inclus · <span style={{ color: "#E67E22", fontWeight: 800 }}>en orange</span> sous la moyenne ({Math.round(moyMinutes)} min) · <span style={{ color: C.bleu, fontWeight: 700 }}>(+X)</span> minutes en catégorie supérieure
         </div>
       )}
 
@@ -3186,6 +3218,8 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, demo }) {
           {liste.map((p) => {
             const bless = db.injuries.some((i) => i.joueurId === p.id && !i.fini);
             const st = statsJoueur(p, db, saisonCourante());
+            const surcl = minSurcl[p.id] || 0;
+            const totMin = st.minutes + surcl;
             const cd = cartonsDetail(p, db);
             const susp = estSuspendu(p);
             const bj = { width: 11, height: 15, borderRadius: 2, background: "#F2C200", display: "inline-block", border: "1px solid #D9AE00" };
@@ -3230,7 +3264,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, demo }) {
                 <div style={{ textAlign: "right", flex: "0 0 auto" }}>
                   <div style={{ fontSize: 12, color: C.gris }}>{st.buts} b · {st.passes} p</div>
                   {st.moy != null && <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu }}>{st.moy.toFixed(1)}/7</div>}
-                  <div style={{ fontSize: 11.5, fontWeight: 800, marginTop: 2, display: "flex", alignItems: "center", gap: 3, justifyContent: "flex-end", color: (moyMinutes > 0 && st.minutes < moyMinutes) ? "#E67E22" : C.gris }}><Timer size={11} /> {st.minutes} min</div>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, marginTop: 2, display: "flex", alignItems: "center", gap: 3, justifyContent: "flex-end", color: (moyMinutes > 0 && totMin < moyMinutes) ? "#E67E22" : C.gris }}><Timer size={11} /> {totMin} min{surcl > 0 && <span style={{ color: C.bleu, fontWeight: 700, marginLeft: 3 }}>(+{surcl})</span>}</div>
                 </div>
               </Card>
             );
@@ -4193,6 +4227,25 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
   const key = matchSel || cat;
   // Encadrement du match (liste commune du club) : coach, coach adjoint, dirigeant, délégué
   const [listeEncCompo] = useEncadrementClub(demo, db, mutate);
+  // Temps de jeu incluant le surclassement (catégories supérieures)
+  const catsSupCompo = useMemo(() => categoriesAuDessus(cat), [cat]);
+  const [dbsSupCompo, setDbsSupCompo] = useState([]);
+  useEffect(() => {
+    if (demo || !catsSupCompo.length) { setDbsSupCompo([]); return; }
+    let annule = false;
+    (async () => {
+      try {
+        const res = await Promise.all(catsSupCompo.map((c) => loadCat(c).then((d) => d).catch(() => null)));
+        if (!annule) setDbsSupCompo(res.filter(Boolean));
+      } catch (e) { if (!annule) setDbsSupCompo([]); }
+    })();
+    return () => { annule = true; };
+  }, [cat, demo, catsSupCompo]);
+  const minSurclCompo = useMemo(() => {
+    const saison = saisonCourante();
+    if (demo) return minutesSurclassementMap([{ matches: (db.matches || []).filter((m) => catsSupCompo.includes(m.cat)) }], saison);
+    return minutesSurclassementMap(dbsSupCompo, saison);
+  }, [demo, db.matches, dbsSupCompo, catsSupCompo]);
   const matchCourant = (db.matches || []).find((m) => m.id === matchSel);
   const encMatch = (matchCourant && matchCourant.encadrement) || {};
   function majEncMatch(patch) {
@@ -4354,9 +4407,9 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
   const convoques = used.length + remplacants.length;
   const benchDispo = players.filter((p) => !used.includes(p.id) && !remplacants.includes(p.id));
   const benchDispoTous = [...benchDispo, ...surclasses.filter((p) => !used.includes(p.id) && !remplacants.includes(p.id))];
-  // Temps de jeu moyen de l'effectif, pour aider à équilibrer
-  const minutesSquadCompo = players.map((p) => statsJoueur(p, db, saisonCourante()).minutes);
-  const moyMinutesCompo = minutesSquadCompo.length ? minutesSquadCompo.reduce((a, b) => a + b, 0) / minutesSquadCompo.length : 0;
+  // Temps de jeu moyen (surclassement inclus), pour aider à équilibrer
+  const minutesTotalesCompo = (p) => statsJoueur(p, db, saisonCourante()).minutes + (minSurclCompo[p.id] || 0);
+  const moyMinutesCompo = players.length ? players.reduce((s, p) => s + minutesTotalesCompo(p), 0) / players.length : 0;
 
   return (
     <div>
@@ -4597,7 +4650,8 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
             <div style={{ display: "grid", gap: 8 }}>
               {benchDispoTous.map((p) => {
                 const estSurcl = p.cat !== cat;
-                const mn = statsJoueur(p, db, saisonCourante()).minutes;
+                const mnSurcl = minSurclCompo[p.id] || 0;
+                const mn = statsJoueur(p, db, saisonCourante()).minutes + mnSurcl;
                 const susp = estSuspendu(p);
                 const rge = !susp && rougeDirectActif(p, db);
                 const bancPlein = remplacants.length >= maxRempl;
@@ -4613,7 +4667,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
                     <div style={{ fontSize: 12, color: (susp || rge) ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(p.suspensionFin)}` : "")) : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
                     {p.licence ? <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 700, marginTop: 1 }}>Licence {p.licence}</div> : null}
                   </div>
-                  <div style={{ fontSize: 11.5, fontWeight: 800, flex: "0 0 auto", display: "flex", alignItems: "center", gap: 3, color: (moyMinutesCompo > 0 && mn < moyMinutesCompo) ? "#E67E22" : C.gris }}><Timer size={11} /> {mn} min</div>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, flex: "0 0 auto", display: "flex", alignItems: "center", gap: 3, color: (moyMinutesCompo > 0 && mn < moyMinutesCompo) ? "#E67E22" : C.gris }}><Timer size={11} /> {mn} min{mnSurcl > 0 && <span style={{ color: C.bleu, fontWeight: 700, marginLeft: 2 }}>(+{mnSurcl})</span>}</div>
                   {estSurcl ? <Pastille bg="#E7EEF6" color={C.bleu}>{p.cat}</Pastille> : null}
                   {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : rge ? <Pastille bg="#FBE3E3" color={C.rouge}>Rouge</Pastille> : null}
                 </button>
