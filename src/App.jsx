@@ -1335,8 +1335,8 @@ function seedPlanningOfficiel(pl) {
   const crEntre = (crDebut, fin) => {
     const mins = (s) => { if (!s) return 0; const p = String(s).replace("h", ":").split(":"); return (+p[0]) * 60 + (+(p[1] || 0)); };
     const toLabel = (m) => `${pad(Math.floor(m / 60))}h${pad(m % 60)}`;
-    const debM = mins(crDebut); const finM = fin ? mins(fin) : debM; const steps = [];
-    for (let m = debM; m <= finM; m += 30) steps.push(toLabel(m));
+    const debM = mins(crDebut); let finM = fin ? mins(fin) : debM + 30; if (finM <= debM) finM = debM + 30; const steps = [];
+    for (let m = debM; m < finM; m += 30) steps.push(toLabel(m));
     if (!steps.length) steps.push(crDebut); return steps;
   };
   PLANNING_HEBDO.forEach((sec) => sec.lignes.forEach((l) => l.creneaux.forEach(([j, ter, horaire]) => {
@@ -1356,29 +1356,29 @@ function reparerPlages(pl) {
   let change = false;
   const mins = (s) => { const p = String(s || "").replace("h", ":").split(":"); return (+p[0]) * 60 + (+(p[1] || 0)); };
   const toLabel = (m) => `${pad(Math.floor(m / 60))}h${pad(m % 60)}`;
+  // Cases occupées par une plage (fin EXCLUSIVE), au moins une case.
+  const cells = (debut, finCorr) => { const a = []; for (let m = mins(debut); m < mins(finCorr); m += 30) a.push(toLabel(m)); if (!a.length) a.push(debut); return a; };
   const crSet = new Set(pl.creneaux || []);
+  // Normalise un ensemble de cases : corrige les fins incohérentes, retire les cases au-delà de la fin (ancien modèle inclusif), comble les trous.
+  const normaliser = (store, keyFn, parse) => {
+    Object.keys(store).forEach((k) => {
+      const c = store[k]; if (!c || !c.debut) return;
+      const { cr, col, jour } = parse(k);
+      const dM = mins(c.debut); let fM = c.fin ? mins(c.fin) : dM + 30; if (fM <= dM) fM = dM + 30;
+      const finCorr = toLabel(fM);
+      if (c.fin !== finCorr) { c.fin = finCorr; change = true; }
+      const bons = cells(c.debut, finCorr);
+      if (!bons.includes(cr)) { delete store[k]; change = true; return; }
+      bons.forEach((bc) => { crSet.add(bc); const kk = keyFn(bc, col, jour); if (!store[kk]) { store[kk] = { ...c, fin: finCorr }; change = true; } });
+    });
+  };
   ["vestiaires", "terrains"].forEach((tp) => {
     const byDate = pl[tp] || {};
     Object.keys(byDate).forEach((dstr) => {
-      const cell = byDate[dstr] || {};
-      Object.keys(cell).forEach((k) => {
-        const c = cell[k]; if (!c || !c.debut || !c.fin || c.fin === c.debut) return;
-        const idx = k.indexOf("__"); const col = k.slice(idx + 2);
-        for (let m = mins(c.debut); m <= mins(c.fin); m += 30) {
-          const cr = toLabel(m); const kk = `${cr}__${col}`; crSet.add(cr);
-          if (!cell[kk]) { cell[kk] = { ...c }; change = true; }
-        }
-      });
+      normaliser(byDate[dstr] || {}, (bc, col) => `${bc}__${col}`, (k) => { const i = k.indexOf("__"); return { cr: k.slice(0, i), col: k.slice(i + 2) }; });
     });
     const hb = (pl.hebdo && pl.hebdo[tp]) || {};
-    Object.keys(hb).forEach((k) => {
-      const c = hb[k]; if (!c || !c.debut || !c.fin || c.fin === c.debut) return;
-      const parts = k.split("__"); const jour = parts[0]; const col = parts.slice(2).join("__");
-      for (let m = mins(c.debut); m <= mins(c.fin); m += 30) {
-        const cr = toLabel(m); const kk = `${jour}__${cr}__${col}`; crSet.add(cr);
-        if (!hb[kk]) { hb[kk] = { ...c }; change = true; }
-      }
-    });
+    normaliser(hb, (bc, col, jour) => `${jour}__${bc}__${col}`, (k) => { const p = k.split("__"); return { jour: p[0], cr: p[1], col: p.slice(2).join("__") }; });
   });
   if (change) pl.creneaux = [...crSet].sort();
   return { pl, change };
@@ -2399,7 +2399,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v6.2
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v6.3
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -8507,12 +8507,15 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
     if (c.statut === "valide") return true;
     return c.cat !== cat;
   };
+  // Cases de 30 min occupées par une plage début->fin. La fin est EXCLUSIVE : une case « 08h30 » couvre 08h30 à 09h00,
+  // donc une séance de 08h30 à 09h00 n'occupe qu'une case. Au moins une case (30 min).
   const creneauxEntre = (crDebut, fin) => {
     const mins = (s) => { if (!s) return 0; const p = String(s).replace("h", ":").split(":"); return (+p[0]) * 60 + (+(p[1] || 0)); };
     const toLabel = (m) => `${pad(Math.floor(m / 60))}h${pad(m % 60)}`;
-    const debM = mins(crDebut); const finM = fin ? mins(fin) : debM;
+    const debM = mins(crDebut); let finM = fin ? mins(fin) : debM + 30;
+    if (finM <= debM) finM = debM + 30;
     const steps = [];
-    for (let m = debM; m <= finM; m += 30) steps.push(toLabel(m));
+    for (let m = debM; m < finM; m += 30) steps.push(toLabel(m));
     if (!steps.length) steps.push(crDebut);
     return steps;
   };
@@ -8658,10 +8661,11 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
       if (ctx.estHebdo) { d.hebdo = d.hebdo || { vestiaires: {}, terrains: {} }; d.hebdo[type] = d.hebdo[type] || {}; store = d.hebdo[type]; }
       else { d[type] = d[type] || {}; d[type][ctx.date] = d[type][ctx.date] || {}; store = d[type][ctx.date]; }
       const key = (cr) => ctx.estHebdo ? `${ctx.jour}__${cr}__${ctx.col}` : `${cr}__${ctx.col}`;
+      const toLabel = (m) => `${pad(Math.floor(m / 60))}h${pad(m % 60)}`;
       occ.forEach((cr) => delete store[key(cr)]);
       segs.forEach((seg) => {
-        const deb = seg[0], finCell = seg[seg.length - 1];
-        seg.forEach((cr) => { store[key(cr)] = ctx.estHebdo ? { equipe: a.equipe, activite: a.activite, cat: a.cat, verrou: a.verrou, mdp: a.mdp, debut: deb, fin: finCell } : { equipe: a.equipe, activite: a.activite, statut: a.statut, cat: a.cat, demandeur: a.demandeur, verrou: a.verrou, mdp: a.mdp, debut: deb, fin: finCell }; });
+        const deb = seg[0], finSeg = toLabel(toMin(seg[seg.length - 1]) + 30); // fin exclusive : dernière case + 30 min
+        seg.forEach((cr) => { store[key(cr)] = ctx.estHebdo ? { equipe: a.equipe, activite: a.activite, cat: a.cat, verrou: a.verrou, mdp: a.mdp, debut: deb, fin: finSeg } : { equipe: a.equipe, activite: a.activite, statut: a.statut, cat: a.cat, demandeur: a.demandeur, verrou: a.verrou, mdp: a.mdp, debut: deb, fin: finSeg }; });
       });
       return d;
     });
