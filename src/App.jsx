@@ -341,59 +341,56 @@ function resumeTransport(x) {
   return x.mode || "Transport";
 }
 
-function Transports({ db, mutate, cat, encadrement, majEncadrement, onClose }) {
+function Transports({ store, maj, chargement, peutValider, profil, cat, encadrement, majEncadrement, onValiderDem, onRefuserDem, onClose }) {
   const [nouveau, setNouveau] = useState(false);
   const [refus, setRefus] = useState(null);
   const [cause, setCause] = useState("");
-  const liste = (db.transports || []).filter((x) => x.cat === cat).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  const moi = (profil && profil.nom) || "Éducateur";
+  // Planning commun : toutes les catégories voient les demandes de transport du club
+  const liste = ((store && store.demandes) || []).slice().sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""));
 
   function creer(f) {
-    mutate((d) => {
-      d.transports = d.transports || [];
-      d.transports.push({ ...f, id: uid(), cat, statut: "en_attente", cause: "", creeLe: new Date().toISOString() });
-      return d;
+    maj((s) => {
+      s.demandes = s.demandes || [];
+      s.demandes.push({ ...f, id: uid(), cat, demandeur: moi, statut: "en_attente", cause: "", creeLe: new Date().toISOString() });
+      return s;
     });
     setNouveau(false);
   }
-  function repondre(item, accepte, causeTxt) {
-    mutate((d) => {
-      const x = (d.transports || []).find((y) => y.id === item.id);
-      if (x) { x.statut = accepte ? "acceptee" : "refusee"; x.cause = accepte ? "" : (causeTxt || ""); }
-      return d;
-    });
-    setRefus(null); setCause("");
-  }
   function supprimer(id) {
-    mutate((d) => { d.transports = (d.transports || []).filter((y) => y.id !== id); return d; });
+    maj((s) => { s.demandes = (s.demandes || []).filter((y) => y.id !== id); return s; });
   }
 
   return (
     <Modal title="Demandes de transport" onClose={onClose}
       footer={<Btn variant="accent" full onClick={() => setNouveau(true)}><Plus size={16} /> Nouvelle demande</Btn>}>
-      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12 }}>Réserve le minibus ou le bus à l'avance, sans attendre que le match soit programmé.</div>
-      {liste.length === 0 ? (
+      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12 }}>Réserve le minibus club, le bus des pros ou un minibus de location (ADJ ou Hertz) à l'avance. {peutValider ? "Tu valides ou refuses les demandes des éducateurs." : "Ta demande sera affichée « en cours de traitement » jusqu'à validation par la direction."}</div>
+      {chargement ? (
+        <div style={{ fontSize: 12.5, color: C.gris, fontWeight: 700, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "10px 12px" }}>Chargement des demandes du club...</div>
+      ) : liste.length === 0 ? (
         <Empty icon={<Bus size={24} color={C.gris} />} text="Aucune demande de transport" sub="Touche Nouvelle demande pour réserver" />
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
           {liste.map((x) => (
             <Card key={x.id}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>{x.date ? fmtDate(x.date) : "Date à définir"}{x.destination ? ` · ${x.destination}` : ""}</span>
+                <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>{x.cat ? x.cat + " · " : ""}{x.date ? fmtDate(x.date) : "Date à définir"}{x.destination ? ` · ${x.destination}` : ""}</span>
                 {x.statut === "acceptee" ? <Pastille bg="#E2F4E9" color={C.vert}>Acceptée</Pastille>
                   : x.statut === "refusee" ? <Pastille bg="#FBE3E3" color={C.rouge}>Refusée</Pastille>
-                    : <Pastille bg={C.jaune} color={C.bleuNuit}>En attente</Pastille>}
+                    : <Pastille bg={C.jaune} color={C.bleuNuit}>{peutValider ? "En attente" : "En traitement"}</Pastille>}
               </div>
               <div style={{ fontWeight: 800 }}>{resumeTransport(x)}</div>
+              {x.demandeur ? <div style={{ fontSize: 12, color: C.gris, marginTop: 2 }}>Demandé par {x.demandeur}</div> : null}
               {x.note ? <div style={{ fontSize: 13, color: C.gris, marginTop: 3 }}>{x.note}</div> : null}
               {x.statut === "refusee" && x.cause ? <div style={{ fontSize: 13, color: C.rouge, marginTop: 4 }}>Cause : {x.cause}</div> : null}
               <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
-                {x.statut === "en_attente" && (
+                {peutValider && x.statut === "en_attente" && (
                   <>
-                    <Btn variant="accent" size="sm" onClick={() => repondre(x, true)}><Check size={15} /> Accepter</Btn>
+                    <Btn variant="accent" size="sm" onClick={() => onValiderDem && onValiderDem(x)}><Check size={15} /> Accepter</Btn>
                     <Btn variant="danger" size="sm" onClick={() => { setRefus(x); setCause(""); }}><X size={15} /> Refuser</Btn>
                   </>
                 )}
-                <Trash2 size={16} color={C.gris} style={{ cursor: "pointer", marginLeft: "auto" }} onClick={() => supprimer(x.id)} />
+                {(peutValider || x.demandeur === moi) && <Trash2 size={16} color={C.gris} style={{ cursor: "pointer", marginLeft: "auto" }} onClick={() => supprimer(x.id)} />}
               </div>
             </Card>
           ))}
@@ -404,8 +401,8 @@ function Transports({ db, mutate, cat, encadrement, majEncadrement, onClose }) {
 
       {refus && (
         <Modal title="Refuser la demande" onClose={() => setRefus(null)}
-          footer={<Btn variant="danger" full disabled={!cause.trim()} onClick={() => repondre(refus, false, cause.trim())}><X size={16} /> Confirmer le refus</Btn>}>
-          <div style={{ fontSize: 13, color: C.gris, marginBottom: 10 }}>Indique la cause du refus.</div>
+          footer={<Btn variant="danger" full disabled={!cause.trim()} onClick={() => { onRefuserDem && onRefuserDem(refus, cause.trim()); setRefus(null); setCause(""); }}><X size={16} /> Confirmer le refus</Btn>}>
+          <div style={{ fontSize: 13, color: C.gris, marginBottom: 10 }}>Indique la cause du refus. L'éducateur la recevra avec la réponse.</div>
           <Field label="Cause du refus">
             <Inp value={cause} onChange={(e) => setCause(e.target.value)} placeholder="Minibus indisponible, déjà réservé..." />
           </Field>
@@ -1305,6 +1302,77 @@ async function savePlanningClub(planning) {
   try { const u = await sb.auth.getUser(); userId = (u && u.data && u.data.user) ? u.data.user.id : null; } catch (e) {}
   await saveCat(CAT_PLANNING, { planning }, userId);
 }
+// Demandes de transport COMMUNES à tout le club (même circuit que le planning : demande, validation, accusé)
+const CAT_TRANSPORTS = "__TRANSPORTS__";
+async function loadTransportsClub() {
+  const sb = await getSupabase();
+  const { data, error } = await sb.from("categorie_data").select("data").eq("categorie", CAT_TRANSPORTS).maybeSingle();
+  if (error) throw error;
+  return (data && data.data && data.data.store) ? data.data.store : null;
+}
+async function saveTransportsClub(store) {
+  const sb = await getSupabase();
+  let userId = null;
+  try { const u = await sb.auth.getUser(); userId = (u && u.data && u.data.user) ? u.data.user.id : null; } catch (e) {}
+  await saveCat(CAT_TRANSPORTS, { store }, userId);
+}
+function useTransportsClub(demo, db, mutate, cats) {
+  const [remote, setRemote] = useState(null);
+  const faitRef = useRef(false);
+  const dernierSaveRef = useRef(0);
+  useEffect(() => {
+    if (demo || faitRef.current) return;
+    if (!cats || !cats.length) return;
+    faitRef.current = true;
+    let annule = false;
+    (async () => {
+      try {
+        let st = await loadTransportsClub();
+        let doitSauver = false;
+        if (!st) {
+          // Première ouverture : on récupère les demandes de transport déjà saisies dans chaque catégorie et on les regroupe.
+          let demandes = [];
+          try {
+            const toutesCats = CATEGORIES.map((c) => c.id);
+            const res = await Promise.all(toutesCats.map((c) => loadCat(c).then((d) => (d && d.transports) || []).catch(() => [])));
+            res.forEach((arr) => { (arr || []).forEach((t) => { if (t && t.id) demandes.push({ demandeur: "", ...t }); }); });
+          } catch (e) {}
+          st = { demandes };
+          doitSauver = true;
+        }
+        if (!st.demandes) st.demandes = [];
+        if (doitSauver) { try { await saveTransportsClub(st); } catch (e) {} }
+        if (!annule) setRemote(st);
+      } catch (e) { if (!annule) setRemote({ demandes: [] }); }
+    })();
+    return () => { annule = true; };
+  }, [demo, cats]);
+  const rafraichir = useCallback(async () => {
+    if (demo) return;
+    if (Date.now() - dernierSaveRef.current < 4000) return;
+    try { const st = await loadTransportsClub(); if (st) { if (!st.demandes) st.demandes = []; setRemote(st); } } catch (e) {}
+  }, [demo]);
+  useEffect(() => {
+    if (demo) return;
+    const id = setInterval(rafraichir, 15000);
+    const onVisible = () => { if (document.visibilityState === "visible") rafraichir(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", rafraichir);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", rafraichir); };
+  }, [demo, rafraichir]);
+  const store = demo ? { demandes: (db && db.transports) || [] } : remote;
+  const maj = (fn) => {
+    if (demo) { mutate((d) => { const s = fn({ demandes: d.transports || [] }); d.transports = s.demandes || []; return d; }); return; }
+    setRemote((prev) => {
+      const base = prev ? JSON.parse(JSON.stringify(prev)) : { demandes: [] };
+      const next = fn(base);
+      dernierSaveRef.current = Date.now();
+      saveTransportsClub(next).catch(() => {});
+      return next;
+    });
+  };
+  return [store, maj, !demo && remote === null, rafraichir];
+}
 // Regroupe un planning source dans une cible sans écraser une case déjà réservée.
 function fusionnerPlanning(cible, source) {
   cible = cible || { creneaux: null, vestiaires: {}, terrains: {} };
@@ -2190,6 +2258,7 @@ export default function App() {
   const [encadrementClub, majEncadrementClub] = useEncadrementClub(demo, db, mutate);
   const catsPlanning = demo ? CATEGORIES.map((c) => c.id) : ((profil && profil.cats) || []);
   const [planningClub, majPlanningClub, chargementPlanning, erreurPlanning, rafraichirPlanning] = usePlanningClub(demo, db, mutate, catsPlanning);
+  const [transportClub, majTransportClub, chargementTransport, rafraichirTransport] = useTransportsClub(demo, db, mutate, catsPlanning);
   // Demandes de créneaux en attente (réservations posées par un éducateur, en dehors du planning hebdomadaire)
   const demandesPlanning = useMemo(() => {
     const pl = planningClub || {};
@@ -2229,6 +2298,13 @@ export default function App() {
     list.sort((a, b) => (b.luLe || "").localeCompare(a.luLe || ""));
     return list;
   }, [planningClub]);
+  // Demandes de transport en attente (pour la bannière de validation du directeur)
+  const demandesTransport = useMemo(() => {
+    const st = transportClub || {};
+    const list = (st.demandes || []).filter((t) => t && t.statut === "en_attente");
+    list.sort((a, b) => ((a.date || "") + (a.creeLe || "")).localeCompare((b.date || "") + (b.creeLe || "")));
+    return list;
+  }, [transportClub]);
   const pendingRef = useRef(false);
   const saveQueueRef = useRef(Promise.resolve());
   const savingCountRef = useRef(0);
@@ -2451,7 +2527,7 @@ export default function App() {
   const ajouterNotifPlanning = (d, dem, statut, raison) => {
     d.notifs = d.notifs || [];
     d.notifs.push({
-      id: uid(), pour: dem.demandeur || "", statut, raison: raison || "",
+      id: uid(), genre: "creneau", pour: dem.demandeur || "", statut, raison: raison || "",
       typeLieu: dem.type, col: dem.col, date: dem.date, debut: dem.debut, fin: dem.fin || "",
       equipe: dem.equipe || "", activite: dem.activite || "", cat: dem.cat || "", creeLe: new Date().toISOString(),
     });
@@ -2477,13 +2553,32 @@ export default function App() {
     d.notifs = (d.notifs || []).filter((x) => x.id !== n.id);
     d.accuses = d.accuses || [];
     d.accuses.push({
-      id: uid(), demandeur: n.pour || monNom, statut: n.statut, raison: n.raison || "",
+      id: uid(), genre: n.genre || "creneau", demandeur: n.pour || monNom, statut: n.statut, raison: n.raison || "",
       typeLieu: n.typeLieu, col: n.col, date: n.date, debut: n.debut, fin: n.fin || "", cat: n.cat || "",
-      activite: n.activite || "", luLe: new Date().toISOString(),
+      activite: n.activite || "", resume: n.resume || "", destination: n.destination || "", luLe: new Date().toISOString(),
     });
     return d;
   });
   const effacerAccuse = (id) => majPlanningClub((d) => { d.accuses = (d.accuses || []).filter((a) => a.id !== id); return d; });
+  // Transport : validation / refus par le directeur, avec notification à l'éducateur via le même circuit que le planning
+  const notifTransport = (dem, statut, raison) => majPlanningClub((d) => {
+    d.notifs = d.notifs || [];
+    d.notifs.push({
+      id: uid(), genre: "transport", pour: dem.demandeur || "", statut, raison: raison || "",
+      resume: resumeTransport(dem), destination: dem.destination || "", date: dem.date || "", cat: dem.cat || "",
+      creeLe: new Date().toISOString(),
+    });
+    return d;
+  });
+  const validerTransport = (dem) => {
+    majTransportClub((s) => { const x = (s.demandes || []).find((y) => y.id === dem.id); if (x) { x.statut = "acceptee"; x.cause = ""; } return s; });
+    notifTransport(dem, "valide", "");
+  };
+  const refuserTransport = (dem, cause) => {
+    majTransportClub((s) => { const x = (s.demandes || []).find((y) => y.id === dem.id); if (x) { x.statut = "refusee"; x.cause = cause || ""; } return s; });
+    notifTransport(dem, "refus", cause || "");
+  };
+  const rafraichirTout = () => { if (rafraichirPlanning) rafraichirPlanning(); if (rafraichirTransport) rafraichirTransport(); };
   const estMedical = !demo && !!(profil && profil.role === "medical");
   const lectureSeuleCat = !demo && !!(profil && Array.isArray(profil.catsModif) && cat && !profil.catsModif.includes(cat));
   const groupesDispo = GROUPES.filter((g) => CATEGORIES.some((c) => c.groupe === g && cats.includes(c.id)));
@@ -2511,7 +2606,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v7.1
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v7.2
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2585,7 +2680,7 @@ export default function App() {
             Consultation seule sur cette catégorie. Tu peux tout voir, mais la modification est réservée à son responsable.
           </div>
         )}
-        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={peutValider ? accusesClub : []} onEffacerAccuse={effacerAccuse} onRafraichir={rafraichirPlanning} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
+        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={peutValider ? accusesClub : []} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} demo={demo} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} />}
@@ -2641,7 +2736,7 @@ export default function App() {
       {showScores && <ScoresWeekend onClose={() => setShowScores(false)} localDb={demo ? db : null} />}
       {showDemandes && <Demandes demo={demo} db={db} mutate={mutate} cat={cat} session={session} onVu={() => setDemTick((t) => t + 1)} onClose={() => { setDemTick((t) => t + 1); setShowDemandes(false); }} />}
       {showClassement && <Classement cat={cat} db={db} mutate={mutate} onClose={() => setShowClassement(false)} />}
-      {showTransport && <Transports db={db} mutate={mutate} cat={cat} encadrement={encadrementClub} majEncadrement={majEncadrementClub} onClose={() => setShowTransport(false)} />}
+      {showTransport && <Transports store={transportClub} maj={majTransportClub} chargement={chargementTransport} peutValider={peutValider} profil={profil} cat={cat} encadrement={encadrementClub} majEncadrement={majEncadrementClub} onValiderDem={validerTransport} onRefuserDem={refuserTransport} onClose={() => setShowTransport(false)} />}
       {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
       {showPlanning && <Planning planning={planningClub} majPlanning={majPlanningClub} chargement={chargementPlanning} erreur={erreurPlanning} cats={cats} profil={profil} peutValider={peutValider} cat={cat} onClose={() => setShowPlanning(false)} />}
@@ -2859,13 +2954,16 @@ function ScoresWeekend({ onClose, localDb }) {
 /* ============================================================
    Accueil
    ============================================================ */
-function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onBilan, onPlateaux, onReunions, onCalendrier, demResume, demPlanning, onValiderPlanning, onRefuserPlanning, demNotifs, onConfirmerLecture, demAccuses, onEffacerAccuse, onRafraichir, estMedical, monEmail }) {
+function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onBilan, onPlateaux, onReunions, onCalendrier, demResume, demPlanning, onValiderPlanning, onRefuserPlanning, demNotifs, onConfirmerLecture, demAccuses, onEffacerAccuse, demTransport, onValiderTransport, onRefuserTransport, onRafraichir, estMedical, monEmail }) {
   const lstDemPlanning = demPlanning || [];
   const lstNotifs = demNotifs || [];
   const lstAccuses = demAccuses || [];
+  const lstDemTransport = demTransport || [];
   const [refusCle, setRefusCle] = useState(null);
   const [raisonRefus, setRaisonRefus] = useState("");
   const [confirmLecture, setConfirmLecture] = useState(null);
+  const [refusTrCle, setRefusTrCle] = useState(null);
+  const [raisonTr, setRaisonTr] = useState("");
   const [rafraichissement, setRafraichissement] = useState(false);
   const lancerRafraichir = () => { if (!onRafraichir) return; setRafraichissement(true); Promise.resolve(onRafraichir()).finally(() => setTimeout(() => setRafraichissement(false), 600)); };
   const players = db.players.filter((p) => p.cat === cat);
@@ -2902,7 +3000,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
     { titre: "Scores du week-end", sous: "Résultats de toutes les catégories", icon: Trophy, action: onScores, accent: true },
     { titre: "Demandes de joueurs", sous: "Demander un joueur d'une autre catégorie", icon: ArrowRightLeft, action: onDemandes, badge: alerteDemRecues + alerteDemReponses },
     { titre: "Classement du championnat", sous: "District, Ligue, National et Ligue 2 en direct", icon: ListOrdered, action: onClassement },
-    { titre: "Demande de transport", sous: "Minibus, bus en location ou voitures, à l'avance", icon: Bus, action: onTransport },
+    { titre: "Demande de transport", sous: "Minibus, bus en location ou voitures, à l'avance", icon: Bus, action: onTransport, badge: lstDemTransport.length },
     { titre: "Organisation des matchs", sous: "Terrain, vestiaires, transport et encadrement", icon: MapPin, action: onOrganisation, badge: nbOrga },
     { titre: "Programme de la semaine", sous: "Récapitulatif des matchs à imprimer", icon: ClipboardList, action: onProgramme },
     { titre: "Documents administratifs", sous: "Licences et contrôle médical à surveiller", icon: ShieldAlert, action: onDocuments, badge: alerteDocs },
@@ -2947,18 +3045,25 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
         <div style={{ display: "grid", gap: 8, marginBottom: 18 }}>
           {lstNotifs.map((n) => {
             const valide = n.statut === "valide";
+            const estTransport = n.genre === "transport";
             const label = n.typeLieu === "vestiaires" ? "vestiaire" : "terrain";
             const horaire = n.fin && n.fin !== n.debut ? `${n.debut} à ${n.fin}` : n.debut;
+            const titre = estTransport
+              ? (valide ? "Votre demande de transport a été validée" : "Votre demande de transport a été refusée")
+              : (valide ? "Votre demande de créneau a été validée" : "Votre demande de créneau a été refusée");
+            const detail = estTransport
+              ? `${n.cat ? n.cat + " · " : ""}${n.resume || "Transport"}${n.destination ? " · " + n.destination : ""}${n.date ? " · le " + jjmm(n.date) : ""}`
+              : `${n.cat ? n.cat + " · " : ""}${label} ${n.col} · le ${jjmm(n.date)} · ${horaire}`;
             return (
               <div key={n.id} style={{ background: valide ? "#E2F4E9" : "#FBE3E3", border: `1px solid ${valide ? "#BFE3CD" : "#F0C4C4"}`, borderRadius: 14, padding: "12px 14px" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
                   {valide ? <Check size={17} color={C.vert} style={{ flex: "0 0 auto", marginTop: 1 }} /> : <ShieldAlert size={17} color={C.rouge} style={{ flex: "0 0 auto", marginTop: 1 }} />}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 800, fontSize: 13.5, color: valide ? "#2F6D43" : C.rouge }}>
-                      {valide ? "Votre demande de créneau a été validée" : "Votre demande de créneau a été refusée"}
+                      {titre}
                     </div>
                     <div style={{ fontSize: 12.5, color: C.encre, marginTop: 3 }}>
-                      {n.cat ? n.cat + " · " : ""}{label} {n.col} · le {jjmm(n.date)} · {horaire}
+                      {detail}
                     </div>
                     {!valide && n.raison && (
                       <div style={{ fontSize: 12.5, color: C.rouge, marginTop: 4, fontWeight: 700 }}>Motif : {n.raison}</div>
@@ -2983,6 +3088,43 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
         </div>
       )}
 
+      {lstDemTransport.length > 0 && (
+        <div style={{ background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 14, padding: "12px 14px", marginBottom: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: C.bleu, fontSize: 13.5, marginBottom: 8 }}>
+            <Bus size={16} /> {lstDemTransport.length} demande{lstDemTransport.length > 1 ? "s" : ""} de transport à valider
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {lstDemTransport.map((dm) => {
+              const enRefus = refusTrCle === dm.id;
+              return (
+                <div key={dm.id} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: C.encre }}>
+                    {dm.cat ? dm.cat + " · " : ""}{resumeTransport(dm)}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: C.gris, marginTop: 2 }}>
+                    {dm.date ? "Le " + jjmm(dm.date) : "Date à définir"}{dm.destination ? " · " + dm.destination : ""}{dm.note ? " · " + dm.note : ""}{dm.demandeur ? " · demandé par " + dm.demandeur : ""}
+                  </div>
+                  {!enRefus ? (
+                    <div style={{ display: "flex", gap: 8, marginTop: 9 }}>
+                      <button onClick={() => onValiderTransport && onValiderTransport(dm)} style={{ flex: 1, border: "none", background: C.vert, color: "#fff", borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Check size={15} /> Valider</button>
+                      <button onClick={() => { setRefusTrCle(dm.id); setRaisonTr(""); }} style={{ flex: 1, border: `1px solid ${C.rouge}`, background: "#fff", color: C.rouge, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><X size={15} /> Refuser</button>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 9 }}>
+                      <input value={raisonTr} onChange={(e) => setRaisonTr(e.target.value)} placeholder="Motif du refus (ex : minibus indisponible)" autoFocus style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${C.grisClair}`, borderRadius: 9, padding: "9px 11px", fontSize: 13, color: C.encre, outline: "none" }} />
+                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                        <button onClick={() => { onRefuserTransport && onRefuserTransport(dm, raisonTr.trim()); setRefusTrCle(null); setRaisonTr(""); }} style={{ flex: 1, border: "none", background: C.rouge, color: "#fff", borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><X size={15} /> Confirmer le refus</button>
+                        <button onClick={() => { setRefusTrCle(null); setRaisonTr(""); }} style={{ flex: "0 0 auto", border: `1px solid ${C.grisClair}`, background: "#fff", color: C.gris, borderRadius: 9, padding: "8px 14px", cursor: "pointer", fontSize: 13, fontWeight: 800 }}>Annuler</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {lstAccuses.length > 0 && (
         <div style={{ background: "#F1F5F9", border: `1px solid ${C.grisClair}`, borderRadius: 14, padding: "12px 14px", marginBottom: 18 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: C.bleu, fontSize: 13.5, marginBottom: 8 }}>
@@ -2991,10 +3133,14 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
           <div style={{ display: "grid", gap: 7 }}>
             {lstAccuses.map((a) => {
               const valide = a.statut === "valide";
+              const estTransport = a.genre === "transport";
               const label = a.typeLieu === "vestiaires" ? "vestiaire" : "terrain";
               const horaire = a.fin && a.fin !== a.debut ? `${a.debut} à ${a.fin}` : a.debut;
               const lu = a.luLe ? new Date(a.luLe) : null;
               const luTxt = lu ? `${pad(lu.getDate())}/${pad(lu.getMonth() + 1)} à ${pad(lu.getHours())}h${pad(lu.getMinutes())}` : "";
+              const detail = estTransport
+                ? `${a.cat ? a.cat + " · " : ""}transport${a.resume ? " · " + a.resume : ""}${a.destination ? " · " + a.destination : ""}${a.date ? " · le " + jjmm(a.date) : ""}${!valide && a.raison ? " · motif : " + a.raison : ""}`
+                : `${a.cat ? a.cat + " · " : ""}${label} ${a.col} · le ${jjmm(a.date)} · ${horaire}${!valide && a.raison ? " · motif : " + a.raison : ""}`;
               return (
                 <div key={a.id} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "9px 11px", display: "flex", alignItems: "flex-start", gap: 9 }}>
                   <Check size={15} color={C.vert} style={{ flex: "0 0 auto", marginTop: 2 }} />
@@ -3003,7 +3149,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
                       {a.demandeur || "Éducateur"} a bien vu {valide ? "la validation" : "le refus"}
                     </div>
                     <div style={{ fontSize: 12, color: C.gris, marginTop: 2 }}>
-                      {a.cat ? a.cat + " · " : ""}{label} {a.col} · le {jjmm(a.date)} · {horaire}{!valide && a.raison ? " · motif : " + a.raison : ""}
+                      {detail}
                     </div>
                     <div style={{ fontSize: 11.5, color: C.vert, marginTop: 3, fontWeight: 700 }}>Lu le {luTxt}</div>
                   </div>
