@@ -2399,7 +2399,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v5.8
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v6.1
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -7878,12 +7878,14 @@ function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValid
   const [mvJour, setMvJour] = useState(Math.max(0, ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"].indexOf((jourNom || "").toLowerCase())));
   const ajouter = (nom) => { const n = (nom || "").trim(); if (n && !occupants.includes(n)) setOccupants([...occupants, n]); };
   const retirer = (nom) => setOccupants(occupants.filter((x) => x !== nom));
+  const [moveErr, setMoveErr] = useState(null);
   const faireDeplacer = () => {
     if (!onDeplacer) return;
     const debut = (mvDebut || "").replace(":", "h");
     if (!debut) return;
-    if (estHebdo) onDeplacer({ jour: +mvJour, debut, col: mvCol });
-    else onDeplacer({ date: mvDate || dateCourante, debut, col: mvCol });
+    const res = estHebdo ? onDeplacer({ jour: +mvJour, debut, col: mvCol }) : onDeplacer({ date: mvDate || dateCourante, debut, col: mvCol });
+    if (res === false) setMoveErr("Ce terrain est déjà réservé sur cet horaire. Choisis un autre créneau ou un autre terrain.");
+    else setMoveErr(null);
   };
   const [delOpen, setDelOpen] = useState(false);
   const [trDe, setTrDe] = useState((actuel && actuel.debut ? actuel.debut : creneau).replace("h", ":"));
@@ -7894,6 +7896,13 @@ function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValid
     if (!de || !a2) return;
     onSupprimerTranche(de, a2);
   };
+  // Verrouillage du créneau (réservé au responsable).
+  const [verrouC, setVerrouC] = useState(!!(actuel && actuel.verrou));
+  const [mdpC, setMdpC] = useState((actuel && actuel.mdp) || "");
+  const protege = !!(actuel && actuel.verrou && actuel.mdp);
+  const [deverrouille, setDeverrouille] = useState(false);
+  const [mdpSaisi, setMdpSaisi] = useState("");
+  const [mdpErr, setMdpErr] = useState(false);
 
   const descrStatut = estHebdo
     ? "Séance hebdomadaire récurrente, verrouillée."
@@ -7914,11 +7923,31 @@ function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValid
             {actuel.cat && <div style={{ fontSize: 12, color: C.gris, marginTop: 3 }}>Catégorie : {actuel.cat}{actuel.demandeur ? ` · ${actuel.demandeur}` : ""}</div>}
           </div>
         )}
-        <div style={{ fontSize: 12.5, color: C.encre, background: "#EEF2F8", borderRadius: 11, padding: 12, lineHeight: 1.5 }}>
-          {estHebdo ? "C'est une séance hebdomadaire du club. Seul le responsable peut la modifier ou la supprimer."
+        <div style={{ fontSize: 12.5, color: C.encre, background: "#EEF2F8", borderRadius: 11, padding: 12, lineHeight: 1.5, display: "flex", alignItems: "flex-start", gap: 7 }}>
+          {actuel && actuel.verrou && <Lock size={15} color={C.rouge} style={{ flex: "0 0 auto", marginTop: 1 }} />}
+          <span>{actuel && actuel.verrou ? "Ce créneau a été verrouillé par le responsable. Il ne peut pas être déplacé ni modifié par les éducateurs."
+            : estHebdo ? "C'est une séance hebdomadaire du club. Seul le responsable peut la modifier ou la supprimer."
             : (actuel && actuel.statut === "valide") ? "Cette réservation est validée. Seul le responsable peut la modifier ou la supprimer."
-            : `Cette demande a été faite par une autre catégorie${actuel && actuel.cat ? ` (${actuel.cat})` : ""}. Tu ne peux pas la modifier.`}
+            : `Cette demande a été faite par une autre catégorie${actuel && actuel.cat ? ` (${actuel.cat})` : ""}. Tu ne peux pas la modifier.`}</span>
         </div>
+      </Modal>
+    );
+  }
+
+  // Responsable ouvrant un créneau protégé par mot de passe : il faut le saisir pour pouvoir modifier.
+  if (protege && peutValider && !deverrouille) {
+    return (
+      <Modal title={`${typeLabel} ${colonne}`} onClose={onClose}>
+        {actuel && (
+          <div style={{ background: "#E2F4E9", borderRadius: 11, padding: 12, marginBottom: 12 }}>
+            <div style={{ fontWeight: 800, fontSize: 14 }}>{actuel.equipe}</div>
+            {actuel.debut && actuel.fin && <div style={{ fontSize: 12, color: C.gris, marginTop: 2 }}>{actuel.debut} - {actuel.fin}</div>}
+            <div style={{ fontSize: 12.5, color: C.rouge, fontWeight: 700, marginTop: 4, display: "inline-flex", alignItems: "center", gap: 5 }}><Lock size={13} /> Créneau verrouillé par mot de passe</div>
+          </div>
+        )}
+        <Field label="Mot de passe du créneau"><Inp type="password" value={mdpSaisi} onChange={(e) => { setMdpSaisi(e.target.value); setMdpErr(false); }} placeholder="Saisir le mot de passe pour modifier" /></Field>
+        {mdpErr && <div style={{ fontSize: 12, color: C.rouge, fontWeight: 700, marginBottom: 10 }}>Mot de passe incorrect.</div>}
+        <Btn variant="accent" full disabled={!mdpSaisi} onClick={() => { if (mdpSaisi === actuel.mdp) { setDeverrouille(true); setMdpErr(false); } else setMdpErr(true); }}><Lock size={16} /> Déverrouiller pour modifier</Btn>
       </Modal>
     );
   }
@@ -7927,7 +7956,7 @@ function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValid
   return (
     <Modal title={`${typeLabel} ${colonne}`} onClose={onClose}
       footer={
-        <Btn variant="accent" full disabled={occupants.length === 0} onClick={() => onSave(occupants.join(" + "), activite, fin, recurrent)}><Save size={16} /> {boutonLabel}</Btn>
+        <Btn variant="accent" full disabled={occupants.length === 0} onClick={() => onSave(occupants.join(" + "), activite, fin, recurrent, verrouC, mdpC)}><Save size={16} /> {boutonLabel}</Btn>
       }>
       <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12 }}>Créneau de {creneau}. Tu peux mettre plusieurs équipes qui se partagent ce {typeLabel.toLowerCase()}, par exemple U14 et U15, ou ajouter le district. {peutValider ? "En tant que responsable, ton attribution est directement validée." : "Ta demande sera affichée « en cours de traitement » jusqu'à validation par le responsable."}</div>
 
@@ -7943,6 +7972,22 @@ function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValid
             ))}
           </div>
           <div style={{ fontSize: 11, color: C.gris, marginTop: 5, lineHeight: 1.4 }}>{recurrent ? "La séance réapparaîtra automatiquement chaque semaine ce jour, verrouillée pour les coachs." : "Réservation pour cette date uniquement."}</div>
+        </div>
+      )}
+
+      {peutValider && !recurrent && (
+        <div style={{ marginBottom: 14, border: `1px solid ${verrouC ? "#F0C4C4" : C.grisClair}`, borderRadius: 11, padding: 11, background: verrouC ? "#FBE3E3" : "#fff" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+            <input type="checkbox" checked={verrouC} onChange={(e) => setVerrouC(e.target.checked)} style={{ width: 18, height: 18, flex: "0 0 auto" }} />
+            <span style={{ fontWeight: 800, fontSize: 13, color: verrouC ? C.rouge : C.encre, display: "inline-flex", alignItems: "center", gap: 6 }}><Lock size={15} /> Verrouiller ce créneau</span>
+          </label>
+          <div style={{ fontSize: 11, color: C.gris, marginTop: 5, lineHeight: 1.4 }}>Les éducateurs ne pourront ni le déplacer ni le modifier. Seul le responsable pourra le changer.</div>
+          {verrouC && (
+            <div style={{ marginTop: 10 }}>
+              <Field label="Mot de passe (optionnel)"><Inp type="text" value={mdpC} onChange={(e) => setMdpC(e.target.value)} placeholder="Laisse vide pour un simple verrou" /></Field>
+              <div style={{ fontSize: 11, color: C.gris, lineHeight: 1.4 }}>Si tu mets un mot de passe, il faudra le saisir (même responsable) pour déplacer ou modifier ce créneau.</div>
+            </div>
+          )}
         </div>
       )}
 
@@ -7974,6 +8019,7 @@ function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValid
                 <Field label={"Nouveau " + typeLabel.toLowerCase()}><Sel value={mvCol} onChange={(e) => setMvCol(e.target.value)}>{(colonnes || []).map((t) => <option key={t} value={t}>{t}</option>)}</Sel></Field>
                 <Field label="Heure de début"><Inp type="time" value={mvDebut} onChange={(e) => setMvDebut(e.target.value)} /></Field>
               </div>
+              {moveErr && <div style={{ fontSize: 12, color: C.rouge, fontWeight: 700, background: "#FBE3E3", border: "1px solid #F0C4C4", borderRadius: 9, padding: "8px 10px", marginBottom: 10, display: "flex", alignItems: "flex-start", gap: 6 }}><ShieldAlert size={14} style={{ flex: "0 0 auto", marginTop: 1 }} /><span>{moveErr}</span></div>}
               <Btn variant="accent" full disabled={!mvDebut || !mvCol} onClick={faireDeplacer}><ArrowRightLeft size={16} /> Déplacer ici</Btn>
             </div>
           )}
@@ -8172,7 +8218,7 @@ function exporterPlanningSemaineGrillePDF(jsPDF, sections, label, joursDates, ty
     y += 16;
     sec.lignes.forEach((l, ri) => {
       const maxS = Math.max(1, ...joursDates.map((_, i) => (l.parJour[i] || []).length));
-      const rowH = Math.max(28, maxS * 20 + 8);
+      const rowH = Math.max(34, maxS * 27 + 8);
       if (y + rowH > H - 22) { doc.addPage(); enTete(); y = 58; y = ligneJours(y); }
       const bg = ri % 2 ? [247, 249, 252] : blanc;
       sf(bg); doc.rect(x0, y, labW, rowH, "F"); sd(trait); doc.rect(x0, y, labW, rowH);
@@ -8184,10 +8230,11 @@ function exporterPlanningSemaineGrillePDF(jsPDF, sections, label, joursDates, ty
         const sess = l.parJour[i] || [];
         let yy = y + 4;
         sess.forEach((s) => {
-          sf(terBg[s.ter] || [237, 242, 248]); doc.roundedRect(x + 3, yy, colW - 6, 17, 3, 3, "F");
-          sc(terFg[s.ter] || bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.text(terShort(s.ter), x + colW / 2, yy + 7, { align: "center" });
-          sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(6.8); doc.text(s.horaire, x + colW / 2, yy + 14, { align: "center" });
-          yy += 20;
+          sf(terBg[s.ter] || [237, 242, 248]); doc.roundedRect(x + 3, yy, colW - 6, 24, 3, 3, "F");
+          sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(7.8); doc.text(doc.splitTextToSize(l.cat, colW - 10)[0], x + colW / 2, yy + 8, { align: "center" });
+          sc(terFg[s.ter] || bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(6.8); doc.text(terShort(s.ter), x + colW / 2, yy + 16, { align: "center" });
+          sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.text(s.horaire, x + colW / 2, yy + 22.5, { align: "center" });
+          yy += 27;
         });
       });
       y += rowH;
@@ -8385,8 +8432,9 @@ function PlanningSemaine({ planning, cat, type, onClose }) {
                             <td key={dstr} style={{ borderTop: `1px solid ${C.grisClair}`, borderLeft: `1px solid ${C.grisClair}`, padding: 4, verticalAlign: "middle", textAlign: "center" }}>
                               {sess.map((s, k) => (
                                 <div key={k} style={{ background: bgTer(s.ter), borderRadius: 7, padding: "5px 4px", marginTop: k ? 4 : 0 }}>
-                                  <div style={{ fontSize: 10.5, fontWeight: 800, color: colTer(s.ter) }}>{terShortN(s.ter)}</div>
-                                  {s.horaire && <div style={{ fontSize: 10, color: C.gris, fontWeight: 600, marginTop: 1 }}>{s.horaire}</div>}
+                                  <div style={{ fontSize: 11, fontWeight: 800, color: C.encre }}>{l.cat}</div>
+                                  <div style={{ fontSize: 9.5, fontWeight: 700, color: colTer(s.ter), marginTop: 1 }}>{terShortN(s.ter)}</div>
+                                  {s.horaire && <div style={{ fontSize: 9.5, color: C.gris, fontWeight: 600 }}>{s.horaire}</div>}
                                 </div>
                               ))}
                             </td>
@@ -8418,6 +8466,7 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
   const [scelleInfo, setScelleInfo] = useState(null);
   const [showVacances, setShowVacances] = useState(false);
   const [dragSrc, setDragSrc] = useState(null);
+  const [conflitMsg, setConflitMsg] = useState(null);
   const [nvVacNom, setNvVacNom] = useState("");
   const [nvVacDebut, setNvVacDebut] = useState("");
   const [nvVacFin, setNvVacFin] = useState("");
@@ -8451,6 +8500,7 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
   // Une case est verrouillée pour un coach si : séance hebdo, demande déjà validée, ou demande en attente d'une AUTRE catégorie.
   const verrouille = (c) => {
     if (!c) return false;
+    if (c.verrou && !peutValider) return true; // créneau verrouillé par le responsable : interdit aux éducateurs
     if (peutValider) return false;
     if (c.estHebdo) return true;
     if (c.statut === "valide") return true;
@@ -8466,11 +8516,12 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
     return steps;
   };
   // Glisser-déposer (ordinateur) : attrape une réservation et la relâche sur une autre case pour la déplacer.
+  const bloqueDrag = (c) => verrouille(c) || !!(c && c.verrou && c.mdp); // mot de passe : déplacement uniquement via la fenêtre
   const propsDrag = (c, dstr, cr, col) => ({
-    draggable: !!c && !verrouille(c),
-    onDragStart: (e) => { if (!c || verrouille(c)) { e.preventDefault(); return; } setDragSrc({ a: c, date: dstr, jour: jourSem(dstr), cr: (c.debut || cr), col }); try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", "1"); } catch (er) {} },
+    draggable: !!c && !bloqueDrag(c),
+    onDragStart: (e) => { if (!c || bloqueDrag(c)) { e.preventDefault(); return; } setDragSrc({ a: c, date: dstr, jour: jourSem(dstr), cr: (c.debut || cr), col }); try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", "1"); } catch (er) {} },
     onDragOver: (e) => { if (dragSrc) e.preventDefault(); },
-    onDrop: (e) => { e.preventDefault(); if (!dragSrc) return; const dc = caseA(dstr, cr, col); if (dc && verrouille(dc)) { setDragSrc(null); return; } deplacerReservation(dragSrc.a, { date: dragSrc.date, jour: dragSrc.jour, cr: dragSrc.cr, col: dragSrc.col }, { date: dstr, jour: jourSem(dstr), debut: cr, col }); setDragSrc(null); },
+    onDrop: (e) => { e.preventDefault(); if (!dragSrc) return; const dc = caseA(dstr, cr, col); if (dc && verrouille(dc)) { setDragSrc(null); return; } const src = { date: dragSrc.date, jour: dragSrc.jour, cr: dragSrc.cr, col: dragSrc.col }; const dst = { date: dstr, jour: jourSem(dstr), debut: cr, col }; if (conflitDeplacement(dragSrc.a, src, dst)) { setConflitMsg("Déplacement impossible : ce terrain est déjà réservé sur cet horaire. Choisis un autre créneau."); setDragSrc(null); return; } deplacerReservation(dragSrc.a, src, dst); setDragSrc(null); },
   });
   const joursSem = useMemo(() => {
     const base = new Date(date + "T00:00:00");
@@ -8538,6 +8589,29 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
     });
   }
   // Déplace une réservation (ponctuelle ou hebdo) vers une nouvelle case, en conservant sa durée. Opération atomique.
+  // Renvoie true si la destination (même terrain, mêmes horaires) est déjà occupée par une AUTRE réservation.
+  function conflitDeplacement(a, src, dest) {
+    if (!a) return false;
+    const toMin = (s) => { const p = String(s || "").replace("h", ":").split(":"); return (+p[0]) * 60 + (+(p[1] || 0)); };
+    const toLabel = (m) => `${pad(Math.floor(m / 60))}h${pad(m % 60)}`;
+    const dureeMin = (a.debut && a.fin) ? Math.max(30, toMin(a.fin) - toMin(a.debut)) : 30;
+    const destFin = toLabel(toMin(dest.debut) + dureeMin);
+    const dstSteps = creneauxEntre(dest.debut, destFin);
+    const srcSteps = creneauxEntre(a.debut || src.cr, a.fin);
+    for (const cr of dstSteps) {
+      if (a.estHebdo) {
+        const estSrc = (dest.jour === src.jour && dest.col === src.col && srcSteps.includes(cr));
+        if (!estSrc && pl.hebdo && pl.hebdo[type] && pl.hebdo[type][`${dest.jour}__${cr}__${dest.col}`]) return true;
+      } else {
+        const estSrc = (dest.date === src.date && dest.col === src.col && srcSteps.includes(cr));
+        if (estSrc) continue;
+        if (pl[type] && pl[type][dest.date] && pl[type][dest.date][`${cr}__${dest.col}`]) return true;
+        const jr = jourSem(dest.date);
+        if (pl.hebdo && pl.hebdo[type] && pl.hebdo[type][`${jr}__${cr}__${dest.col}`]) return true;
+      }
+    }
+    return false;
+  }
   function deplacerReservation(a, src, dest) {
     if (!a) return;
     const toMin = (s) => { const p = String(s || "").replace("h", ":").split(":"); return (+p[0]) * 60 + (+(p[1] || 0)); };
@@ -8553,13 +8627,13 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
       if (a.estHebdo) {
         d.hebdo = d.hebdo || { vestiaires: {}, terrains: {} }; d.hebdo[type] = d.hebdo[type] || {};
         srcSteps.forEach((cr) => delete d.hebdo[type][`${src.jour}__${cr}__${src.col}`]);
-        dstSteps.forEach((cr) => { d.hebdo[type][`${dest.jour}__${cr}__${dest.col}`] = { equipe: a.equipe, activite: a.activite, cat: a.cat, debut: dest.debut, fin: destFin }; });
+        dstSteps.forEach((cr) => { d.hebdo[type][`${dest.jour}__${cr}__${dest.col}`] = { equipe: a.equipe, activite: a.activite, cat: a.cat, verrou: a.verrou, mdp: a.mdp, debut: dest.debut, fin: destFin }; });
       } else {
         d[type] = d[type] || {};
         d[type][src.date] = d[type][src.date] || {};
         srcSteps.forEach((cr) => delete d[type][src.date][`${cr}__${src.col}`]);
         d[type][dest.date] = d[type][dest.date] || {};
-        dstSteps.forEach((cr) => { d[type][dest.date][`${cr}__${dest.col}`] = { equipe: a.equipe, activite: a.activite, statut: a.statut, cat: a.cat, demandeur: a.demandeur, debut: dest.debut, fin: destFin }; });
+        dstSteps.forEach((cr) => { d[type][dest.date][`${cr}__${dest.col}`] = { equipe: a.equipe, activite: a.activite, statut: a.statut, cat: a.cat, demandeur: a.demandeur, verrou: a.verrou, mdp: a.mdp, debut: dest.debut, fin: destFin }; });
       }
       return d;
     });
@@ -8582,7 +8656,7 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
       occ.forEach((cr) => delete store[key(cr)]);
       segs.forEach((seg) => {
         const deb = seg[0], finCell = seg[seg.length - 1];
-        seg.forEach((cr) => { store[key(cr)] = ctx.estHebdo ? { equipe: a.equipe, activite: a.activite, cat: a.cat, debut: deb, fin: finCell } : { equipe: a.equipe, activite: a.activite, statut: a.statut, cat: a.cat, demandeur: a.demandeur, debut: deb, fin: finCell }; });
+        seg.forEach((cr) => { store[key(cr)] = ctx.estHebdo ? { equipe: a.equipe, activite: a.activite, cat: a.cat, verrou: a.verrou, mdp: a.mdp, debut: deb, fin: finCell } : { equipe: a.equipe, activite: a.activite, statut: a.statut, cat: a.cat, demandeur: a.demandeur, verrou: a.verrou, mdp: a.mdp, debut: deb, fin: finCell }; });
       });
       return d;
     });
@@ -8680,7 +8754,7 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
   // Contenu d'une case réservée (équipe, horaires, statut).
   const contenuCase = (c) => (
     <>
-      <span style={{ fontSize: 12, fontWeight: 800, color: c ? C.encre : C.grisClair, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c ? c.equipe : "+"}</span>
+      <span style={{ fontSize: 12, fontWeight: 800, color: c ? C.encre : C.grisClair, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 3 }}>{c && c.verrou && <Lock size={10} color={C.rouge} />}{c ? c.equipe : "+"}</span>
       {c && c.debut && c.fin && <span style={{ fontSize: 9, fontWeight: 700, color: C.gris }}>{c.debut} - {c.fin}</span>}
       {c && c.estHebdo ? (
         <span style={{ fontSize: 9, fontWeight: 800, color: C.vert, display: "inline-flex", alignItems: "center", gap: 3 }}><Lock size={9} /> Hebdo{c.activite ? (c.activite === "match" ? " · Match" : " · Entraîn.") : ""}</span>
@@ -8757,6 +8831,7 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
       <div style={{ flex: 1, overflow: "auto", padding: 12 }}>
         {chargement && <div style={{ fontSize: 12.5, color: C.gris, fontWeight: 700, marginBottom: 10, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "8px 11px" }}>Chargement du planning commun du club...</div>}
         {scelleInfo && <div style={{ fontSize: 12.5, color: C.vert, fontWeight: 700, marginBottom: 10, background: "#E2F4E9", border: "1px solid #BFE3CD", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "flex-start", gap: 8 }}><Lock size={15} style={{ flex: "0 0 auto", marginTop: 1 }} /><span style={{ flex: 1 }}>{scelleInfo}</span><X size={15} color={C.gris} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setScelleInfo(null)} /></div>}
+        {conflitMsg && <div style={{ fontSize: 12.5, color: C.rouge, fontWeight: 700, marginBottom: 10, background: "#FBE3E3", border: "1px solid #F0C4C4", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "flex-start", gap: 8 }}><ShieldAlert size={15} style={{ flex: "0 0 auto", marginTop: 1 }} /><span style={{ flex: 1 }}>{conflitMsg}</span><X size={15} color={C.gris} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setConflitMsg(null)} /></div>}
         {(() => {
           const v = vue === "jour" ? estVacances(date) : (joursSem.map(estVacances).find(Boolean) || null);
           if (!v) return null;
@@ -8839,16 +8914,20 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
             verrou={verrou} monCat={cat} jourNom={jourNom}
             colonnes={colonnes} dateCourante={dt}
             onDeplacer={(dest) => {
-              deplacerReservation(actuel, { date: dt, jour, cr: (actuel && actuel.debut) || edit.cr, col: edit.col }, { date: dest.date || dt, jour: dest.jour != null ? dest.jour : jour, debut: dest.debut, col: dest.col });
+              const src = { date: dt, jour, cr: (actuel && actuel.debut) || edit.cr, col: edit.col };
+              const dst = { date: dest.date || dt, jour: dest.jour != null ? dest.jour : jour, debut: dest.debut, col: dest.col };
+              if (conflitDeplacement(actuel, src, dst)) return false;
+              deplacerReservation(actuel, src, dst);
               setEdit(null);
+              return true;
             }}
             onSupprimerTranche={(de, a2) => { supprimerTranche(actuel, { estHebdo: !!(actuel && actuel.estHebdo), date: dt, jour, col: edit.col, cr: edit.cr }, de, a2); setEdit(null); }}
             onClose={() => setEdit(null)}
-            onSave={(equipe, activite, fin, recurrent) => {
+            onSave={(equipe, activite, fin, recurrent, verrou, mdp) => {
               if (recurrent && peutValider) {
-                ecrireHebdoPlage(edit.cr, edit.col, { equipe, activite: type === "terrains" ? activite : undefined, cat }, fin, jour);
+                ecrireHebdoPlage(edit.cr, edit.col, { equipe, activite: type === "terrains" ? activite : undefined, cat, verrou: !!verrou, mdp: verrou ? (mdp || "") : "" }, fin, jour);
               } else {
-                ecrirePlage(edit.cr, edit.col, { equipe, activite: type === "terrains" ? activite : undefined, statut: peutValider ? "valide" : "attente", demandeur: moi, cat }, fin, edit.dateJour);
+                ecrirePlage(edit.cr, edit.col, { equipe, activite: type === "terrains" ? activite : undefined, statut: peutValider ? "valide" : "attente", demandeur: moi, cat, verrou: peutValider ? !!verrou : false, mdp: (peutValider && verrou) ? (mdp || "") : "" }, fin, edit.dateJour);
               }
               setEdit(null);
             }}
