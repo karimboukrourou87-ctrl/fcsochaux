@@ -1364,7 +1364,9 @@ function reparerPlages(pl) {
     Object.keys(store).forEach((k) => {
       const c = store[k]; if (!c || !c.debut) return;
       const { cr, col, jour } = parse(k);
-      const dM = mins(c.debut); let fM = c.fin ? mins(c.fin) : dM + 30; if (fM <= dM) fM = dM + 30;
+      const dM = mins(c.debut);
+      if (c.fin && mins(c.fin) <= dM) { delete store[k]; change = true; return; } // durée nulle (ex: 08h30-08h30) : résidu, on retire
+      let fM = c.fin ? mins(c.fin) : dM + 30;
       const finCorr = toLabel(fM);
       if (c.fin !== finCorr) { c.fin = finCorr; change = true; }
       const bons = cells(c.debut, finCorr);
@@ -2399,7 +2401,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v6.3
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v6.4
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -8576,6 +8578,8 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
         if (valeur === null) delete d[type][dt][cle(cr, col)];
         else d[type][dt][cle(cr, col)] = { ...valeur, debut: crDebut, fin: fin || undefined };
       });
+      // suppression : on retire aussi une éventuelle ancienne case de fin orpheline de la même réservation
+      if (valeur === null && fin) { const ok = d[type][dt][cle(fin, col)]; if (ok && ok.debut === crDebut) delete d[type][dt][cle(fin, col)]; }
       return d;
     });
   }
@@ -8593,6 +8597,7 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
         if (valeur === null) delete d.hebdo[type][k];
         else d.hebdo[type][k] = { ...valeur, debut: crDebut, fin: fin || undefined };
       });
+      if (valeur === null && fin) { const fk = `${jour}__${fin}__${col}`; const ok = d.hebdo[type][fk]; if (ok && ok.debut === crDebut) delete d.hebdo[type][fk]; }
       return d;
     });
   }
@@ -8663,6 +8668,8 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
       const key = (cr) => ctx.estHebdo ? `${ctx.jour}__${cr}__${ctx.col}` : `${cr}__${ctx.col}`;
       const toLabel = (m) => `${pad(Math.floor(m / 60))}h${pad(m % 60)}`;
       occ.forEach((cr) => delete store[key(cr)]);
+      // nettoie une éventuelle ancienne case de fin orpheline appartenant à la même réservation
+      if (a.fin) { const fk = key(toLabel(toMin(a.fin))); const o = store[fk]; if (o && o.debut === a.debut && o.equipe === a.equipe) delete store[fk]; }
       segs.forEach((seg) => {
         const deb = seg[0], finSeg = toLabel(toMin(seg[seg.length - 1]) + 30); // fin exclusive : dernière case + 30 min
         seg.forEach((cr) => { store[key(cr)] = ctx.estHebdo ? { equipe: a.equipe, activite: a.activite, cat: a.cat, verrou: a.verrou, mdp: a.mdp, debut: deb, fin: finSeg } : { equipe: a.equipe, activite: a.activite, statut: a.statut, cat: a.cat, demandeur: a.demandeur, verrou: a.verrou, mdp: a.mdp, debut: deb, fin: finSeg }; });
