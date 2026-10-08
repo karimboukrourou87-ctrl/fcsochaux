@@ -2364,7 +2364,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v5.1
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v5.3
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -7827,15 +7827,28 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
 const CRENEAUX_ANCIEN = ["08h00", "09h00", "10h00", "11h00", "12h00", "13h00", "13h30", "14h00", "14h30", "15h30", "16h30", "17h30", "18h00", "19h00", "20h00"];
 const CRENEAUX_DEFAUT = (() => { const a = []; for (let m = 8 * 60; m <= 21 * 60 + 30; m += 30) a.push(`${pad(Math.floor(m / 60))}h${pad(m % 60)}`); return a; })();
 
-function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValider, avecActivite, estPlage, verrou, monCat, jourNom, onClose, onSave, onDelete, onDeleteUn, onValider }) {
+function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValider, avecActivite, estPlage, verrou, monCat, jourNom, colonnes, dateCourante, onDeplacer, onClose, onSave, onDelete, onDeleteUn, onValider }) {
   const estHebdo = !!(actuel && actuel.estHebdo);
+  const JOURS_SEM = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
   const [occupants, setOccupants] = useState(actuel && actuel.equipe ? actuel.equipe.split(" + ").map((x) => x.trim()).filter(Boolean) : []);
   const [saisie, setSaisie] = useState("");
   const [activite, setActivite] = useState((actuel && actuel.activite) || "match");
   const [fin, setFin] = useState((actuel && actuel.fin) || "");
   const [recurrent, setRecurrent] = useState(estHebdo);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [mvCol, setMvCol] = useState(colonne);
+  const [mvDebut, setMvDebut] = useState((actuel && actuel.debut ? actuel.debut : creneau).replace("h", ":"));
+  const [mvDate, setMvDate] = useState(dateCourante || "");
+  const [mvJour, setMvJour] = useState(Math.max(0, ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"].indexOf((jourNom || "").toLowerCase())));
   const ajouter = (nom) => { const n = (nom || "").trim(); if (n && !occupants.includes(n)) setOccupants([...occupants, n]); };
   const retirer = (nom) => setOccupants(occupants.filter((x) => x !== nom));
+  const faireDeplacer = () => {
+    if (!onDeplacer) return;
+    const debut = (mvDebut || "").replace(":", "h");
+    if (!debut) return;
+    if (estHebdo) onDeplacer({ jour: +mvJour, debut, col: mvCol });
+    else onDeplacer({ date: mvDate || dateCourante, debut, col: mvCol });
+  };
 
   const descrStatut = estHebdo
     ? "Séance hebdomadaire récurrente, verrouillée."
@@ -7907,6 +7920,30 @@ function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValid
         </div>
       )}
 
+      {actuel && onDeplacer && (
+        <div style={{ marginBottom: 14, border: `1px solid ${C.grisClair}`, borderRadius: 11, overflow: "hidden" }}>
+          <button onClick={() => setMoveOpen(!moveOpen)} style={{ width: "100%", border: "none", background: moveOpen ? C.bleu : "#EEF2F8", color: moveOpen ? "#fff" : C.bleu, cursor: "pointer", padding: "10px 12px", fontWeight: 800, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><ArrowRightLeft size={15} /> Déplacer ce créneau</span>
+            <span style={{ fontSize: 11, fontWeight: 700 }}>{moveOpen ? "Fermer" : "Ouvrir"}</span>
+          </button>
+          {moveOpen && (
+            <div style={{ padding: 12, background: "#fff" }}>
+              <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Choisis la nouvelle destination. La durée ({actuel.debut || creneau}{actuel.fin ? " - " + actuel.fin : ""}) est conservée. Sur ordinateur, tu peux aussi glisser le créneau directement sur une autre case.</div>
+              {estHebdo ? (
+                <Field label="Nouveau jour"><Sel value={mvJour} onChange={(e) => setMvJour(e.target.value)}>{JOURS_SEM.map((j, i) => <option key={j} value={i}>{j}</option>)}</Sel></Field>
+              ) : (
+                <Field label="Nouvelle date"><Inp type="date" value={mvDate} onChange={(e) => setMvDate(e.target.value)} /></Field>
+              )}
+              <div style={{ display: "flex", gap: 8 }}>
+                <Field label={"Nouveau " + typeLabel.toLowerCase()}><Sel value={mvCol} onChange={(e) => setMvCol(e.target.value)}>{(colonnes || []).map((t) => <option key={t} value={t}>{t}</option>)}</Sel></Field>
+                <Field label="Heure de début"><Inp type="time" value={mvDebut} onChange={(e) => setMvDebut(e.target.value)} /></Field>
+              </div>
+              <Btn variant="accent" full disabled={!mvDebut || !mvCol} onClick={faireDeplacer}><ArrowRightLeft size={16} /> Déplacer ici</Btn>
+            </div>
+          )}
+        </div>
+      )}
+
       {avecActivite && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Type</div>
@@ -7969,6 +8006,67 @@ function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValid
       })}
     </Modal>
   );
+}
+
+// PDF du planning hebdomadaire des entraînements, fidèle à l'écran : grille par catégorie, cases colorées par terrain.
+function exporterPlanningHebdoPDF(jsPDF) {
+  const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
+  const W = 842, H = 595, M = 28;
+  const navy = [14, 30, 51], bleu = [26, 53, 83], orr = [198, 162, 76], encre = [22, 32, 46], gris = [122, 130, 142], trait = [210, 215, 222], blanc = [255, 255, 255];
+  const bandeau = [238, 242, 248];
+  const terBg = { "Dôme": [231, 238, 246], "Synthé centre": [226, 244, 233], "Pouges": [251, 234, 217] };
+  const terFg = { "Dôme": [26, 53, 83], "Synthé centre": [47, 109, 67], "Pouges": [184, 122, 43] };
+  const sc = (a) => doc.setTextColor(a[0], a[1], a[2]);
+  const sf = (a) => doc.setFillColor(a[0], a[1], a[2]);
+  const sd = (a) => doc.setDrawColor(a[0], a[1], a[2]);
+  const joursC = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
+  const joursL = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
+  const labW = 128, colW = (W - 2 * M - labW) / joursC.length, x0 = M;
+
+  function enTete() {
+    sf(navy); doc.rect(0, 0, W, 4, "F");
+    sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.text(CLUB_LONG, M, 28);
+    sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text("Planning hebdomadaire des entraînements - créneaux attribués pour la saison", M, 42);
+    sd(orr); doc.setLineWidth(1); doc.line(M, 48, W - M, 48); doc.setLineWidth(0.5);
+  }
+  function ligneJours(y) {
+    sf(bleu); doc.rect(x0, y, labW, 22, "F"); sc(blanc); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text("Catégorie", x0 + 6, y + 14);
+    joursC.forEach((j, i) => { const x = x0 + labW + i * colW; sf(bleu); doc.rect(x, y, colW, 22, "F"); doc.text(j, x + colW / 2, y + 14, { align: "center" }); });
+    return y + 22;
+  }
+  enTete();
+  let y = 62;
+  y = ligneJours(y);
+  const rowH = 32;
+  PLANNING_HEBDO.forEach((sec) => {
+    if (y + 18 + rowH > H - 26) { doc.addPage(); enTete(); y = 62; y = ligneJours(y); }
+    sf(bandeau); doc.rect(x0, y, labW + joursC.length * colW, 18, "F");
+    sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.text(sec.section.toUpperCase(), x0 + 6, y + 12.5);
+    y += 18;
+    sec.lignes.forEach((l, ri) => {
+      if (y + rowH > H - 26) { doc.addPage(); enTete(); y = 62; y = ligneJours(y); }
+      sf(ri % 2 ? [247, 249, 252] : blanc); doc.rect(x0, y, labW, rowH, "F");
+      sd(trait); doc.rect(x0, y, labW, rowH);
+      sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+      const lw = doc.splitTextToSize(l.cat, labW - 12); lw.forEach((ln, k) => doc.text(ln, x0 + 6, y + (lw.length > 1 ? 14 : 19) + k * 10));
+      joursL.forEach((jl, i) => {
+        const x = x0 + labW + i * colW;
+        sf(ri % 2 ? [247, 249, 252] : blanc); doc.rect(x, y, colW, rowH, "F"); sd(trait); doc.rect(x, y, colW, rowH);
+        const cr = l.creneaux.find((c) => c[0] === jl);
+        if (cr) {
+          const ter = cr[1];
+          sf(terBg[ter] || [237, 242, 248]); doc.roundedRect(x + 4, y + 4, colW - 8, rowH - 8, 4, 4, "F");
+          sc(terFg[ter] || bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.text(ter, x + colW / 2, y + 14, { align: "center" });
+          sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text(cr[2], x + colW / 2, y + 25, { align: "center" });
+        }
+      });
+      y += rowH;
+    });
+  });
+  y += 14;
+  sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+  doc.text("Synthé centre : synthétique plein air  -  Dôme : synthétique du dôme  -  Édité le " + new Date().toLocaleDateString("fr-FR"), M, H - 14);
+  doc.save(nomPdf("Planning", "hebdomadaire", "entrainements"));
 }
 
 function exporterPlanningSemainePDF(jsPDF, sem, occ, label, cat, typeLabel, codeCouleur) {
@@ -8122,6 +8220,7 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
   const [showSceller, setShowSceller] = useState(false);
   const [scelleInfo, setScelleInfo] = useState(null);
   const [showVacances, setShowVacances] = useState(false);
+  const [dragSrc, setDragSrc] = useState(null);
   const [nvVacNom, setNvVacNom] = useState("");
   const [nvVacDebut, setNvVacDebut] = useState("");
   const [nvVacFin, setNvVacFin] = useState("");
@@ -8169,6 +8268,13 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
     if (!steps.length) steps.push(crDebut);
     return steps;
   };
+  // Glisser-déposer (ordinateur) : attrape une réservation et la relâche sur une autre case pour la déplacer.
+  const propsDrag = (c, dstr, cr, col) => ({
+    draggable: !!c && !verrouille(c),
+    onDragStart: (e) => { if (!c || verrouille(c)) { e.preventDefault(); return; } setDragSrc({ a: c, date: dstr, jour: jourSem(dstr), cr: (c.debut || cr), col }); try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", "1"); } catch (er) {} },
+    onDragOver: (e) => { if (dragSrc) e.preventDefault(); },
+    onDrop: (e) => { e.preventDefault(); if (!dragSrc) return; const dc = caseA(dstr, cr, col); if (dc && verrouille(dc)) { setDragSrc(null); return; } deplacerReservation(dragSrc.a, { date: dragSrc.date, jour: dragSrc.jour, cr: dragSrc.cr, col: dragSrc.col }, { date: dstr, jour: jourSem(dstr), debut: cr, col }); setDragSrc(null); },
+  });
   const joursSem = useMemo(() => {
     const base = new Date(date + "T00:00:00");
     const isodow = (base.getDay() + 6) % 7;
@@ -8231,6 +8337,33 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
         if (valeur === null) delete d.hebdo[type][k];
         else d.hebdo[type][k] = { ...valeur, debut: crDebut, fin: fin || undefined };
       });
+      return d;
+    });
+  }
+  // Déplace une réservation (ponctuelle ou hebdo) vers une nouvelle case, en conservant sa durée. Opération atomique.
+  function deplacerReservation(a, src, dest) {
+    if (!a) return;
+    const toMin = (s) => { const p = String(s || "").replace("h", ":").split(":"); return (+p[0]) * 60 + (+(p[1] || 0)); };
+    const toLabel = (m) => `${pad(Math.floor(m / 60))}h${pad(m % 60)}`;
+    const dureeMin = (a.debut && a.fin) ? Math.max(30, toMin(a.fin) - toMin(a.debut)) : 30;
+    const destFin = toLabel(toMin(dest.debut) + dureeMin);
+    const srcSteps = creneauxEntre(a.debut || src.cr, a.fin);
+    const dstSteps = creneauxEntre(dest.debut, destFin);
+    majPlanning((d) => {
+      const setCr = new Set((d.creneaux && d.creneaux.length && d.creneaux.join() !== CRENEAUX_ANCIEN.join()) ? d.creneaux : CRENEAUX_DEFAUT);
+      dstSteps.forEach((s) => setCr.add(s));
+      d.creneaux = [...setCr].sort();
+      if (a.estHebdo) {
+        d.hebdo = d.hebdo || { vestiaires: {}, terrains: {} }; d.hebdo[type] = d.hebdo[type] || {};
+        srcSteps.forEach((cr) => delete d.hebdo[type][`${src.jour}__${cr}__${src.col}`]);
+        dstSteps.forEach((cr) => { d.hebdo[type][`${dest.jour}__${cr}__${dest.col}`] = { equipe: a.equipe, activite: a.activite, cat: a.cat, debut: dest.debut, fin: destFin }; });
+      } else {
+        d[type] = d[type] || {};
+        d[type][src.date] = d[type][src.date] || {};
+        srcSteps.forEach((cr) => delete d[type][src.date][`${cr}__${src.col}`]);
+        d[type][dest.date] = d[type][dest.date] || {};
+        dstSteps.forEach((cr) => { d[type][dest.date][`${cr}__${dest.col}`] = { equipe: a.equipe, activite: a.activite, statut: a.statut, cat: a.cat, demandeur: a.demandeur, debut: dest.debut, fin: destFin }; });
+      }
       return d;
     });
   }
@@ -8428,7 +8561,7 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
                       const c = caseA(date, cr, col);
                       const co = couleur(c);
                       return (
-                        <td key={col} onClick={() => setEdit({ cr, col })} style={{ padding: 5, borderTop: `1px solid ${C.grisClair}`, borderLeft: `1px solid ${C.grisClair}`, cursor: "pointer", verticalAlign: "middle" }}>
+                        <td key={col} onClick={() => setEdit({ cr, col })} {...propsDrag(c, date, cr, col)} style={{ padding: 5, borderTop: `1px solid ${C.grisClair}`, borderLeft: `1px solid ${C.grisClair}`, cursor: c ? "grab" : "pointer", verticalAlign: "middle", outline: dragSrc && dragSrc.a === c ? `2px solid ${C.jaune}` : "none" }}>
                           <div style={{ background: co.bg, border: `1px solid ${co.bd}`, borderRadius: 8, minHeight: 34, padding: "5px 7px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 1 }}>
                             {contenuCase(c)}
                           </div>
@@ -8457,7 +8590,7 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
                       const c = caseA(dstr, cr, colSemActif);
                       const co = couleur(c);
                       return (
-                        <td key={dstr} onClick={() => setEdit({ cr, col: colSemActif, dateJour: dstr })} style={{ padding: 5, borderTop: `1px solid ${C.grisClair}`, borderLeft: `1px solid ${C.grisClair}`, cursor: "pointer", verticalAlign: "middle" }}>
+                        <td key={dstr} onClick={() => setEdit({ cr, col: colSemActif, dateJour: dstr })} {...propsDrag(c, dstr, cr, colSemActif)} style={{ padding: 5, borderTop: `1px solid ${C.grisClair}`, borderLeft: `1px solid ${C.grisClair}`, cursor: c ? "grab" : "pointer", verticalAlign: "middle", outline: dragSrc && dragSrc.a === c ? `2px solid ${C.jaune}` : "none" }}>
                           <div style={{ background: co.bg, border: `1px solid ${co.bd}`, borderRadius: 8, minHeight: 34, padding: "5px 7px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 1 }}>
                             {contenuCase(c)}
                           </div>
@@ -8484,6 +8617,11 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
             typeLabel={typeLabel} colonne={edit.col} creneau={edit.cr} actuel={actuel} cats={cats} peutValider={peutValider} avecActivite={type === "terrains"}
             estPlage={!!(actuel && actuel.fin && actuel.debut && actuel.fin !== actuel.debut)}
             verrou={verrou} monCat={cat} jourNom={jourNom}
+            colonnes={colonnes} dateCourante={dt}
+            onDeplacer={(dest) => {
+              deplacerReservation(actuel, { date: dt, jour, cr: (actuel && actuel.debut) || edit.cr, col: edit.col }, { date: dest.date || dt, jour: dest.jour != null ? dest.jour : jour, debut: dest.debut, col: dest.col });
+              setEdit(null);
+            }}
             onClose={() => setEdit(null)}
             onSave={(equipe, activite, fin, recurrent) => {
               if (recurrent && peutValider) {
@@ -8983,6 +9121,12 @@ function SuiviMedical({ db, mutate, cat, onClose }) {
 }
 
 function PlanningHebdo({ onClose }) {
+  const [msg, setMsg] = useState(null);
+  async function telecharger() {
+    setMsg("Préparation du PDF...");
+    try { const jsPDF = await chargerJsPDF(); exporterPlanningHebdoPDF(jsPDF); setMsg(null); }
+    catch (e) { setMsg("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
+  }
   return (
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "16px 16px 14px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
@@ -8990,7 +9134,9 @@ function PlanningHebdo({ onClose }) {
         <div style={{ fontWeight: 800, fontSize: 16 }}>Planning hebdomadaire des entraînements</div>
       </header>
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
-        <div style={{ fontSize: 12, color: C.gris, marginBottom: 14, lineHeight: 1.5, background: "#EAF0F7", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "9px 12px" }}>Créneaux d'entraînement attribués pour la saison. Synthé centre correspond au synthétique plein air, Dôme au synthétique du dôme. Ces séances sont automatiquement reportées dans le planning des terrains, verrouillées et répétées chaque semaine.</div>
+        <div style={{ fontSize: 12, color: C.gris, marginBottom: 12, lineHeight: 1.5, background: "#EAF0F7", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "9px 12px" }}>Créneaux d'entraînement attribués pour la saison. Synthé centre correspond au synthétique plein air, Dôme au synthétique du dôme. Ces séances sont automatiquement reportées dans le planning des terrains, verrouillées et répétées chaque semaine.</div>
+        <Btn variant="accent" full onClick={telecharger} style={{ marginBottom: 14 }}><FileDown size={16} /> Imprimer ce planning (PDF)</Btn>
+        {msg && <div style={{ fontSize: 12.5, color: C.encre, background: C.fond, border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 10, marginBottom: 14 }}>{msg}</div>}
         {(() => {
           const jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
           const bgTer = (t) => t === "Dôme" ? "#E7EEF6" : t === "Pouges" ? "#FBEAD9" : "#E2F4E9";
