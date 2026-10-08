@@ -2401,7 +2401,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v6.4
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v6.5
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -8033,24 +8033,30 @@ function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValid
         <div style={{ marginBottom: 14, border: "1px solid #EBD3AE", borderRadius: 11, overflow: "hidden" }}>
           <div style={{ background: "#FBEAD9", color: "#B5483F", padding: "10px 12px", fontWeight: 800, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 7, width: "100%", boxSizing: "border-box" }}><Trash2 size={15} /> Supprimer</div>
           <div style={{ padding: 12, background: "#fff" }}>
-            <Btn variant="danger" full onClick={onDelete}><Trash2 size={15} /> Supprimer tout le créneau{estHebdo ? " (toutes les semaines)" : ""}</Btn>
-            {estPlage && onSupprimerTranche && (
-              <div style={{ marginTop: 10 }}>
-                <button onClick={() => setDelOpen(!delOpen)} style={{ width: "100%", border: `1px solid ${C.grisClair}`, background: delOpen ? "#EEF2F8" : "#fff", color: C.bleu, cursor: "pointer", padding: "9px 12px", fontWeight: 800, fontSize: 12.5, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span>Supprimer seulement une tranche horaire</span>
-                  <span style={{ fontSize: 11, fontWeight: 700 }}>{delOpen ? "Fermer" : "Ouvrir"}</span>
-                </button>
-                {delOpen && (
+            {actuel.verrou ? (
+              <div style={{ fontSize: 12.5, color: C.encre, background: "#FBE3E3", border: "1px solid #F0C4C4", borderRadius: 10, padding: 12, lineHeight: 1.5, display: "flex", alignItems: "flex-start", gap: 7 }}><Lock size={15} color={C.rouge} style={{ flex: "0 0 auto", marginTop: 1 }} /><span>Ce créneau est verrouillé : il ne peut être ni déplacé ni supprimé. Décoche « Verrouiller ce créneau » plus haut et enregistre pour pouvoir le supprimer.</span></div>
+            ) : (
+              <>
+                <Btn variant="danger" full onClick={onDelete}><Trash2 size={15} /> Supprimer tout le créneau{estHebdo ? " (toutes les semaines)" : ""}</Btn>
+                {estPlage && onSupprimerTranche && (
                   <div style={{ marginTop: 10 }}>
-                    <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Retire une partie du créneau (ex: libérer la dernière demi-heure). Le reste est conservé.</div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <Field label="De"><Inp type="time" value={trDe} onChange={(e) => setTrDe(e.target.value)} /></Field>
-                      <Field label="À"><Inp type="time" value={trA} onChange={(e) => setTrA(e.target.value)} /></Field>
-                    </div>
-                    <Btn variant="danger" full disabled={!trDe || !trA || trA <= trDe} onClick={faireSupprTranche}><Trash2 size={15} /> Supprimer cette tranche</Btn>
+                    <button onClick={() => setDelOpen(!delOpen)} style={{ width: "100%", border: `1px solid ${C.grisClair}`, background: delOpen ? "#EEF2F8" : "#fff", color: C.bleu, cursor: "pointer", padding: "9px 12px", fontWeight: 800, fontSize: 12.5, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span>Supprimer seulement une tranche horaire</span>
+                      <span style={{ fontSize: 11, fontWeight: 700 }}>{delOpen ? "Fermer" : "Ouvrir"}</span>
+                    </button>
+                    {delOpen && (
+                      <div style={{ marginTop: 10 }}>
+                        <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Retire une partie du créneau (ex: libérer la dernière demi-heure). Le reste est conservé.</div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <Field label="De"><Inp type="time" value={trDe} onChange={(e) => setTrDe(e.target.value)} /></Field>
+                          <Field label="À"><Inp type="time" value={trA} onChange={(e) => setTrA(e.target.value)} /></Field>
+                        </div>
+                        <Btn variant="danger" full disabled={!trDe || !trA || trA <= trDe} onClick={faireSupprTranche}><Trash2 size={15} /> Supprimer cette tranche</Btn>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
+              </>
             )}
           </div>
         </div>
