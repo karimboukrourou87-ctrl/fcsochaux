@@ -1349,6 +1349,40 @@ function seedPlanningOfficiel(pl) {
   pl.officielCharge = true;
   return pl;
 }
+// Répare les plages dont les cases intermédiaires manquent : re-remplit toute la plage debut->fin (sans écraser une autre réservation),
+// pour que l'horaire affiché corresponde toujours aux cases occupées. Renvoie { pl, change }.
+function reparerPlages(pl) {
+  if (!pl) return { pl, change: false };
+  let change = false;
+  const mins = (s) => { const p = String(s || "").replace("h", ":").split(":"); return (+p[0]) * 60 + (+(p[1] || 0)); };
+  const toLabel = (m) => `${pad(Math.floor(m / 60))}h${pad(m % 60)}`;
+  const crSet = new Set(pl.creneaux || []);
+  ["vestiaires", "terrains"].forEach((tp) => {
+    const byDate = pl[tp] || {};
+    Object.keys(byDate).forEach((dstr) => {
+      const cell = byDate[dstr] || {};
+      Object.keys(cell).forEach((k) => {
+        const c = cell[k]; if (!c || !c.debut || !c.fin || c.fin === c.debut) return;
+        const idx = k.indexOf("__"); const col = k.slice(idx + 2);
+        for (let m = mins(c.debut); m <= mins(c.fin); m += 30) {
+          const cr = toLabel(m); const kk = `${cr}__${col}`; crSet.add(cr);
+          if (!cell[kk]) { cell[kk] = { ...c }; change = true; }
+        }
+      });
+    });
+    const hb = (pl.hebdo && pl.hebdo[tp]) || {};
+    Object.keys(hb).forEach((k) => {
+      const c = hb[k]; if (!c || !c.debut || !c.fin || c.fin === c.debut) return;
+      const parts = k.split("__"); const jour = parts[0]; const col = parts.slice(2).join("__");
+      for (let m = mins(c.debut); m <= mins(c.fin); m += 30) {
+        const cr = toLabel(m); const kk = `${jour}__${cr}__${col}`; crSet.add(cr);
+        if (!hb[kk]) { hb[kk] = { ...c }; change = true; }
+      }
+    });
+  });
+  if (change) pl.creneaux = [...crSet].sort();
+  return { pl, change };
+}
 // Hook : renvoie [planning, maj, chargement]. Le planning est commun à tout le club.
 function usePlanningClub(demo, db, mutate, cats) {
   const [remote, setRemote] = useState(null);
@@ -1374,6 +1408,7 @@ function usePlanningClub(demo, db, mutate, cats) {
           doitSauver = true;
         }
         if (!pl.officielCharge) { pl = seedPlanningOfficiel(pl); doitSauver = true; }
+        const rep = reparerPlages(pl); pl = rep.pl; if (rep.change) doitSauver = true;
         if (doitSauver) { try { await savePlanningClub(pl); } catch (e) {} }
         if (!annule) setRemote(pl);
       } catch (e) { if (!annule) setRemote({ creneaux: null, vestiaires: {}, terrains: {} }); }
@@ -2364,7 +2399,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v5.7
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v5.8
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
