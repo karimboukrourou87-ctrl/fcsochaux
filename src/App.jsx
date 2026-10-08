@@ -1156,7 +1156,7 @@ const MODES_TRANSPORT = ["Minibus club", "Bus en location", "Bus de voyage des p
 const LOUEURS = ["ADJ", "Hertz"];
 const ROLES_ENCADREMENT = ["Éducateur", "Coach des gardiens", "Préparateur physique", "Dirigeant", "Délégué", "Arbitre"];
 
-const TERRAINS = ["Synthétique centre", "Synthétique dôme", "Herbe centre (nouveau synthétique)", "Herbe villa"];
+const TERRAINS = ["Synthétique centre", "Synthétique dôme", "Herbe centre (nouveau synthétique)", "Herbe villa", "Pouges"];
 const VESTIAIRES = ["1", "2", "3", "4", "5", "Villa 1", "Villa 2"];
 const PLANNING_HEBDO = [
   { section: "Section garçons", lignes: [
@@ -2335,7 +2335,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v4.6
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v4.9
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2469,7 +2469,7 @@ export default function App() {
       {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
       {showPlanning && <Planning planning={planningClub} majPlanning={majPlanningClub} chargement={chargementPlanning} cats={cats} profil={profil} peutValider={peutValider} cat={cat} onClose={() => setShowPlanning(false)} />}
-      {showPlanningHebdo && <PlanningHebdo onClose={() => setShowPlanningHebdo(false)} />}
+      {showPlanningHebdo && <PlanningHebdo onClose={() => setShowPlanningHebdo(false)} majPlanning={majPlanningClub} peutValider={peutValider} />}
       {showAcces && <AccesSecteurs db={{ acces: accesSource }} mutate={mutateReu} estAdmin={estAdmin} onClose={() => setShowAcces(false)} />}
       {showProgramme && <ProgrammeSemaine db={db} onClose={() => setShowProgramme(false)} />}
       {showDocs && <DocumentsAdmin players={players} cat={cat} onClose={() => setShowDocs(false)} />}
@@ -8088,6 +8088,12 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
   const [edit, setEdit] = useState(null);
   const [gererCreneaux, setGererCreneaux] = useState(false);
   const [showSemaine, setShowSemaine] = useState(false);
+  const [showSceller, setShowSceller] = useState(false);
+  const [scelleInfo, setScelleInfo] = useState(null);
+  const [showVacances, setShowVacances] = useState(false);
+  const [nvVacNom, setNvVacNom] = useState("");
+  const [nvVacDebut, setNvVacDebut] = useState("");
+  const [nvVacFin, setNvVacFin] = useState("");
   const [nvCreneau, setNvCreneau] = useState("");
   const [editCreneau, setEditCreneau] = useState(null);
   const [nvHeure, setNvHeure] = useState("");
@@ -8102,12 +8108,15 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
   const creneaux = (!rawCreneaux || rawCreneaux.join() === CRENEAUX_ANCIEN.join()) ? CRENEAUX_DEFAUT : rawCreneaux;
   const cle = (cr, col) => `${cr}__${col}`;
   const moi = (profil && profil.nom) || "Éducateur";
-  // Résolution d'une case : d'abord une demande ponctuelle posée à cette date, sinon la séance hebdomadaire récurrente du jour.
+  // Résolution d'une case : d'abord une demande ponctuelle posée à cette date, sinon la séance hebdomadaire récurrente du jour (sauf pendant les vacances).
   const jourSem = (dstr) => (new Date(dstr + "T00:00:00").getDay() + 6) % 7;
   const hebdoMap = (pl.hebdo && pl.hebdo[type]) || {};
+  const vacances = pl.vacances || [];
+  const estVacances = (dstr) => vacances.find((v) => v.debut && v.fin && dstr >= v.debut && dstr <= v.fin) || null;
   const caseA = (dstr, cr, col) => {
     const one = ((pl[type] && pl[type][dstr]) || {})[cle(cr, col)];
     if (one) return { ...one, estHebdo: false };
+    if (estVacances(dstr)) return null; // séances hebdomadaires suspendues pendant les vacances
     const h = hebdoMap[`${jourSem(dstr)}__${cr}__${col}`];
     if (h) return { ...h, statut: "valide", estHebdo: true };
     return null;
@@ -8193,6 +8202,52 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
       });
       return d;
     });
+  }
+  // Nombre de séances de la semaine affichée qui seront scellées (hors matchs).
+  function compterSceller() {
+    let n = 0;
+    ["vestiaires", "terrains"].forEach((tp) => {
+      joursSem.forEach((dstr) => {
+        const cases = (pl[tp] && pl[tp][dstr]) || {};
+        Object.keys(cases).forEach((k) => { const c = cases[k]; if (tp === "terrains" && c.activite === "match") return; n++; });
+      });
+    });
+    return n;
+  }
+  // Scelle les séances déjà attribuées de la semaine affichée : elles deviennent le planning hebdomadaire officiel, récurrent et verrouillé.
+  function scellerSemaine() {
+    const n = compterSceller();
+    majPlanning((d) => {
+      d.hebdo = d.hebdo || { vestiaires: {}, terrains: {} };
+      ["vestiaires", "terrains"].forEach((tp) => {
+        d.hebdo[tp] = d.hebdo[tp] || {};
+        d[tp] = d[tp] || {};
+        joursSem.forEach((dstr) => {
+          const jour = (new Date(dstr + "T00:00:00").getDay() + 6) % 7;
+          const cases = d[tp][dstr] || {};
+          Object.keys(cases).forEach((k) => {
+            const c = cases[k];
+            if (tp === "terrains" && c.activite === "match") return; // on ne scelle pas les matchs ponctuels
+            const idx = k.indexOf("__"); const cr = k.slice(0, idx), col = k.slice(idx + 2);
+            d.hebdo[tp][`${jour}__${cr}__${col}`] = { equipe: c.equipe, activite: c.activite, cat: c.cat, debut: c.debut, fin: c.fin };
+            delete cases[k]; // remplacée par la séance hebdomadaire récurrente
+          });
+        });
+      });
+      return d;
+    });
+    setShowSceller(false);
+    setScelleInfo(`${n} séance${n > 1 ? "s" : ""} scellée${n > 1 ? "s" : ""} en planning hebdomadaire officiel. Elles se répètent désormais chaque semaine et sont verrouillées.`);
+  }
+  function ajouterVacances(nom, debut, fin) {
+    if (!debut || !fin || debut > fin) return;
+    majPlanning((d) => {
+      d.vacances = [...(d.vacances || []), { id: uid(), nom: (nom || "").trim() || "Vacances", debut, fin }].sort((a, b) => (a.debut || "").localeCompare(b.debut || ""));
+      return d;
+    });
+  }
+  function supprimerVacances(id) {
+    majPlanning((d) => { d.vacances = (d.vacances || []).filter((v) => v.id !== id); return d; });
   }
   function ajouterCreneau(t) {
     if (!t) return;
@@ -8301,6 +8356,12 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
           </>
         )}
         <Btn variant="primary" size="sm" onClick={() => setShowSemaine(true)}><CalendarDays size={16} /> Vue d'ensemble à imprimer (PDF)</Btn>
+        {peutValider && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn variant="ghost" size="sm" full onClick={() => setShowSceller(true)}><Lock size={15} /> Répéter chaque semaine (sceller)</Btn>
+            <Btn variant="ghost" size="sm" full onClick={() => setShowVacances(true)}><CalendarDays size={15} /> Vacances</Btn>
+          </div>
+        )}
         <div style={{ display: "flex", gap: 14, fontSize: 11.5, fontWeight: 700, color: C.gris }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: "#E2F4E9", border: "1px solid #BFE3CD", display: "inline-block" }} /> Validé</span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: "#FBEAD9", border: "1px solid #EBD3AE", display: "inline-block" }} /> En traitement</span>
@@ -8311,6 +8372,12 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
 
       <div style={{ flex: 1, overflow: "auto", padding: 12 }}>
         {chargement && <div style={{ fontSize: 12.5, color: C.gris, fontWeight: 700, marginBottom: 10, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "8px 11px" }}>Chargement du planning commun du club...</div>}
+        {scelleInfo && <div style={{ fontSize: 12.5, color: C.vert, fontWeight: 700, marginBottom: 10, background: "#E2F4E9", border: "1px solid #BFE3CD", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "flex-start", gap: 8 }}><Lock size={15} style={{ flex: "0 0 auto", marginTop: 1 }} /><span style={{ flex: 1 }}>{scelleInfo}</span><X size={15} color={C.gris} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setScelleInfo(null)} /></div>}
+        {(() => {
+          const v = vue === "jour" ? estVacances(date) : (joursSem.map(estVacances).find(Boolean) || null);
+          if (!v) return null;
+          return <div style={{ fontSize: 12.5, color: "#B87A2B", fontWeight: 700, marginBottom: 10, background: "#FBEAD9", border: "1px solid #EBD3AE", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "flex-start", gap: 8 }}><CalendarDays size={15} style={{ flex: "0 0 auto", marginTop: 1 }} /><span style={{ flex: 1 }}>{v.nom} ({jjmm(v.debut)} au {jjmm(v.fin)}) : période de vacances, les séances hebdomadaires sont suspendues. Les réservations ponctuelles restent possibles.</span></div>;
+        })()}
         <div style={{ overflowX: "auto", border: `1px solid ${C.grisClair}`, borderRadius: 12, background: "#fff" }}>
           {vue === "jour" ? (
             <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 130 + colonnes.length * 96 }}>
@@ -8347,7 +8414,7 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
                 <tr>
                   <th style={{ position: "sticky", left: 0, background: C.bleu, color: "#fff", fontSize: 12, fontWeight: 800, padding: "10px 8px", textAlign: "left", minWidth: 66, zIndex: 1 }}>Horaire</th>
                   {joursSem.map((dstr) => (
-                    <th key={dstr} style={{ background: C.bleu, color: "#fff", fontSize: 11, fontWeight: 800, padding: "8px 6px", minWidth: 104, borderLeft: "1px solid rgba(255,255,255,0.15)", textTransform: "capitalize", lineHeight: 1.3 }}>{new Date(dstr + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "short" })}<br />{jjmm(dstr)}</th>
+                    <th key={dstr} style={{ background: estVacances(dstr) ? "#9C7C2E" : C.bleu, color: "#fff", fontSize: 11, fontWeight: 800, padding: "8px 6px", minWidth: 104, borderLeft: "1px solid rgba(255,255,255,0.15)", textTransform: "capitalize", lineHeight: 1.3 }}>{new Date(dstr + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "short" })}<br />{jjmm(dstr)}{estVacances(dstr) ? <><br /><span style={{ fontSize: 9, fontWeight: 800, textTransform: "none" }}>Vacances</span></> : null}</th>
                   ))}
                 </tr>
               </thead>
@@ -8403,6 +8470,42 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
       })()}
 
       {showSemaine && <PlanningSemaine planning={pl} cat={cat} type={type} onClose={() => setShowSemaine(false)} />}
+      {showSceller && (() => {
+        const n = compterSceller();
+        return (
+          <Modal title="Sceller le planning officiel" onClose={() => setShowSceller(false)}
+            footer={<Btn variant="accent" full disabled={n === 0} onClick={scellerSemaine}><Lock size={16} /> Sceller {n} séance{n > 1 ? "s" : ""}</Btn>}>
+            <div style={{ fontSize: 13, color: C.encre, lineHeight: 1.55 }}>
+              Toutes les séances déjà attribuées de la semaine affichée (<b>{labelSem}</b>), terrains et vestiaires, vont devenir le <b>planning hebdomadaire officiel</b> : elles se répéteront automatiquement chaque semaine, le même jour, et seront <b>verrouillées</b> (seul le responsable pourra les modifier).
+            </div>
+            <div style={{ fontSize: 12.5, color: C.gris, marginTop: 10, lineHeight: 1.5 }}>Les matchs ponctuels ne sont pas scellés. Place-toi bien sur la semaine type de ton planning officiel avant de confirmer.</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: n === 0 ? C.gris : C.bleu, marginTop: 12, background: "#EEF2F8", borderRadius: 10, padding: "10px 12px" }}>{n === 0 ? "Aucune séance à sceller sur cette semaine." : `${n} séance${n > 1 ? "s" : ""} seront scellées.`}</div>
+          </Modal>
+        );
+      })()}
+      {showVacances && (
+        <Modal title="Vacances et interruptions" onClose={() => setShowVacances(false)}>
+          <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Ajoute les périodes de vacances scolaires ou d'interruption. Pendant ces périodes, les séances hebdomadaires sont automatiquement suspendues sur le planning. Les réservations ponctuelles restent possibles.</div>
+          <Field label="Nom de la période"><Inp value={nvVacNom} onChange={(e) => setNvVacNom(e.target.value)} placeholder="Vacances de la Toussaint, Noël..." /></Field>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Field label="Du"><Inp type="date" value={nvVacDebut} onChange={(e) => setNvVacDebut(e.target.value)} /></Field>
+            <Field label="Au"><Inp type="date" value={nvVacFin} onChange={(e) => setNvVacFin(e.target.value)} /></Field>
+          </div>
+          <Btn variant="accent" full disabled={!nvVacDebut || !nvVacFin || nvVacDebut > nvVacFin} onClick={() => { ajouterVacances(nvVacNom, nvVacDebut, nvVacFin); setNvVacNom(""); setNvVacDebut(""); setNvVacFin(""); }}><Plus size={16} /> Ajouter la période</Btn>
+          <div style={{ marginTop: 14, display: "grid", gap: 7 }}>
+            {vacances.length === 0 ? <Empty icon={<CalendarDays size={22} color={C.gris} />} text="Aucune période enregistrée" /> :
+              vacances.map((v) => (
+                <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", background: "#fff", borderRadius: 11, border: `1px solid ${C.grisClair}` }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13.5 }}>{v.nom}</div>
+                    <div style={{ fontSize: 12, color: C.gris, marginTop: 1 }}>Du {jjmm(v.debut)} au {jjmm(v.fin)}</div>
+                  </div>
+                  <BtnSuppr nom={"la période « " + v.nom + " »"} onConfirm={() => supprimerVacances(v.id)} size="sm" />
+                </div>
+              ))}
+          </div>
+        </Modal>
+      )}
       {gererCreneaux && (
         <Modal title="Gérer les créneaux" onClose={() => setGererCreneaux(false)}>
           <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12 }}>Ajoute les horaires dont tu as besoin, par exemple 17h15 ou 17h45. Ils s'appliquent aux plannings terrains et vestiaires.</div>
@@ -8848,7 +8951,47 @@ function SuiviMedical({ db, mutate, cat, onClose }) {
   );
 }
 
-function PlanningHebdo({ onClose }) {
+function PlanningHebdo({ onClose, majPlanning, peutValider }) {
+  const [confirm, setConfirm] = useState(false);
+  const [info, setInfo] = useState(null);
+  const joursIdx = { "Lundi": 0, "Mardi": 1, "Mercredi": 2, "Jeudi": 3, "Vendredi": 4, "Samedi": 5, "Dimanche": 6 };
+  const terMap = { "Dôme": "Synthétique dôme", "Synthé centre": "Synthétique centre", "Pouges": "Pouges" };
+  const semaine = useMemo(() => {
+    const d = new Date(); const isodow = (d.getDay() + 6) % 7;
+    const lu = new Date(d); lu.setDate(d.getDate() - isodow);
+    const arr = []; for (let i = 0; i < 7; i++) { const x = new Date(lu); x.setDate(lu.getDate() + i); arr.push(`${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`); }
+    return arr;
+  }, []);
+  const creneauxEntre = (crDebut, fin) => {
+    const mins = (s) => { if (!s) return 0; const p = String(s).replace("h", ":").split(":"); return (+p[0]) * 60 + (+(p[1] || 0)); };
+    const toLabel = (m) => `${pad(Math.floor(m / 60))}h${pad(m % 60)}`;
+    const debM = mins(crDebut); const finM = fin ? mins(fin) : debM;
+    const steps = []; for (let m = debM; m <= finM; m += 30) steps.push(toLabel(m));
+    if (!steps.length) steps.push(crDebut);
+    return steps;
+  };
+  const nbSeances = PLANNING_HEBDO.reduce((t, s) => t + s.lignes.reduce((u, l) => u + l.creneaux.length, 0), 0);
+  function integrer() {
+    let n = 0;
+    majPlanning((d) => {
+      d.terrains = d.terrains || {};
+      const setCr = new Set((d.creneaux && d.creneaux.length && d.creneaux.join() !== CRENEAUX_ANCIEN.join()) ? d.creneaux : CRENEAUX_DEFAUT);
+      PLANNING_HEBDO.forEach((sec) => sec.lignes.forEach((l) => l.creneaux.forEach(([j, ter, horaire]) => {
+        const ji = joursIdx[j]; if (ji == null) return;
+        const dstr = semaine[ji]; if (!dstr) return;
+        const col = terMap[ter] || ter;
+        const parts = String(horaire).split("-"); const deb = (parts[0] || "").trim(), fin = (parts[1] || "").trim();
+        const steps = creneauxEntre(deb, fin); steps.forEach((s) => setCr.add(s));
+        d.terrains[dstr] = d.terrains[dstr] || {};
+        steps.forEach((cr) => { d.terrains[dstr][`${cr}__${col}`] = { equipe: l.cat, activite: "entrainement", statut: "valide", cat: l.cat, debut: deb, fin: fin || undefined }; });
+        n++;
+      })));
+      d.creneaux = [...setCr].sort();
+      return d;
+    });
+    setConfirm(false);
+    setInfo(`${n} séances intégrées dans le planning des terrains de la semaine en cours (${jjmm(semaine[0])} au ${jjmm(semaine[6])}). Ouvre « Planning des terrains », place-toi sur cette semaine, puis clique « Répéter chaque semaine (sceller) » pour les figer définitivement.`);
+  }
   return (
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "16px 16px 14px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
@@ -8857,6 +9000,12 @@ function PlanningHebdo({ onClose }) {
       </header>
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
         <div style={{ fontSize: 12, color: C.gris, marginBottom: 14, lineHeight: 1.5, background: "#EAF0F7", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "9px 12px" }}>Créneaux d'entraînement attribués pour la saison. Synthé centre correspond au synthétique plein air, Dôme au synthétique du dôme.</div>
+        {peutValider && (
+          <div style={{ marginBottom: 14 }}>
+            <Btn variant="accent" full onClick={() => setConfirm(true)}><Lock size={16} /> Intégrer ce planning dans les réservations</Btn>
+            {info && <div style={{ fontSize: 12.5, color: C.vert, fontWeight: 700, marginTop: 10, background: "#E2F4E9", border: "1px solid #BFE3CD", borderRadius: 10, padding: "10px 12px", lineHeight: 1.5, display: "flex", alignItems: "flex-start", gap: 8 }}><Check size={15} style={{ flex: "0 0 auto", marginTop: 1 }} /><span style={{ flex: 1 }}>{info}</span><X size={15} color={C.gris} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setInfo(null)} /></div>}
+          </div>
+        )}
         {(() => {
           const jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
           const bgTer = (t) => t === "Dôme" ? "#E7EEF6" : t === "Pouges" ? "#FBEAD9" : "#E2F4E9";
@@ -8900,6 +9049,13 @@ function PlanningHebdo({ onClose }) {
           );
         })()}
       </div>
+      {confirm && (
+        <Modal title="Intégrer le planning officiel" onClose={() => setConfirm(false)}
+          footer={<Btn variant="accent" full onClick={integrer}><Lock size={16} /> Intégrer {nbSeances} séances</Btn>}>
+          <div style={{ fontSize: 13, color: C.encre, lineHeight: 1.55 }}>Les {nbSeances} séances de ce planning officiel vont être créées dans le <b>planning des terrains</b> sur la semaine en cours (<b>{jjmm(semaine[0])} au {jjmm(semaine[6])}</b>), en tant qu'entraînements validés.</div>
+          <div style={{ fontSize: 12.5, color: C.gris, marginTop: 10, lineHeight: 1.5 }}>Ensuite, dans « Planning des terrains », tu cliques sur « Répéter chaque semaine (sceller) » pour les figer et les faire se répéter automatiquement. Si tu intègres plusieurs fois, les mêmes séances sont simplement réécrites (pas de doublon).</div>
+        </Modal>
+      )}
     </div>
   );
 }
