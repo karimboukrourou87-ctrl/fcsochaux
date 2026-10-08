@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Home, Users, ClipboardList, CalendarDays, Dumbbell, Search,
   Plus, X, Trash2, ChevronLeft, Trophy, Award, Bell, Activity, Target,
   Footprints, Ruler, Weight, Gauge, Timer, Edit3, Save,
   HeartPulse, ShieldAlert, Star, MapPin, ArrowRightLeft, Eye, FileDown, Phone, Camera, LogOut,
-  Send, Check, Inbox, ListOrdered, ExternalLink, Bus, Upload, Lock
+  Send, Check, Inbox, ListOrdered, ExternalLink, Bus, Upload, Lock, RefreshCw
 } from "lucide-react";
 
 /* ============================================================
@@ -1390,6 +1390,7 @@ function usePlanningClub(demo, db, mutate, cats) {
   const [remote, setRemote] = useState(null);
   const [erreur, setErreur] = useState(null);
   const faitRef = useRef(false);
+  const dernierSaveRef = useRef(0);
   useEffect(() => {
     if (demo || faitRef.current) return;
     if (!cats || !cats.length) return;
@@ -1418,17 +1419,36 @@ function usePlanningClub(demo, db, mutate, cats) {
     })();
     return () => { annule = true; };
   }, [demo, cats]);
+  // Recharge le planning commun depuis la base (pour voir les demandes et validations des autres sans quitter l'app)
+  const rafraichir = useCallback(async () => {
+    if (demo) return;
+    if (Date.now() - dernierSaveRef.current < 4000) return; // on n'écrase pas une sauvegarde locale toute récente
+    try {
+      let pl = await loadPlanningClub();
+      if (pl) { const rep = reparerPlages(pl); setRemote(rep.pl); }
+    } catch (e) {}
+  }, [demo]);
+  // Rafraîchissement automatique : toutes les 15 s, et dès qu'on revient sur l'application
+  useEffect(() => {
+    if (demo) return;
+    const id = setInterval(rafraichir, 15000);
+    const onVisible = () => { if (document.visibilityState === "visible") rafraichir(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", rafraichir);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", rafraichir); };
+  }, [demo, rafraichir]);
   const planning = demo ? ((db && db.planning) || { vestiaires: {}, terrains: {} }) : remote;
   const maj = (fn) => {
     if (demo) { mutate((d) => { d.planning = fn(d.planning || { vestiaires: {}, terrains: {} }); return d; }); return; }
     setRemote((prev) => {
       const base = prev ? JSON.parse(JSON.stringify(prev)) : { creneaux: null, vestiaires: {}, terrains: {} };
       const next = fn(base);
+      dernierSaveRef.current = Date.now();
       savePlanningClub(next).then(() => setErreur(null)).catch((e) => setErreur((e && (e.message || e.details || e.hint)) || String(e)));
       return next;
     });
   };
-  return [planning, maj, !demo && remote === null, erreur];
+  return [planning, maj, !demo && remote === null, erreur, rafraichir];
 }
 
 // Ecran commun de gestion des dirigeants / encadrants : ajouter, renommer, supprimer (securise).
@@ -2169,7 +2189,7 @@ export default function App() {
   const cacheRef = useRef({});
   const [encadrementClub, majEncadrementClub] = useEncadrementClub(demo, db, mutate);
   const catsPlanning = demo ? CATEGORIES.map((c) => c.id) : ((profil && profil.cats) || []);
-  const [planningClub, majPlanningClub, chargementPlanning, erreurPlanning] = usePlanningClub(demo, db, mutate, catsPlanning);
+  const [planningClub, majPlanningClub, chargementPlanning, erreurPlanning, rafraichirPlanning] = usePlanningClub(demo, db, mutate, catsPlanning);
   // Demandes de créneaux en attente (réservations posées par un éducateur, en dehors du planning hebdomadaire)
   const demandesPlanning = useMemo(() => {
     const pl = planningClub || {};
@@ -2202,6 +2222,13 @@ export default function App() {
     list.sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""));
     return list;
   }, [planningClub, monNom]);
+  // Accusés de réception (destinés au responsable / directeur) : preuve qu'un éducateur a bien lu la réponse
+  const accusesClub = useMemo(() => {
+    const pl = planningClub || {};
+    const list = [...(pl.accuses || [])];
+    list.sort((a, b) => (b.luLe || "").localeCompare(a.luLe || ""));
+    return list;
+  }, [planningClub]);
   const pendingRef = useRef(false);
   const saveQueueRef = useRef(Promise.resolve());
   const savingCountRef = useRef(0);
@@ -2426,7 +2453,7 @@ export default function App() {
     d.notifs.push({
       id: uid(), pour: dem.demandeur || "", statut, raison: raison || "",
       typeLieu: dem.type, col: dem.col, date: dem.date, debut: dem.debut, fin: dem.fin || "",
-      equipe: dem.equipe || "", activite: dem.activite || "", creeLe: new Date().toISOString(),
+      equipe: dem.equipe || "", activite: dem.activite || "", cat: dem.cat || "", creeLe: new Date().toISOString(),
     });
   };
   const validerDemandePlanning = (dem) => {
@@ -2445,7 +2472,18 @@ export default function App() {
       return d;
     });
   };
-  const lireNotifPlanning = (id) => majPlanningClub((d) => { d.notifs = (d.notifs || []).filter((n) => n.id !== id); return d; });
+  // L'éducateur confirme avoir lu : on retire la notification et on enregistre un accusé de réception horodaté (conservé en mémoire)
+  const confirmerLectureNotif = (n) => majPlanningClub((d) => {
+    d.notifs = (d.notifs || []).filter((x) => x.id !== n.id);
+    d.accuses = d.accuses || [];
+    d.accuses.push({
+      id: uid(), demandeur: n.pour || monNom, statut: n.statut, raison: n.raison || "",
+      typeLieu: n.typeLieu, col: n.col, date: n.date, debut: n.debut, fin: n.fin || "", cat: n.cat || "",
+      activite: n.activite || "", luLe: new Date().toISOString(),
+    });
+    return d;
+  });
+  const effacerAccuse = (id) => majPlanningClub((d) => { d.accuses = (d.accuses || []).filter((a) => a.id !== id); return d; });
   const estMedical = !demo && !!(profil && profil.role === "medical");
   const lectureSeuleCat = !demo && !!(profil && Array.isArray(profil.catsModif) && cat && !profil.catsModif.includes(cat));
   const groupesDispo = GROUPES.filter((g) => CATEGORIES.some((c) => c.groupe === g && cats.includes(c.id)));
@@ -2473,7 +2511,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v6.9
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v7.1
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2547,7 +2585,7 @@ export default function App() {
             Consultation seule sur cette catégorie. Tu peux tout voir, mais la modification est réservée à son responsable.
           </div>
         )}
-        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onLireNotif={lireNotifPlanning} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
+        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={peutValider ? accusesClub : []} onEffacerAccuse={effacerAccuse} onRafraichir={rafraichirPlanning} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} demo={demo} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} />}
@@ -2821,11 +2859,15 @@ function ScoresWeekend({ onClose, localDb }) {
 /* ============================================================
    Accueil
    ============================================================ */
-function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onBilan, onPlateaux, onReunions, onCalendrier, demResume, demPlanning, onValiderPlanning, onRefuserPlanning, demNotifs, onLireNotif, estMedical, monEmail }) {
+function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onBilan, onPlateaux, onReunions, onCalendrier, demResume, demPlanning, onValiderPlanning, onRefuserPlanning, demNotifs, onConfirmerLecture, demAccuses, onEffacerAccuse, onRafraichir, estMedical, monEmail }) {
   const lstDemPlanning = demPlanning || [];
   const lstNotifs = demNotifs || [];
+  const lstAccuses = demAccuses || [];
   const [refusCle, setRefusCle] = useState(null);
   const [raisonRefus, setRaisonRefus] = useState("");
+  const [confirmLecture, setConfirmLecture] = useState(null);
+  const [rafraichissement, setRafraichissement] = useState(false);
+  const lancerRafraichir = () => { if (!onRafraichir) return; setRafraichissement(true); Promise.resolve(onRafraichir()).finally(() => setTimeout(() => setRafraichissement(false), 600)); };
   const players = db.players.filter((p) => p.cat === cat);
   const d0 = new Date();
   const todayStr = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
@@ -2887,6 +2929,14 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
 
   return (
     <div>
+      {onRafraichir && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+          <button onClick={lancerRafraichir} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, borderRadius: 999, padding: "6px 13px", cursor: "pointer", fontSize: 12.5, fontWeight: 800 }}>
+            <RefreshCw size={14} style={{ animation: rafraichissement ? "spin 0.6s linear" : "none" }} /> {rafraichissement ? "Actualisation..." : "Actualiser"}
+          </button>
+        </div>
+      )}
+      <style>{"@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}"}</style>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 18 }}>
         {stat("Joueurs", players.length, Users, () => setTab("effectif"))}
         {stat("Blessés", blesses, HeartPulse, () => setTab("effectif"))}
@@ -2914,11 +2964,54 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
                       <div style={{ fontSize: 12.5, color: C.rouge, marginTop: 4, fontWeight: 700 }}>Motif : {n.raison}</div>
                     )}
                   </div>
-                  <button onClick={() => onLireNotif && onLireNotif(n.id)} style={{ flex: "0 0 auto", border: "none", background: valide ? C.vert : C.rouge, color: "#fff", borderRadius: 9, padding: "7px 12px", cursor: "pointer", fontSize: 12.5, fontWeight: 800 }}>J'ai vu</button>
+                  {confirmLecture !== n.id && (
+                    <button onClick={() => setConfirmLecture(n.id)} style={{ flex: "0 0 auto", border: "none", background: valide ? C.vert : C.rouge, color: "#fff", borderRadius: 9, padding: "7px 12px", cursor: "pointer", fontSize: 12.5, fontWeight: 800 }}>J'ai vu</button>
+                  )}
                 </div>
+                {confirmLecture === n.id && (
+                  <div style={{ marginTop: 10, background: "#fff", border: `1px solid ${valide ? "#BFE3CD" : "#F0C4C4"}`, borderRadius: 11, padding: "10px 12px" }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: C.encre, marginBottom: 8 }}>Confirmes-tu avoir bien lu cette réponse ? Un accusé de réception sera envoyé à la direction.</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={() => { onConfirmerLecture && onConfirmerLecture(n); setConfirmLecture(null); }} style={{ flex: 1, border: "none", background: C.bleu, color: "#fff", borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Check size={15} /> Oui, je confirme</button>
+                      <button onClick={() => setConfirmLecture(null)} style={{ flex: "0 0 auto", border: `1px solid ${C.grisClair}`, background: "#fff", color: C.gris, borderRadius: 9, padding: "8px 14px", cursor: "pointer", fontSize: 13, fontWeight: 800 }}>Annuler</button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
+        </div>
+      )}
+
+      {lstAccuses.length > 0 && (
+        <div style={{ background: "#F1F5F9", border: `1px solid ${C.grisClair}`, borderRadius: 14, padding: "12px 14px", marginBottom: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: C.bleu, fontSize: 13.5, marginBottom: 8 }}>
+            <Check size={16} /> Accusés de réception des éducateurs
+          </div>
+          <div style={{ display: "grid", gap: 7 }}>
+            {lstAccuses.map((a) => {
+              const valide = a.statut === "valide";
+              const label = a.typeLieu === "vestiaires" ? "vestiaire" : "terrain";
+              const horaire = a.fin && a.fin !== a.debut ? `${a.debut} à ${a.fin}` : a.debut;
+              const lu = a.luLe ? new Date(a.luLe) : null;
+              const luTxt = lu ? `${pad(lu.getDate())}/${pad(lu.getMonth() + 1)} à ${pad(lu.getHours())}h${pad(lu.getMinutes())}` : "";
+              return (
+                <div key={a.id} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "9px 11px", display: "flex", alignItems: "flex-start", gap: 9 }}>
+                  <Check size={15} color={C.vert} style={{ flex: "0 0 auto", marginTop: 2 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: C.encre }}>
+                      {a.demandeur || "Éducateur"} a bien vu {valide ? "la validation" : "le refus"}
+                    </div>
+                    <div style={{ fontSize: 12, color: C.gris, marginTop: 2 }}>
+                      {a.cat ? a.cat + " · " : ""}{label} {a.col} · le {jjmm(a.date)} · {horaire}{!valide && a.raison ? " · motif : " + a.raison : ""}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: C.vert, marginTop: 3, fontWeight: 700 }}>Lu le {luTxt}</div>
+                  </div>
+                  <X size={15} color={C.gris} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => onEffacerAccuse && onEffacerAccuse(a.id)} />
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
