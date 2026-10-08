@@ -2194,6 +2194,14 @@ export default function App() {
     out.sort((a, b) => (a.date + a.debut).localeCompare(b.date + b.debut));
     return out;
   }, [planningClub]);
+  const monNom = demo ? "Éducateur" : ((profil && profil.nom) || "");
+  // Réponses (validée / refusée) adressées à l'éducateur connecté
+  const mesNotifsPlanning = useMemo(() => {
+    const pl = planningClub || {};
+    const list = (pl.notifs || []).filter((n) => n && n.pour && monNom && n.pour === monNom);
+    list.sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""));
+    return list;
+  }, [planningClub, monNom]);
   const pendingRef = useRef(false);
   const saveQueueRef = useRef(Promise.resolve());
   const savingCountRef = useRef(0);
@@ -2400,23 +2408,34 @@ export default function App() {
   const peutValider = demo || (profil && (profil.role === "responsable" || profil.role === "direction"));
   const estAdmin = demo || (profil && profil.role === "direction");
   // Validation / refus d'une demande de créneau posée par un éducateur
-  const majCellulesDemande = (dem, transformer) => {
+  const estCelluleDemande = (c, k, dem) => c && c.statut === "attente" && k.split("__")[1] === dem.col
+    && (c.debut || k.split("__")[0]) === dem.debut
+    && (c.fin || "") === (dem.fin || "") && (c.cat || "") === (dem.cat || "");
+  const ajouterNotifPlanning = (d, dem, statut, raison) => {
+    d.notifs = d.notifs || [];
+    d.notifs.push({
+      id: uid(), pour: dem.demandeur || "", statut, raison: raison || "",
+      typeLieu: dem.type, col: dem.col, date: dem.date, debut: dem.debut, fin: dem.fin || "",
+      equipe: dem.equipe || "", activite: dem.activite || "", creeLe: new Date().toISOString(),
+    });
+  };
+  const validerDemandePlanning = (dem) => {
     majPlanningClub((d) => {
-      const parDate = (d[dem.type] = d[dem.type] || {});
-      const cells = (parDate[dem.date] = parDate[dem.date] || {});
-      Object.keys(cells).forEach((k) => {
-        const c = cells[k];
-        if (c && c.statut === "attente" && k.split("__")[1] === dem.col
-          && (c.debut || k.split("__")[0]) === dem.debut
-          && (c.fin || "") === (dem.fin || "") && (c.cat || "") === (dem.cat || "")) {
-          transformer(cells, k, c);
-        }
-      });
+      const cells = ((d[dem.type] = d[dem.type] || {})[dem.date] = (d[dem.type] || {})[dem.date] || {});
+      Object.keys(cells).forEach((k) => { if (estCelluleDemande(cells[k], k, dem)) cells[k] = { ...cells[k], statut: "valide" }; });
+      ajouterNotifPlanning(d, dem, "valide", "");
       return d;
     });
   };
-  const validerDemandePlanning = (dem) => majCellulesDemande(dem, (cells, k, c) => { cells[k] = { ...c, statut: "valide" }; });
-  const refuserDemandePlanning = (dem) => majCellulesDemande(dem, (cells, k) => { delete cells[k]; });
+  const refuserDemandePlanning = (dem, raison) => {
+    majPlanningClub((d) => {
+      const cells = ((d[dem.type] = d[dem.type] || {})[dem.date] = (d[dem.type] || {})[dem.date] || {});
+      Object.keys(cells).forEach((k) => { if (estCelluleDemande(cells[k], k, dem)) delete cells[k]; });
+      ajouterNotifPlanning(d, dem, "refus", raison || "");
+      return d;
+    });
+  };
+  const lireNotifPlanning = (id) => majPlanningClub((d) => { d.notifs = (d.notifs || []).filter((n) => n.id !== id); return d; });
   const estMedical = !demo && !!(profil && profil.role === "medical");
   const lectureSeuleCat = !demo && !!(profil && Array.isArray(profil.catsModif) && cat && !profil.catsModif.includes(cat));
   const groupesDispo = GROUPES.filter((g) => CATEGORIES.some((c) => c.groupe === g && cats.includes(c.id)));
@@ -2444,7 +2463,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v6.7
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v6.8
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2518,7 +2537,7 @@ export default function App() {
             Consultation seule sur cette catégorie. Tu peux tout voir, mais la modification est réservée à son responsable.
           </div>
         )}
-        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
+        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onLireNotif={lireNotifPlanning} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} demo={demo} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} />}
@@ -2792,8 +2811,11 @@ function ScoresWeekend({ onClose, localDb }) {
 /* ============================================================
    Accueil
    ============================================================ */
-function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onBilan, onPlateaux, onReunions, onCalendrier, demResume, demPlanning, onValiderPlanning, onRefuserPlanning, estMedical, monEmail }) {
+function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onBilan, onPlateaux, onReunions, onCalendrier, demResume, demPlanning, onValiderPlanning, onRefuserPlanning, demNotifs, onLireNotif, estMedical, monEmail }) {
   const lstDemPlanning = demPlanning || [];
+  const lstNotifs = demNotifs || [];
+  const [refusCle, setRefusCle] = useState(null);
+  const [raisonRefus, setRaisonRefus] = useState("");
   const players = db.players.filter((p) => p.cat === cat);
   const d0 = new Date();
   const todayStr = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
@@ -2861,6 +2883,35 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
         {stat("À préparer", nbOrga, MapPin, onOrganisation)}
       </div>
 
+      {lstNotifs.length > 0 && (
+        <div style={{ display: "grid", gap: 8, marginBottom: 18 }}>
+          {lstNotifs.map((n) => {
+            const valide = n.statut === "valide";
+            const label = n.typeLieu === "vestiaires" ? "vestiaire" : "terrain";
+            const horaire = n.fin && n.fin !== n.debut ? `${n.debut} à ${n.fin}` : n.debut;
+            return (
+              <div key={n.id} style={{ background: valide ? "#E2F4E9" : "#FBE3E3", border: `1px solid ${valide ? "#BFE3CD" : "#F0C4C4"}`, borderRadius: 14, padding: "12px 14px" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
+                  {valide ? <Check size={17} color={C.vert} style={{ flex: "0 0 auto", marginTop: 1 }} /> : <ShieldAlert size={17} color={C.rouge} style={{ flex: "0 0 auto", marginTop: 1 }} />}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13.5, color: valide ? "#2F6D43" : C.rouge }}>
+                      {valide ? "Votre demande de créneau a été validée" : "Votre demande de créneau a été refusée"}
+                    </div>
+                    <div style={{ fontSize: 12.5, color: C.encre, marginTop: 3 }}>
+                      {n.cat ? n.cat + " · " : ""}{label} {n.col} · le {jjmm(n.date)} · {horaire}
+                    </div>
+                    {!valide && n.raison && (
+                      <div style={{ fontSize: 12.5, color: C.rouge, marginTop: 4, fontWeight: 700 }}>Motif : {n.raison}</div>
+                    )}
+                  </div>
+                  <button onClick={() => onLireNotif && onLireNotif(n.id)} style={{ flex: "0 0 auto", border: "none", background: valide ? C.vert : C.rouge, color: "#fff", borderRadius: 9, padding: "7px 12px", cursor: "pointer", fontSize: 12.5, fontWeight: 800 }}>J'ai vu</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {prochainMatch && (
         <Card style={{ marginBottom: 18, background: `linear-gradient(150deg, ${C.bleu}, ${C.bleuNuit})`, border: "none", color: "#fff" }} onClick={onOrganisation}>
           <div style={{ fontSize: 11.5, color: C.jaune, fontWeight: 800, letterSpacing: 1.5, marginBottom: 6 }}>PROCHAIN MATCH</div>
@@ -2878,18 +2929,30 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
             {lstDemPlanning.map((dm, i) => {
               const label = dm.type === "vestiaires" ? "Vestiaire" : "Terrain";
               const horaire = dm.fin && dm.fin !== dm.debut ? `${dm.debut} à ${dm.fin}` : dm.debut;
+              const cle = `${dm.type}__${dm.date}__${dm.col}__${dm.debut}`;
+              const enRefus = refusCle === cle;
               return (
-                <div key={i} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "10px 12px" }}>
+                <div key={cle} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "10px 12px" }}>
                   <div style={{ fontSize: 13.5, fontWeight: 800, color: C.encre }}>
                     {dm.cat ? dm.cat + " · " : ""}{label} {dm.col}
                   </div>
                   <div style={{ fontSize: 12.5, color: C.gris, marginTop: 2 }}>
                     Le {jjmm(dm.date)} · {horaire}{dm.activite ? " · " + dm.activite : ""}{dm.demandeur ? " · demandé par " + dm.demandeur : ""}
                   </div>
-                  <div style={{ display: "flex", gap: 8, marginTop: 9 }}>
-                    <button onClick={() => onValiderPlanning && onValiderPlanning(dm)} style={{ flex: 1, border: "none", background: C.vert, color: "#fff", borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Check size={15} /> Valider</button>
-                    <button onClick={() => onRefuserPlanning && onRefuserPlanning(dm)} style={{ flex: 1, border: `1px solid ${C.rouge}`, background: "#fff", color: C.rouge, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><X size={15} /> Refuser</button>
-                  </div>
+                  {!enRefus ? (
+                    <div style={{ display: "flex", gap: 8, marginTop: 9 }}>
+                      <button onClick={() => onValiderPlanning && onValiderPlanning(dm)} style={{ flex: 1, border: "none", background: C.vert, color: "#fff", borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Check size={15} /> Valider</button>
+                      <button onClick={() => { setRefusCle(cle); setRaisonRefus(""); }} style={{ flex: 1, border: `1px solid ${C.rouge}`, background: "#fff", color: C.rouge, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><X size={15} /> Refuser</button>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 9 }}>
+                      <input value={raisonRefus} onChange={(e) => setRaisonRefus(e.target.value)} placeholder="Motif du refus (ex : terrain déjà réservé)" autoFocus style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${C.grisClair}`, borderRadius: 9, padding: "9px 11px", fontSize: 13, color: C.encre, outline: "none" }} />
+                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                        <button onClick={() => { onRefuserPlanning && onRefuserPlanning(dm, raisonRefus.trim()); setRefusCle(null); setRaisonRefus(""); }} style={{ flex: 1, border: "none", background: C.rouge, color: "#fff", borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><X size={15} /> Confirmer le refus</button>
+                        <button onClick={() => { setRefusCle(null); setRaisonRefus(""); }} style={{ flex: "0 0 auto", border: `1px solid ${C.grisClair}`, background: "#fff", color: C.gris, borderRadius: 9, padding: "8px 14px", cursor: "pointer", fontSize: 13, fontWeight: 800 }}>Annuler</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
