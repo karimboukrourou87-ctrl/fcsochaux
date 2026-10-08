@@ -2169,6 +2169,30 @@ export default function App() {
   const [encadrementClub, majEncadrementClub] = useEncadrementClub(demo, db, mutate);
   const catsPlanning = demo ? CATEGORIES.map((c) => c.id) : ((profil && profil.cats) || []);
   const [planningClub, majPlanningClub, chargementPlanning] = usePlanningClub(demo, db, mutate, catsPlanning);
+  // Demandes de créneaux en attente (réservations posées par un éducateur, en dehors du planning hebdomadaire)
+  const demandesPlanning = useMemo(() => {
+    const pl = planningClub || {};
+    const out = [];
+    const vus = new Set();
+    ["vestiaires", "terrains"].forEach((tp) => {
+      const parDate = pl[tp] || {};
+      Object.keys(parDate).forEach((dstr) => {
+        const cells = parDate[dstr] || {};
+        Object.keys(cells).forEach((k) => {
+          const c = cells[k];
+          if (!c || c.statut !== "attente") return;
+          const col = k.split("__")[1];
+          const debut = c.debut || k.split("__")[0];
+          const sig = `${tp}__${dstr}__${col}__${debut}__${c.fin || ""}__${c.equipe || ""}__${c.cat || ""}`;
+          if (vus.has(sig)) return;
+          vus.add(sig);
+          out.push({ type: tp, date: dstr, col, debut, fin: c.fin, equipe: c.equipe, activite: c.activite, cat: c.cat, demandeur: c.demandeur });
+        });
+      });
+    });
+    out.sort((a, b) => (a.date + a.debut).localeCompare(b.date + b.debut));
+    return out;
+  }, [planningClub]);
   const pendingRef = useRef(false);
   const saveQueueRef = useRef(Promise.resolve());
   const savingCountRef = useRef(0);
@@ -2374,6 +2398,24 @@ export default function App() {
   const sousTitre = demo ? "" : (profil && profil.role === "direction" ? " · DIRECTION" : "");
   const peutValider = demo || (profil && (profil.role === "responsable" || profil.role === "direction"));
   const estAdmin = demo || (profil && profil.role === "direction");
+  // Validation / refus d'une demande de créneau posée par un éducateur
+  const majCellulesDemande = (dem, transformer) => {
+    majPlanningClub((d) => {
+      const parDate = (d[dem.type] = d[dem.type] || {});
+      const cells = (parDate[dem.date] = parDate[dem.date] || {});
+      Object.keys(cells).forEach((k) => {
+        const c = cells[k];
+        if (c && c.statut === "attente" && k.split("__")[1] === dem.col
+          && (c.debut || k.split("__")[0]) === dem.debut
+          && (c.fin || "") === (dem.fin || "") && (c.cat || "") === (dem.cat || "")) {
+          transformer(cells, k, c);
+        }
+      });
+      return d;
+    });
+  };
+  const validerDemandePlanning = (dem) => majCellulesDemande(dem, (cells, k, c) => { cells[k] = { ...c, statut: "valide" }; });
+  const refuserDemandePlanning = (dem) => majCellulesDemande(dem, (cells, k) => { delete cells[k]; });
   const estMedical = !demo && !!(profil && profil.role === "medical");
   const lectureSeuleCat = !demo && !!(profil && Array.isArray(profil.catsModif) && cat && !profil.catsModif.includes(cat));
   const groupesDispo = GROUPES.filter((g) => CATEGORIES.some((c) => c.groupe === g && cats.includes(c.id)));
@@ -2401,7 +2443,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v6.5
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v6.6
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2475,7 +2517,7 @@ export default function App() {
             Consultation seule sur cette catégorie. Tu peux tout voir, mais la modification est réservée à son responsable.
           </div>
         )}
-        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
+        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} demo={demo} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} />}
@@ -2749,7 +2791,8 @@ function ScoresWeekend({ onClose, localDb }) {
 /* ============================================================
    Accueil
    ============================================================ */
-function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onBilan, onPlateaux, onReunions, onCalendrier, demResume, estMedical, monEmail }) {
+function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onBilan, onPlateaux, onReunions, onCalendrier, demResume, demPlanning, onValiderPlanning, onRefuserPlanning, estMedical, monEmail }) {
+  const lstDemPlanning = demPlanning || [];
   const players = db.players.filter((p) => p.cat === cat);
   const d0 = new Date();
   const todayStr = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
@@ -2793,7 +2836,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
     { titre: "Réunions", sous: "Programmer les réunions et recueillir les présences", icon: Users, action: onReunions, badge: alerteReunions },
     { titre: "Calendrier du club", sous: "Tous les événements, toutes catégories réunies", icon: CalendarDays, action: onCalendrier },
     { titre: "Planning hebdomadaire", sous: "Créneaux d'entraînement de la semaine, par catégorie", icon: CalendarDays, action: onPlanningHebdo },
-    { titre: "Planning des vestiaires et terrains", sous: "Réserver terrains et vestiaires par créneau", icon: CalendarDays, action: onPlanning },
+    { titre: "Planning des vestiaires et terrains", sous: "Réserver terrains et vestiaires par créneau", icon: CalendarDays, action: onPlanning, badge: lstDemPlanning.length },
     { titre: "Droits d'accès", sous: "Gérer les accès des éducateurs par secteur", icon: ShieldAlert, action: onAcces },
     { titre: "Sauvegarde des données", sous: "Exporter ou restaurer les informations du club", icon: Save, action: onSauvegarde },
   ];
@@ -2823,6 +2866,34 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
           <div style={{ fontWeight: 800, fontSize: 16 }}>{prochainMatch.lieu === "Domicile" ? CLUB : (prochainMatch.adversaire || "Adversaire")} <span style={{ color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>c.</span> {prochainMatch.lieu === "Domicile" ? (prochainMatch.adversaire || "Adversaire") : CLUB}</div>
           <div style={{ fontSize: 12.5, color: "rgba(255,255,255,0.82)", marginTop: 4 }}>{prochainMatch.date ? jourLong(prochainMatch.date) : "Date à définir"}{prochainMatch.heure ? ` · ${prochainMatch.heure}` : ""} · {prochainMatch.lieu}</div>
         </Card>
+      )}
+
+      {lstDemPlanning.length > 0 && (
+        <div style={{ background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 14, padding: "12px 14px", marginBottom: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: C.bleu, fontSize: 13.5, marginBottom: 8 }}>
+            <Bell size={16} /> {lstDemPlanning.length} demande{lstDemPlanning.length > 1 ? "s" : ""} de créneau à valider
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {lstDemPlanning.map((dm, i) => {
+              const label = dm.type === "vestiaires" ? "Vestiaire" : "Terrain";
+              const horaire = dm.fin && dm.fin !== dm.debut ? `${dm.debut} à ${dm.fin}` : dm.debut;
+              return (
+                <div key={i} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: C.encre }}>
+                    {dm.cat ? dm.cat + " · " : ""}{label} {dm.col}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: C.gris, marginTop: 2 }}>
+                    Le {jjmm(dm.date)} · {horaire}{dm.activite ? " · " + dm.activite : ""}{dm.demandeur ? " · demandé par " + dm.demandeur : ""}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 9 }}>
+                    <button onClick={() => onValiderPlanning && onValiderPlanning(dm)} style={{ flex: 1, border: "none", background: C.vert, color: "#fff", borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Check size={15} /> Valider</button>
+                    <button onClick={() => onRefuserPlanning && onRefuserPlanning(dm)} style={{ flex: 1, border: `1px solid ${C.rouge}`, background: "#fff", color: C.rouge, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><X size={15} /> Refuser</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {(alerteDemRecues > 0 || alerteDemEnvoyees > 0 || alerteDemReponses > 0 || alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0 || aRisqueSusp > 0 || alerteSuivi > 0 || blesses > 0) && (
