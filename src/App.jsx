@@ -4,7 +4,7 @@ import {
   Plus, X, Trash2, ChevronLeft, Trophy, Award, Bell, Activity, Target,
   Footprints, Ruler, Weight, Gauge, Timer, Edit3, Save,
   HeartPulse, ShieldAlert, Star, MapPin, ArrowRightLeft, Eye, FileDown, Phone, Camera, LogOut,
-  Send, Check, Inbox, ListOrdered, ExternalLink, Bus, Upload
+  Send, Check, Inbox, ListOrdered, ExternalLink, Bus, Upload, Lock
 } from "lucide-react";
 
 /* ============================================================
@@ -1290,6 +1290,80 @@ function useEncadrementClub(demo, db, mutate) {
   return [liste, maj, !demo && listeRemote === null];
 }
 
+// Planning des terrains et vestiaires COMMUN à tout le club :
+// une seule réservation partagée, visible et modifiable depuis toutes les catégories.
+const CAT_PLANNING = "__PLANNING__";
+async function loadPlanningClub() {
+  const sb = await getSupabase();
+  const { data, error } = await sb.from("categorie_data").select("data").eq("categorie", CAT_PLANNING).maybeSingle();
+  if (error) throw error;
+  return (data && data.data && data.data.planning) ? data.data.planning : null;
+}
+async function savePlanningClub(planning) {
+  const sb = await getSupabase();
+  let userId = null;
+  try { const u = await sb.auth.getUser(); userId = (u && u.data && u.data.user) ? u.data.user.id : null; } catch (e) {}
+  await saveCat(CAT_PLANNING, { planning }, userId);
+}
+// Regroupe un planning source dans une cible sans écraser une case déjà réservée.
+function fusionnerPlanning(cible, source) {
+  cible = cible || { creneaux: null, vestiaires: {}, terrains: {} };
+  if (!source) return cible;
+  const crSet = new Set([...(cible.creneaux || []), ...(source.creneaux || [])]);
+  if (crSet.size) cible.creneaux = [...crSet].sort();
+  ["vestiaires", "terrains"].forEach((tp) => {
+    const s = source[tp] || {};
+    cible[tp] = cible[tp] || {};
+    Object.keys(s).forEach((dstr) => {
+      cible[tp][dstr] = cible[tp][dstr] || {};
+      Object.keys(s[dstr] || {}).forEach((k) => {
+        if (cible[tp][dstr][k] == null) cible[tp][dstr][k] = s[dstr][k];
+      });
+    });
+  });
+  return cible;
+}
+// Hook : renvoie [planning, maj, chargement]. Le planning est commun à tout le club.
+function usePlanningClub(demo, db, mutate, cats) {
+  const [remote, setRemote] = useState(null);
+  const faitRef = useRef(false);
+  useEffect(() => {
+    if (demo || faitRef.current) return;
+    if (!cats || !cats.length) return;
+    faitRef.current = true;
+    let annule = false;
+    (async () => {
+      try {
+        let pl = await loadPlanningClub();
+        if (!pl) {
+          // Première ouverture : on récupère les plannings déjà saisis dans chaque catégorie du club et on les regroupe.
+          let base = { creneaux: null, vestiaires: {}, terrains: {} };
+          try {
+            const toutesCats = CATEGORIES.map((c) => c.id);
+            const res = await Promise.all(toutesCats.map((c) => loadCat(c).then((d) => d && d.planning).catch(() => null)));
+            res.forEach((p) => { base = fusionnerPlanning(base, p); });
+          } catch (e) {}
+          pl = base;
+          try { await savePlanningClub(pl); } catch (e) {}
+        }
+        if (!annule) setRemote(pl);
+      } catch (e) { if (!annule) setRemote({ creneaux: null, vestiaires: {}, terrains: {} }); }
+    })();
+    return () => { annule = true; };
+  }, [demo, cats]);
+  const planning = demo ? ((db && db.planning) || { vestiaires: {}, terrains: {} }) : remote;
+  const maj = (fn) => {
+    if (demo) { mutate((d) => { d.planning = fn(d.planning || { vestiaires: {}, terrains: {} }); return d; }); return; }
+    setRemote((prev) => {
+      const base = prev ? JSON.parse(JSON.stringify(prev)) : { creneaux: null, vestiaires: {}, terrains: {} };
+      const next = fn(base);
+      savePlanningClub(next).catch(() => {});
+      return next;
+    });
+  };
+  return [planning, maj, !demo && remote === null];
+}
+
 // Ecran commun de gestion des dirigeants / encadrants : ajouter, renommer, supprimer (securise).
 // Travaille sur la liste commune du club, via (liste, maj) fournis par l'appelant.
 function GestionDirigeants({ liste, maj, onClose }) {
@@ -2027,6 +2101,8 @@ export default function App() {
   const [demo, setDemo] = useState(false);
   const cacheRef = useRef({});
   const [encadrementClub, majEncadrementClub] = useEncadrementClub(demo, db, mutate);
+  const catsPlanning = demo ? CATEGORIES.map((c) => c.id) : ((profil && profil.cats) || []);
+  const [planningClub, majPlanningClub, chargementPlanning] = usePlanningClub(demo, db, mutate, catsPlanning);
   const pendingRef = useRef(false);
   const saveQueueRef = useRef(Promise.resolve());
   const savingCountRef = useRef(0);
@@ -2259,7 +2335,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v4.4
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v4.6
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2392,7 +2468,7 @@ export default function App() {
       {showTransport && <Transports db={db} mutate={mutate} cat={cat} encadrement={encadrementClub} majEncadrement={majEncadrementClub} onClose={() => setShowTransport(false)} />}
       {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
-      {showPlanning && <Planning db={db} mutate={mutate} cats={cats} profil={profil} peutValider={peutValider} cat={cat} onClose={() => setShowPlanning(false)} />}
+      {showPlanning && <Planning planning={planningClub} majPlanning={majPlanningClub} chargement={chargementPlanning} cats={cats} profil={profil} peutValider={peutValider} cat={cat} onClose={() => setShowPlanning(false)} />}
       {showPlanningHebdo && <PlanningHebdo onClose={() => setShowPlanningHebdo(false)} />}
       {showAcces && <AccesSecteurs db={{ acces: accesSource }} mutate={mutateReu} estAdmin={estAdmin} onClose={() => setShowAcces(false)} />}
       {showProgramme && <ProgrammeSemaine db={db} onClose={() => setShowProgramme(false)} />}
@@ -7722,35 +7798,82 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
 const CRENEAUX_ANCIEN = ["08h00", "09h00", "10h00", "11h00", "12h00", "13h00", "13h30", "14h00", "14h30", "15h30", "16h30", "17h30", "18h00", "19h00", "20h00"];
 const CRENEAUX_DEFAUT = (() => { const a = []; for (let m = 8 * 60; m <= 21 * 60 + 30; m += 30) a.push(`${pad(Math.floor(m / 60))}h${pad(m % 60)}`); return a; })();
 
-function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValider, avecActivite, estPlage, onClose, onSave, onDelete, onDeleteUn, onValider }) {
+function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValider, avecActivite, estPlage, verrou, monCat, jourNom, onClose, onSave, onDelete, onDeleteUn, onValider }) {
+  const estHebdo = !!(actuel && actuel.estHebdo);
   const [occupants, setOccupants] = useState(actuel && actuel.equipe ? actuel.equipe.split(" + ").map((x) => x.trim()).filter(Boolean) : []);
   const [saisie, setSaisie] = useState("");
   const [activite, setActivite] = useState((actuel && actuel.activite) || "match");
   const [fin, setFin] = useState((actuel && actuel.fin) || "");
+  const [recurrent, setRecurrent] = useState(estHebdo);
   const ajouter = (nom) => { const n = (nom || "").trim(); if (n && !occupants.includes(n)) setOccupants([...occupants, n]); };
   const retirer = (nom) => setOccupants(occupants.filter((x) => x !== nom));
+
+  const descrStatut = estHebdo
+    ? "Séance hebdomadaire récurrente, verrouillée."
+    : (actuel && actuel.statut === "valide")
+      ? "Demande validée définitivement."
+      : "Demande en cours de traitement, en attente de validation du responsable.";
+
+  // Vue en lecture seule : un coach ne peut pas toucher une séance hebdo, une demande validée, ni une demande d'une autre catégorie.
+  if (verrou) {
+    return (
+      <Modal title={`${typeLabel} ${colonne}`} onClose={onClose}>
+        <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12 }}>Créneau de {creneau}{jourNom ? ` · ${jourNom}` : ""}.</div>
+        {actuel && (
+          <div style={{ background: estHebdo || actuel.statut === "valide" ? "#E2F4E9" : "#FBEAD9", borderRadius: 11, padding: 12, marginBottom: 12 }}>
+            <div style={{ fontWeight: 800, fontSize: 14 }}>{actuel.equipe}</div>
+            {actuel.debut && actuel.fin && <div style={{ fontSize: 12, color: C.gris, marginTop: 2 }}>{actuel.debut} - {actuel.fin}</div>}
+            <div style={{ fontSize: 12.5, color: estHebdo || actuel.statut === "valide" ? C.vert : "#B87A2B", fontWeight: 700, marginTop: 4, display: "inline-flex", alignItems: "center", gap: 5 }}>{(estHebdo || actuel.statut === "valide") && <Lock size={13} />}{descrStatut}</div>
+            {actuel.cat && <div style={{ fontSize: 12, color: C.gris, marginTop: 3 }}>Catégorie : {actuel.cat}{actuel.demandeur ? ` · ${actuel.demandeur}` : ""}</div>}
+          </div>
+        )}
+        <div style={{ fontSize: 12.5, color: C.encre, background: "#EEF2F8", borderRadius: 11, padding: 12, lineHeight: 1.5 }}>
+          {estHebdo ? "C'est une séance hebdomadaire du club. Seul le responsable peut la modifier ou la supprimer."
+            : (actuel && actuel.statut === "valide") ? "Cette réservation est validée. Seul le responsable peut la modifier ou la supprimer."
+            : `Cette demande a été faite par une autre catégorie${actuel && actuel.cat ? ` (${actuel.cat})` : ""}. Tu ne peux pas la modifier.`}
+        </div>
+      </Modal>
+    );
+  }
+
+  const boutonLabel = peutValider ? (recurrent ? "Planifier la séance" : "Attribuer") : "Demander";
   return (
     <Modal title={`${typeLabel} ${colonne}`} onClose={onClose}
       footer={
         <>
-          <Btn variant="accent" full disabled={occupants.length === 0} onClick={() => onSave(occupants.join(" + "), activite, fin)}><Save size={16} /> {peutValider ? "Attribuer" : "Demander"}</Btn>
+          <Btn variant="accent" full disabled={occupants.length === 0} onClick={() => onSave(occupants.join(" + "), activite, fin, recurrent)}><Save size={16} /> {boutonLabel}</Btn>
           {actuel && onDelete && <Btn variant="danger" onClick={estPlage ? onDeleteUn : onDelete}><Trash2 size={16} /></Btn>}
         </>
       }>
       {actuel && estPlage && (
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
           <Btn variant="danger" size="sm" full onClick={onDeleteUn}><Trash2 size={15} /> Effacer ce créneau ({creneau})</Btn>
-          <Btn variant="danger" size="sm" full onClick={onDelete}><Trash2 size={15} /> Effacer toute la plage</Btn>
+          <Btn variant="danger" size="sm" full onClick={onDelete}><Trash2 size={15} /> Effacer {estHebdo ? "toute la séance" : "toute la plage"}</Btn>
         </div>
       )}
-      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12 }}>Créneau de {creneau}. Tu peux mettre plusieurs équipes qui se partagent ce {typeLabel.toLowerCase()}, par exemple U14 et U15, ou ajouter le district. {peutValider ? "En tant que responsable, ton attribution est directement validée." : "Ta demande sera à valider par la direction."}</div>
+      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12 }}>Créneau de {creneau}. Tu peux mettre plusieurs équipes qui se partagent ce {typeLabel.toLowerCase()}, par exemple U14 et U15, ou ajouter le district. {peutValider ? "En tant que responsable, ton attribution est directement validée." : "Ta demande sera affichée « en cours de traitement » jusqu'à validation par le responsable."}</div>
+
+      {peutValider && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Type de réservation</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[[false, "Ponctuelle (cette date)"], [true, `Hebdomadaire (chaque ${jourNom || "semaine"})`]].map(([v, lab]) => (
+              <button key={String(v)} onClick={() => setRecurrent(v)} style={{
+                flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "9px 6px", fontWeight: 800, fontSize: 12,
+                background: recurrent === v ? C.bleu : "#EEF2F8", color: recurrent === v ? "#fff" : C.gris, lineHeight: 1.25,
+              }}>{lab}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: C.gris, marginTop: 5, lineHeight: 1.4 }}>{recurrent ? "La séance réapparaîtra automatiquement chaque semaine ce jour, verrouillée pour les coachs." : "Réservation pour cette date uniquement."}</div>
+        </div>
+      )}
 
       {actuel && (
-        <div style={{ background: actuel.statut === "valide" ? "#E2F4E9" : "#FBEAD9", borderRadius: 11, padding: 11, marginBottom: 14 }}>
+        <div style={{ background: estHebdo || actuel.statut === "valide" ? "#E2F4E9" : "#FBEAD9", borderRadius: 11, padding: 11, marginBottom: 14 }}>
           <div style={{ fontWeight: 800, fontSize: 14 }}>{actuel.equipe}</div>
-          <div style={{ fontSize: 12.5, color: C.gris, marginTop: 2 }}>{actuel.statut === "valide" ? "Créneau validé" : "En attente de validation"}{actuel.demandeur ? ` · demandé par ${actuel.demandeur}` : ""}</div>
-          {peutValider && actuel.statut !== "valide" && (
-            <Btn variant="accent" size="sm" style={{ marginTop: 9 }} onClick={onValider}><Check size={15} /> Valider ce créneau</Btn>
+          <div style={{ fontSize: 12.5, color: C.gris, marginTop: 2 }}>{descrStatut}{actuel.demandeur ? ` · demandé par ${actuel.demandeur}` : ""}{actuel.cat ? ` · ${actuel.cat}` : ""}</div>
+          {peutValider && !estHebdo && actuel.statut !== "valide" && (
+            <Btn variant="accent" size="sm" style={{ marginTop: 9 }} onClick={onValider}><Check size={15} /> Valider définitivement</Btn>
           )}
         </div>
       )}
@@ -7860,7 +7983,8 @@ function exporterPlanningSemainePDF(jsPDF, sem, occ, label, cat, typeLabel, code
   doc.save(nomPdf("Planning", typeLabel.toLowerCase(), "semaine", label));
 }
 
-function PlanningSemaine({ db, cat, type, onClose }) {
+function PlanningSemaine({ planning, cat, type, onClose }) {
+  const pl = planning || { vestiaires: {}, terrains: {} };
   const [offset, setOffset] = useState(0);
   const [msg, setMsg] = useState(null);
   const typeLabel = type === "vestiaires" ? "Vestiaires" : "Terrains";
@@ -7875,11 +7999,22 @@ function PlanningSemaine({ db, cat, type, onClose }) {
     return { jours: arr, label: `${jjmm(arr[0])} au ${jjmm(arr[6])}` };
   }, [offset]);
   function occupation() {
+    const hebdo = (pl.hebdo && pl.hebdo[type]) || {};
     return liste.map((nom) => {
       const cells = jours.map((dstr) => {
-        const parDate = (db.planning && db.planning[type]) || {};
-        const cases = parDate[dstr] || {};
-        return Object.keys(cases).filter((k) => k.slice(k.indexOf("__") + 2) === nom).map((k) => { const cr = k.slice(0, k.indexOf("__")); const c = cases[k]; return `${cr} · ${c.equipe}${c.statut === "valide" ? "" : " · à valider"}`; }).sort();
+        const jour = (new Date(dstr + "T00:00:00").getDay() + 6) % 7;
+        const cases = (pl[type] && pl[type][dstr]) || {};
+        const vus = new Set();
+        const res = [];
+        Object.keys(cases).filter((k) => k.slice(k.indexOf("__") + 2) === nom).forEach((k) => {
+          const cr = k.slice(0, k.indexOf("__")); const c = cases[k]; vus.add(cr);
+          res.push({ cr, txt: `${cr} · ${c.equipe}${c.statut === "valide" ? "" : " · en traitement"}` });
+        });
+        Object.keys(hebdo).forEach((k) => {
+          const parts = k.split("__"); const j = +parts[0], cr = parts[1], col = parts.slice(2).join("__");
+          if (j === jour && col === nom && !vus.has(cr)) { const c = hebdo[k]; res.push({ cr, txt: `${cr} · ${c.equipe} · hebdo` }); }
+        });
+        return res.sort((a, b) => a.cr.localeCompare(b.cr)).map((x) => x.txt);
       });
       return { nom: type === "vestiaires" ? "Vestiaire " + nom : nom, cells, used: cells.some((c) => c.length) };
     }).filter((o) => o.used);
@@ -7946,7 +8081,7 @@ function PlanningSemaine({ db, cat, type, onClose }) {
   );
 }
 
-function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
+function Planning({ planning, majPlanning, chargement, cats, profil, peutValider, cat, onClose }) {
   const [type, setType] = useState("vestiaires");
   const d0 = new Date();
   const [date, setDate] = useState(`${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`);
@@ -7962,11 +8097,38 @@ function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
 
   const colonnes = type === "vestiaires" ? VESTIAIRES : TERRAINS;
   const typeLabel = type === "vestiaires" ? "Vestiaire" : "Terrain";
-  const rawCreneaux = db.planning && db.planning.creneaux;
+  const pl = planning || { vestiaires: {}, terrains: {} };
+  const rawCreneaux = pl.creneaux;
   const creneaux = (!rawCreneaux || rawCreneaux.join() === CRENEAUX_ANCIEN.join()) ? CRENEAUX_DEFAUT : rawCreneaux;
-  const data = (db.planning && db.planning[type] && db.planning[type][date]) || {};
   const cle = (cr, col) => `${cr}__${col}`;
   const moi = (profil && profil.nom) || "Éducateur";
+  // Résolution d'une case : d'abord une demande ponctuelle posée à cette date, sinon la séance hebdomadaire récurrente du jour.
+  const jourSem = (dstr) => (new Date(dstr + "T00:00:00").getDay() + 6) % 7;
+  const hebdoMap = (pl.hebdo && pl.hebdo[type]) || {};
+  const caseA = (dstr, cr, col) => {
+    const one = ((pl[type] && pl[type][dstr]) || {})[cle(cr, col)];
+    if (one) return { ...one, estHebdo: false };
+    const h = hebdoMap[`${jourSem(dstr)}__${cr}__${col}`];
+    if (h) return { ...h, statut: "valide", estHebdo: true };
+    return null;
+  };
+  // Une case est verrouillée pour un coach si : séance hebdo, demande déjà validée, ou demande en attente d'une AUTRE catégorie.
+  const verrouille = (c) => {
+    if (!c) return false;
+    if (peutValider) return false;
+    if (c.estHebdo) return true;
+    if (c.statut === "valide") return true;
+    return c.cat !== cat;
+  };
+  const creneauxEntre = (crDebut, fin) => {
+    const mins = (s) => { if (!s) return 0; const p = String(s).replace("h", ":").split(":"); return (+p[0]) * 60 + (+(p[1] || 0)); };
+    const toLabel = (m) => `${pad(Math.floor(m / 60))}h${pad(m % 60)}`;
+    const debM = mins(crDebut); const finM = fin ? mins(fin) : debM;
+    const steps = [];
+    for (let m = debM; m <= finM; m += 30) steps.push(toLabel(m));
+    if (!steps.length) steps.push(crDebut);
+    return steps;
+  };
   const joursSem = useMemo(() => {
     const base = new Date(date + "T00:00:00");
     const isodow = (base.getDay() + 6) % 7;
@@ -7980,8 +8142,7 @@ function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
     // à l'ouverture de la semaine, on sélectionne d'office une colonne qui a des réservations
     for (const col of colonnes) {
       for (const dstr of joursSem) {
-        const cj = (db.planning && db.planning[type] && db.planning[type][dstr]) || {};
-        if (creneaux.some((cr) => cj[cle(cr, col)])) return col;
+        if (creneaux.some((cr) => caseA(dstr, cr, col))) return col;
       }
     }
     return colonnes[0];
@@ -7989,36 +8150,46 @@ function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
 
   function ecrire(cr, col, valeur, dateCible) {
     const dt = dateCible || date;
-    mutate((d) => {
-      d.planning = d.planning || { creneaux: CRENEAUX_DEFAUT, vestiaires: {}, terrains: {} };
-      d.planning[type] = d.planning[type] || {};
-      d.planning[type][dt] = d.planning[type][dt] || {};
-      if (valeur === null) delete d.planning[type][dt][cle(cr, col)];
-      else d.planning[type][dt][cle(cr, col)] = valeur;
+    majPlanning((d) => {
+      d.vestiaires = d.vestiaires || {}; d.terrains = d.terrains || {};
+      d[type] = d[type] || {};
+      d[type][dt] = d[type][dt] || {};
+      if (valeur === null) delete d[type][dt][cle(cr, col)];
+      else d[type][dt][cle(cr, col)] = valeur;
       return d;
     });
   }
   function ecrirePlage(crDebut, col, valeur, fin, dateCible) {
     const dt = dateCible || date;
-    const mins = (s) => { if (!s) return 0; const p = String(s).replace("h", ":").split(":"); return (+p[0]) * 60 + (+(p[1] || 0)); };
-    const toLabel = (m) => `${pad(Math.floor(m / 60))}h${pad(m % 60)}`;
-    const debM = mins(crDebut);
-    const finM = fin ? mins(fin) : debM;
-    // tous les créneaux de 30 min du début à la fin, créneau de fin inclus
-    const steps = [];
-    for (let m = debM; m <= finM; m += 30) steps.push(toLabel(m));
-    if (!steps.length) steps.push(crDebut);
-    mutate((d) => {
-      d.planning = d.planning || { creneaux: CRENEAUX_DEFAUT.slice(), vestiaires: {}, terrains: {} };
+    const steps = creneauxEntre(crDebut, fin);
+    majPlanning((d) => {
+      d.vestiaires = d.vestiaires || {}; d.terrains = d.terrains || {};
       // on s'assure que les créneaux existent pour qu'ils s'affichent
-      const setCr = new Set((d.planning.creneaux && d.planning.creneaux.length && d.planning.creneaux.join() !== CRENEAUX_ANCIEN.join()) ? d.planning.creneaux : CRENEAUX_DEFAUT);
+      const setCr = new Set((d.creneaux && d.creneaux.length && d.creneaux.join() !== CRENEAUX_ANCIEN.join()) ? d.creneaux : CRENEAUX_DEFAUT);
       steps.forEach((s) => setCr.add(s));
-      d.planning.creneaux = [...setCr].sort();
-      d.planning[type] = d.planning[type] || {};
-      d.planning[type][dt] = d.planning[type][dt] || {};
+      d.creneaux = [...setCr].sort();
+      d[type] = d[type] || {};
+      d[type][dt] = d[type][dt] || {};
       steps.forEach((cr) => {
-        if (valeur === null) delete d.planning[type][dt][cle(cr, col)];
-        else d.planning[type][dt][cle(cr, col)] = { ...valeur, debut: crDebut, fin: fin || undefined };
+        if (valeur === null) delete d[type][dt][cle(cr, col)];
+        else d[type][dt][cle(cr, col)] = { ...valeur, debut: crDebut, fin: fin || undefined };
+      });
+      return d;
+    });
+  }
+  // Séance hebdomadaire récurrente : s'applique au même jour de la semaine, toutes les semaines. Réservée au responsable.
+  function ecrireHebdoPlage(crDebut, col, valeur, fin, jour) {
+    const steps = creneauxEntre(crDebut, fin);
+    majPlanning((d) => {
+      d.hebdo = d.hebdo || { vestiaires: {}, terrains: {} };
+      d.hebdo[type] = d.hebdo[type] || {};
+      const setCr = new Set((d.creneaux && d.creneaux.length && d.creneaux.join() !== CRENEAUX_ANCIEN.join()) ? d.creneaux : CRENEAUX_DEFAUT);
+      steps.forEach((s) => setCr.add(s));
+      d.creneaux = [...setCr].sort();
+      steps.forEach((cr) => {
+        const k = `${jour}__${cr}__${col}`;
+        if (valeur === null) delete d.hebdo[type][k];
+        else d.hebdo[type][k] = { ...valeur, debut: crDebut, fin: fin || undefined };
       });
       return d;
     });
@@ -8026,18 +8197,16 @@ function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
   function ajouterCreneau(t) {
     if (!t) return;
     const cr = t.replace(":", "h");
-    mutate((d) => {
-      d.planning = d.planning || { creneaux: CRENEAUX_DEFAUT.slice(), vestiaires: {}, terrains: {} };
-      const liste = (d.planning.creneaux || CRENEAUX_DEFAUT).slice();
+    majPlanning((d) => {
+      const liste = (d.creneaux || CRENEAUX_DEFAUT).slice();
       if (!liste.includes(cr)) { liste.push(cr); liste.sort(); }
-      d.planning.creneaux = liste;
+      d.creneaux = liste;
       return d;
     });
   }
   function supprimerCreneau(cr) {
-    mutate((d) => {
-      d.planning = d.planning || {};
-      d.planning.creneaux = ((d.planning.creneaux || CRENEAUX_DEFAUT)).filter((x) => x !== cr);
+    majPlanning((d) => {
+      d.creneaux = ((d.creneaux || CRENEAUX_DEFAUT)).filter((x) => x !== cr);
       return d;
     });
   }
@@ -8045,13 +8214,12 @@ function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
     if (!t) return;
     const nv = t.replace(":", "h");
     if (nv === ancien) return;
-    mutate((d) => {
-      d.planning = d.planning || { creneaux: CRENEAUX_DEFAUT.slice(), vestiaires: {}, terrains: {} };
-      let liste = (d.planning.creneaux || CRENEAUX_DEFAUT).slice().map((x) => (x === ancien ? nv : x));
+    majPlanning((d) => {
+      let liste = (d.creneaux || CRENEAUX_DEFAUT).slice().map((x) => (x === ancien ? nv : x));
       liste = [...new Set(liste)].sort();
-      d.planning.creneaux = liste;
+      d.creneaux = liste;
       ["vestiaires", "terrains"].forEach((tp) => {
-        const parDate = d.planning[tp] || {};
+        const parDate = d[tp] || {};
         Object.keys(parDate).forEach((dt) => {
           const cases = parDate[dt];
           Object.keys(cases).forEach((k) => {
@@ -8070,6 +8238,20 @@ function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
     if (c.statut === "valide") return { bg: "#E2F4E9", fg: C.vert, bd: "#BFE3CD" };
     return { bg: "#FBEAD9", fg: "#B87A2B", bd: "#EBD3AE" };
   };
+  // Contenu d'une case réservée (équipe, horaires, statut).
+  const contenuCase = (c) => (
+    <>
+      <span style={{ fontSize: 12, fontWeight: 800, color: c ? C.encre : C.grisClair, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c ? c.equipe : "+"}</span>
+      {c && c.debut && c.fin && <span style={{ fontSize: 9, fontWeight: 700, color: C.gris }}>{c.debut} - {c.fin}</span>}
+      {c && c.estHebdo ? (
+        <span style={{ fontSize: 9, fontWeight: 800, color: C.vert, display: "inline-flex", alignItems: "center", gap: 3 }}><Lock size={9} /> Hebdo{c.activite ? (c.activite === "match" ? " · Match" : " · Entraîn.") : ""}</span>
+      ) : c && c.statut !== "valide" ? (
+        <span style={{ fontSize: 9, fontWeight: 800, color: "#B87A2B" }}>En traitement</span>
+      ) : c && c.activite ? (
+        <span style={{ fontSize: 9, fontWeight: 700, color: c.activite === "match" ? C.bleu : "#7A8290" }}>{c.activite === "match" ? "Match" : "Entraînement"}</span>
+      ) : null}
+    </>
+  );
 
   return (
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
@@ -8121,12 +8303,14 @@ function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
         <Btn variant="primary" size="sm" onClick={() => setShowSemaine(true)}><CalendarDays size={16} /> Vue d'ensemble à imprimer (PDF)</Btn>
         <div style={{ display: "flex", gap: 14, fontSize: 11.5, fontWeight: 700, color: C.gris }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: "#E2F4E9", border: "1px solid #BFE3CD", display: "inline-block" }} /> Validé</span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: "#FBEAD9", border: "1px solid #EBD3AE", display: "inline-block" }} /> En attente</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: "#FBEAD9", border: "1px solid #EBD3AE", display: "inline-block" }} /> En traitement</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Lock size={11} color={C.vert} /> Hebdo</span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: "#fff", border: `1px solid ${C.grisClair}`, display: "inline-block" }} /> Libre</span>
         </div>
       </div>
 
       <div style={{ flex: 1, overflow: "auto", padding: 12 }}>
+        {chargement && <div style={{ fontSize: 12.5, color: C.gris, fontWeight: 700, marginBottom: 10, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "8px 11px" }}>Chargement du planning commun du club...</div>}
         <div style={{ overflowX: "auto", border: `1px solid ${C.grisClair}`, borderRadius: 12, background: "#fff" }}>
           {vue === "jour" ? (
             <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 130 + colonnes.length * 96 }}>
@@ -8143,14 +8327,12 @@ function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
                   <tr key={cr} style={{ background: ri % 2 ? "#F7F9FC" : "#fff" }}>
                     <td onClick={() => { setEditCreneau(cr); setNvHeure(cr.replace("h", ":")); }} style={{ position: "sticky", left: 0, background: ri % 2 ? "#EEF2F8" : "#fff", fontWeight: 800, fontSize: 12.5, padding: "10px 8px", borderTop: `1px solid ${C.grisClair}`, zIndex: 1, cursor: "pointer", color: C.bleu }}>{cr}</td>
                     {colonnes.map((col) => {
-                      const c = data[cle(cr, col)];
+                      const c = caseA(date, cr, col);
                       const co = couleur(c);
                       return (
                         <td key={col} onClick={() => setEdit({ cr, col })} style={{ padding: 5, borderTop: `1px solid ${C.grisClair}`, borderLeft: `1px solid ${C.grisClair}`, cursor: "pointer", verticalAlign: "middle" }}>
                           <div style={{ background: co.bg, border: `1px solid ${co.bd}`, borderRadius: 8, minHeight: 34, padding: "5px 7px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 1 }}>
-                            <span style={{ fontSize: 12, fontWeight: 800, color: c ? C.encre : C.grisClair, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c ? c.equipe : "+"}</span>
-                            {c && c.debut && c.fin && <span style={{ fontSize: 9, fontWeight: 700, color: C.gris }}>{c.debut} - {c.fin}</span>}
-                            {c && c.activite && <span style={{ fontSize: 9, fontWeight: 700, color: c.activite === "match" ? C.bleu : "#7A8290" }}>{c.activite === "match" ? "Match" : "Entraînement"}</span>}
+                            {contenuCase(c)}
                           </div>
                         </td>
                       );
@@ -8174,15 +8356,12 @@ function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
                   <tr key={cr} style={{ background: ri % 2 ? "#F7F9FC" : "#fff" }}>
                     <td onClick={() => { setEditCreneau(cr); setNvHeure(cr.replace("h", ":")); }} style={{ position: "sticky", left: 0, background: ri % 2 ? "#EEF2F8" : "#fff", fontWeight: 800, fontSize: 12.5, padding: "10px 8px", borderTop: `1px solid ${C.grisClair}`, zIndex: 1, cursor: "pointer", color: C.bleu }}>{cr}</td>
                     {joursSem.map((dstr) => {
-                      const casesJ = (db.planning && db.planning[type] && db.planning[type][dstr]) || {};
-                      const c = casesJ[cle(cr, colSemActif)];
+                      const c = caseA(dstr, cr, colSemActif);
                       const co = couleur(c);
                       return (
                         <td key={dstr} onClick={() => setEdit({ cr, col: colSemActif, dateJour: dstr })} style={{ padding: 5, borderTop: `1px solid ${C.grisClair}`, borderLeft: `1px solid ${C.grisClair}`, cursor: "pointer", verticalAlign: "middle" }}>
                           <div style={{ background: co.bg, border: `1px solid ${co.bd}`, borderRadius: 8, minHeight: 34, padding: "5px 7px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 1 }}>
-                            <span style={{ fontSize: 12, fontWeight: 800, color: c ? C.encre : C.grisClair, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c ? c.equipe : "+"}</span>
-                            {c && c.debut && c.fin && <span style={{ fontSize: 9, fontWeight: 700, color: C.gris }}>{c.debut} - {c.fin}</span>}
-                            {c && c.activite && <span style={{ fontSize: 9, fontWeight: 700, color: c.activite === "match" ? C.bleu : "#7A8290" }}>{c.activite === "match" ? "Match" : "Entraînement"}</span>}
+                            {contenuCase(c)}
                           </div>
                         </td>
                       );
@@ -8198,22 +8377,32 @@ function Planning({ db, mutate, cats, profil, peutValider, cat, onClose }) {
 
       {edit && (() => {
         const dt = edit.dateJour || date;
-        const casesDt = (db.planning && db.planning[type] && db.planning[type][dt]) || {};
-        const actuel = casesDt[cle(edit.cr, edit.col)];
+        const jour = jourSem(dt);
+        const actuel = caseA(dt, edit.cr, edit.col);
+        const verrou = verrouille(actuel);
+        const jourNom = new Date(dt + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "long" });
         return (
           <EditCasePlanning
             typeLabel={typeLabel} colonne={edit.col} creneau={edit.cr} actuel={actuel} cats={cats} peutValider={peutValider} avecActivite={type === "terrains"}
             estPlage={!!(actuel && actuel.fin && actuel.debut && actuel.fin !== actuel.debut)}
+            verrou={verrou} monCat={cat} jourNom={jourNom}
             onClose={() => setEdit(null)}
-            onSave={(equipe, activite, fin) => { ecrirePlage(edit.cr, edit.col, { equipe, activite: type === "terrains" ? activite : undefined, statut: peutValider ? "valide" : "attente", demandeur: moi }, fin, edit.dateJour); setEdit(null); }}
-            onValider={() => { const deb = (actuel && actuel.debut) || edit.cr; ecrirePlage(deb, edit.col, { ...actuel, statut: "valide" }, actuel && actuel.fin, edit.dateJour); setEdit(null); }}
-            onDeleteUn={() => { ecrire(edit.cr, edit.col, null, edit.dateJour); setEdit(null); }}
-            onDelete={() => { const deb = (actuel && actuel.debut) || edit.cr; ecrirePlage(deb, edit.col, null, actuel && actuel.fin, edit.dateJour); setEdit(null); }}
+            onSave={(equipe, activite, fin, recurrent) => {
+              if (recurrent && peutValider) {
+                ecrireHebdoPlage(edit.cr, edit.col, { equipe, activite: type === "terrains" ? activite : undefined, cat }, fin, jour);
+              } else {
+                ecrirePlage(edit.cr, edit.col, { equipe, activite: type === "terrains" ? activite : undefined, statut: peutValider ? "valide" : "attente", demandeur: moi, cat }, fin, edit.dateJour);
+              }
+              setEdit(null);
+            }}
+            onValider={() => { const deb = (actuel && actuel.debut) || edit.cr; const { estHebdo, ...net } = actuel || {}; ecrirePlage(deb, edit.col, { ...net, statut: "valide" }, actuel && actuel.fin, edit.dateJour); setEdit(null); }}
+            onDeleteUn={() => { if (actuel && actuel.estHebdo) ecrireHebdoPlage(edit.cr, edit.col, null, null, jour); else ecrire(edit.cr, edit.col, null, edit.dateJour); setEdit(null); }}
+            onDelete={() => { const deb = (actuel && actuel.debut) || edit.cr; if (actuel && actuel.estHebdo) ecrireHebdoPlage(deb, edit.col, null, actuel && actuel.fin, jour); else ecrirePlage(deb, edit.col, null, actuel && actuel.fin, edit.dateJour); setEdit(null); }}
           />
         );
       })()}
 
-      {showSemaine && <PlanningSemaine db={db} cat={cat} type={type} onClose={() => setShowSemaine(false)} />}
+      {showSemaine && <PlanningSemaine planning={pl} cat={cat} type={type} onClose={() => setShowSemaine(false)} />}
       {gererCreneaux && (
         <Modal title="Gérer les créneaux" onClose={() => setGererCreneaux(false)}>
           <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12 }}>Ajoute les horaires dont tu as besoin, par exemple 17h15 ou 17h45. Ils s'appliquent aux plannings terrains et vestiaires.</div>
