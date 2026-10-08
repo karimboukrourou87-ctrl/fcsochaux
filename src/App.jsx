@@ -1388,6 +1388,7 @@ function reparerPlages(pl) {
 // Hook : renvoie [planning, maj, chargement]. Le planning est commun à tout le club.
 function usePlanningClub(demo, db, mutate, cats) {
   const [remote, setRemote] = useState(null);
+  const [erreur, setErreur] = useState(null);
   const faitRef = useRef(false);
   useEffect(() => {
     if (demo || faitRef.current) return;
@@ -1423,11 +1424,11 @@ function usePlanningClub(demo, db, mutate, cats) {
     setRemote((prev) => {
       const base = prev ? JSON.parse(JSON.stringify(prev)) : { creneaux: null, vestiaires: {}, terrains: {} };
       const next = fn(base);
-      savePlanningClub(next).catch(() => {});
+      savePlanningClub(next).then(() => setErreur(null)).catch((e) => setErreur((e && (e.message || e.details || e.hint)) || String(e)));
       return next;
     });
   };
-  return [planning, maj, !demo && remote === null];
+  return [planning, maj, !demo && remote === null, erreur];
 }
 
 // Ecran commun de gestion des dirigeants / encadrants : ajouter, renommer, supprimer (securise).
@@ -2168,7 +2169,7 @@ export default function App() {
   const cacheRef = useRef({});
   const [encadrementClub, majEncadrementClub] = useEncadrementClub(demo, db, mutate);
   const catsPlanning = demo ? CATEGORIES.map((c) => c.id) : ((profil && profil.cats) || []);
-  const [planningClub, majPlanningClub, chargementPlanning] = usePlanningClub(demo, db, mutate, catsPlanning);
+  const [planningClub, majPlanningClub, chargementPlanning, erreurPlanning] = usePlanningClub(demo, db, mutate, catsPlanning);
   // Demandes de créneaux en attente (réservations posées par un éducateur, en dehors du planning hebdomadaire)
   const demandesPlanning = useMemo(() => {
     const pl = planningClub || {};
@@ -2443,7 +2444,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v6.6
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v6.7
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2576,7 +2577,7 @@ export default function App() {
       {showTransport && <Transports db={db} mutate={mutate} cat={cat} encadrement={encadrementClub} majEncadrement={majEncadrementClub} onClose={() => setShowTransport(false)} />}
       {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
-      {showPlanning && <Planning planning={planningClub} majPlanning={majPlanningClub} chargement={chargementPlanning} cats={cats} profil={profil} peutValider={peutValider} cat={cat} onClose={() => setShowPlanning(false)} />}
+      {showPlanning && <Planning planning={planningClub} majPlanning={majPlanningClub} chargement={chargementPlanning} erreur={erreurPlanning} cats={cats} profil={profil} peutValider={peutValider} cat={cat} onClose={() => setShowPlanning(false)} />}
       {showPlanningHebdo && <PlanningHebdo onClose={() => setShowPlanningHebdo(false)} />}
       {showAcces && <AccesSecteurs db={{ acces: accesSource }} mutate={mutateReu} estAdmin={estAdmin} onClose={() => setShowAcces(false)} />}
       {showProgramme && <ProgrammeSemaine db={db} onClose={() => setShowProgramme(false)} />}
@@ -8535,7 +8536,7 @@ function PlanningSemaine({ planning, cat, type, onClose }) {
   );
 }
 
-function Planning({ planning, majPlanning, chargement, cats, profil, peutValider, cat, onClose }) {
+function Planning({ planning, majPlanning, chargement, erreur, cats, profil, peutValider, cat, onClose }) {
   const [type, setType] = useState("vestiaires");
   const d0 = new Date();
   const [date, setDate] = useState(`${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`);
@@ -8922,6 +8923,7 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
       </div>
 
       <div style={{ flex: 1, overflow: "auto", padding: 12 }}>
+        {erreur && <div style={{ fontSize: 12.5, color: C.rouge, fontWeight: 700, marginBottom: 10, background: "#FBE3E3", border: "1px solid #F0C4C4", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "flex-start", gap: 8 }}><ShieldAlert size={15} style={{ flex: "0 0 auto", marginTop: 1 }} /><span style={{ flex: 1 }}>Enregistrement bloqué par la base de données. Ta réservation n'a pas été sauvegardée. Message technique : <b>{String(erreur)}</b></span></div>}
         {chargement && <div style={{ fontSize: 12.5, color: C.gris, fontWeight: 700, marginBottom: 10, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "8px 11px" }}>Chargement du planning commun du club...</div>}
         {scelleInfo && <div style={{ fontSize: 12.5, color: C.vert, fontWeight: 700, marginBottom: 10, background: "#E2F4E9", border: "1px solid #BFE3CD", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "flex-start", gap: 8 }}><Lock size={15} style={{ flex: "0 0 auto", marginTop: 1 }} /><span style={{ flex: 1 }}>{scelleInfo}</span><X size={15} color={C.gris} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setScelleInfo(null)} /></div>}
         {conflitMsg && <div style={{ fontSize: 12.5, color: C.rouge, fontWeight: 700, marginBottom: 10, background: "#FBE3E3", border: "1px solid #F0C4C4", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "flex-start", gap: 8 }}><ShieldAlert size={15} style={{ flex: "0 0 auto", marginTop: 1 }} /><span style={{ flex: 1 }}>{conflitMsg}</span><X size={15} color={C.gris} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setConflitMsg(null)} /></div>}
