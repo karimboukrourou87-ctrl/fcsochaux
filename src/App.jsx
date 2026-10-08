@@ -1323,6 +1323,32 @@ function fusionnerPlanning(cible, source) {
   });
   return cible;
 }
+// Charge, une seule fois, le planning officiel des entraînements (PLANNING_HEBDO) comme séances hebdomadaires récurrentes verrouillées.
+function seedPlanningOfficiel(pl) {
+  pl = pl || { creneaux: null, vestiaires: {}, terrains: {} };
+  if (pl.officielCharge) return pl;
+  pl.hebdo = pl.hebdo || { vestiaires: {}, terrains: {} };
+  pl.hebdo.terrains = pl.hebdo.terrains || {};
+  const joursIdx = { "Lundi": 0, "Mardi": 1, "Mercredi": 2, "Jeudi": 3, "Vendredi": 4, "Samedi": 5, "Dimanche": 6 };
+  const terMap = { "Dôme": "Synthétique dôme", "Synthé centre": "Synthétique centre", "Pouges": "Pouges" };
+  const setCr = new Set((pl.creneaux && pl.creneaux.length && pl.creneaux.join() !== CRENEAUX_ANCIEN.join()) ? pl.creneaux : CRENEAUX_DEFAUT);
+  const crEntre = (crDebut, fin) => {
+    const mins = (s) => { if (!s) return 0; const p = String(s).replace("h", ":").split(":"); return (+p[0]) * 60 + (+(p[1] || 0)); };
+    const toLabel = (m) => `${pad(Math.floor(m / 60))}h${pad(m % 60)}`;
+    const debM = mins(crDebut); const finM = fin ? mins(fin) : debM; const steps = [];
+    for (let m = debM; m <= finM; m += 30) steps.push(toLabel(m));
+    if (!steps.length) steps.push(crDebut); return steps;
+  };
+  PLANNING_HEBDO.forEach((sec) => sec.lignes.forEach((l) => l.creneaux.forEach(([j, ter, horaire]) => {
+    const ji = joursIdx[j]; if (ji == null) return;
+    const col = terMap[ter] || ter;
+    const parts = String(horaire).split("-"); const deb = (parts[0] || "").trim(), fin = (parts[1] || "").trim();
+    crEntre(deb, fin).forEach((cr) => { setCr.add(cr); pl.hebdo.terrains[`${ji}__${cr}__${col}`] = { equipe: l.cat, activite: "entrainement", cat: l.cat, debut: deb, fin: fin || undefined }; });
+  })));
+  pl.creneaux = [...setCr].sort();
+  pl.officielCharge = true;
+  return pl;
+}
 // Hook : renvoie [planning, maj, chargement]. Le planning est commun à tout le club.
 function usePlanningClub(demo, db, mutate, cats) {
   const [remote, setRemote] = useState(null);
@@ -1335,6 +1361,7 @@ function usePlanningClub(demo, db, mutate, cats) {
     (async () => {
       try {
         let pl = await loadPlanningClub();
+        let doitSauver = false;
         if (!pl) {
           // Première ouverture : on récupère les plannings déjà saisis dans chaque catégorie du club et on les regroupe.
           let base = { creneaux: null, vestiaires: {}, terrains: {} };
@@ -1344,8 +1371,10 @@ function usePlanningClub(demo, db, mutate, cats) {
             res.forEach((p) => { base = fusionnerPlanning(base, p); });
           } catch (e) {}
           pl = base;
-          try { await savePlanningClub(pl); } catch (e) {}
+          doitSauver = true;
         }
+        if (!pl.officielCharge) { pl = seedPlanningOfficiel(pl); doitSauver = true; }
+        if (doitSauver) { try { await savePlanningClub(pl); } catch (e) {} }
         if (!annule) setRemote(pl);
       } catch (e) { if (!annule) setRemote({ creneaux: null, vestiaires: {}, terrains: {} }); }
     })();
@@ -2335,7 +2364,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v4.9
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v5.1
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2469,7 +2498,7 @@ export default function App() {
       {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
       {showPlanning && <Planning planning={planningClub} majPlanning={majPlanningClub} chargement={chargementPlanning} cats={cats} profil={profil} peutValider={peutValider} cat={cat} onClose={() => setShowPlanning(false)} />}
-      {showPlanningHebdo && <PlanningHebdo onClose={() => setShowPlanningHebdo(false)} majPlanning={majPlanningClub} peutValider={peutValider} />}
+      {showPlanningHebdo && <PlanningHebdo onClose={() => setShowPlanningHebdo(false)} />}
       {showAcces && <AccesSecteurs db={{ acces: accesSource }} mutate={mutateReu} estAdmin={estAdmin} onClose={() => setShowAcces(false)} />}
       {showProgramme && <ProgrammeSemaine db={db} onClose={() => setShowProgramme(false)} />}
       {showDocs && <DocumentsAdmin players={players} cat={cat} onClose={() => setShowDocs(false)} />}
@@ -8000,6 +8029,8 @@ function PlanningSemaine({ planning, cat, type, onClose }) {
   }, [offset]);
   function occupation() {
     const hebdo = (pl.hebdo && pl.hebdo[type]) || {};
+    const vacances = pl.vacances || [];
+    const estVac = (dstr) => vacances.some((v) => v.debut && v.fin && dstr >= v.debut && dstr <= v.fin);
     return liste.map((nom) => {
       const cells = jours.map((dstr) => {
         const jour = (new Date(dstr + "T00:00:00").getDay() + 6) % 7;
@@ -8010,7 +8041,7 @@ function PlanningSemaine({ planning, cat, type, onClose }) {
           const cr = k.slice(0, k.indexOf("__")); const c = cases[k]; vus.add(cr);
           res.push({ cr, txt: `${cr} · ${c.equipe}${c.statut === "valide" ? "" : " · en traitement"}` });
         });
-        Object.keys(hebdo).forEach((k) => {
+        if (!estVac(dstr)) Object.keys(hebdo).forEach((k) => {
           const parts = k.split("__"); const j = +parts[0], cr = parts[1], col = parts.slice(2).join("__");
           if (j === jour && col === nom && !vus.has(cr)) { const c = hebdo[k]; res.push({ cr, txt: `${cr} · ${c.equipe} · hebdo` }); }
         });
@@ -8951,47 +8982,7 @@ function SuiviMedical({ db, mutate, cat, onClose }) {
   );
 }
 
-function PlanningHebdo({ onClose, majPlanning, peutValider }) {
-  const [confirm, setConfirm] = useState(false);
-  const [info, setInfo] = useState(null);
-  const joursIdx = { "Lundi": 0, "Mardi": 1, "Mercredi": 2, "Jeudi": 3, "Vendredi": 4, "Samedi": 5, "Dimanche": 6 };
-  const terMap = { "Dôme": "Synthétique dôme", "Synthé centre": "Synthétique centre", "Pouges": "Pouges" };
-  const semaine = useMemo(() => {
-    const d = new Date(); const isodow = (d.getDay() + 6) % 7;
-    const lu = new Date(d); lu.setDate(d.getDate() - isodow);
-    const arr = []; for (let i = 0; i < 7; i++) { const x = new Date(lu); x.setDate(lu.getDate() + i); arr.push(`${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`); }
-    return arr;
-  }, []);
-  const creneauxEntre = (crDebut, fin) => {
-    const mins = (s) => { if (!s) return 0; const p = String(s).replace("h", ":").split(":"); return (+p[0]) * 60 + (+(p[1] || 0)); };
-    const toLabel = (m) => `${pad(Math.floor(m / 60))}h${pad(m % 60)}`;
-    const debM = mins(crDebut); const finM = fin ? mins(fin) : debM;
-    const steps = []; for (let m = debM; m <= finM; m += 30) steps.push(toLabel(m));
-    if (!steps.length) steps.push(crDebut);
-    return steps;
-  };
-  const nbSeances = PLANNING_HEBDO.reduce((t, s) => t + s.lignes.reduce((u, l) => u + l.creneaux.length, 0), 0);
-  function integrer() {
-    let n = 0;
-    majPlanning((d) => {
-      d.terrains = d.terrains || {};
-      const setCr = new Set((d.creneaux && d.creneaux.length && d.creneaux.join() !== CRENEAUX_ANCIEN.join()) ? d.creneaux : CRENEAUX_DEFAUT);
-      PLANNING_HEBDO.forEach((sec) => sec.lignes.forEach((l) => l.creneaux.forEach(([j, ter, horaire]) => {
-        const ji = joursIdx[j]; if (ji == null) return;
-        const dstr = semaine[ji]; if (!dstr) return;
-        const col = terMap[ter] || ter;
-        const parts = String(horaire).split("-"); const deb = (parts[0] || "").trim(), fin = (parts[1] || "").trim();
-        const steps = creneauxEntre(deb, fin); steps.forEach((s) => setCr.add(s));
-        d.terrains[dstr] = d.terrains[dstr] || {};
-        steps.forEach((cr) => { d.terrains[dstr][`${cr}__${col}`] = { equipe: l.cat, activite: "entrainement", statut: "valide", cat: l.cat, debut: deb, fin: fin || undefined }; });
-        n++;
-      })));
-      d.creneaux = [...setCr].sort();
-      return d;
-    });
-    setConfirm(false);
-    setInfo(`${n} séances intégrées dans le planning des terrains de la semaine en cours (${jjmm(semaine[0])} au ${jjmm(semaine[6])}). Ouvre « Planning des terrains », place-toi sur cette semaine, puis clique « Répéter chaque semaine (sceller) » pour les figer définitivement.`);
-  }
+function PlanningHebdo({ onClose }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "16px 16px 14px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
@@ -8999,13 +8990,7 @@ function PlanningHebdo({ onClose, majPlanning, peutValider }) {
         <div style={{ fontWeight: 800, fontSize: 16 }}>Planning hebdomadaire des entraînements</div>
       </header>
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
-        <div style={{ fontSize: 12, color: C.gris, marginBottom: 14, lineHeight: 1.5, background: "#EAF0F7", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "9px 12px" }}>Créneaux d'entraînement attribués pour la saison. Synthé centre correspond au synthétique plein air, Dôme au synthétique du dôme.</div>
-        {peutValider && (
-          <div style={{ marginBottom: 14 }}>
-            <Btn variant="accent" full onClick={() => setConfirm(true)}><Lock size={16} /> Intégrer ce planning dans les réservations</Btn>
-            {info && <div style={{ fontSize: 12.5, color: C.vert, fontWeight: 700, marginTop: 10, background: "#E2F4E9", border: "1px solid #BFE3CD", borderRadius: 10, padding: "10px 12px", lineHeight: 1.5, display: "flex", alignItems: "flex-start", gap: 8 }}><Check size={15} style={{ flex: "0 0 auto", marginTop: 1 }} /><span style={{ flex: 1 }}>{info}</span><X size={15} color={C.gris} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setInfo(null)} /></div>}
-          </div>
-        )}
+        <div style={{ fontSize: 12, color: C.gris, marginBottom: 14, lineHeight: 1.5, background: "#EAF0F7", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "9px 12px" }}>Créneaux d'entraînement attribués pour la saison. Synthé centre correspond au synthétique plein air, Dôme au synthétique du dôme. Ces séances sont automatiquement reportées dans le planning des terrains, verrouillées et répétées chaque semaine.</div>
         {(() => {
           const jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
           const bgTer = (t) => t === "Dôme" ? "#E7EEF6" : t === "Pouges" ? "#FBEAD9" : "#E2F4E9";
@@ -9049,13 +9034,6 @@ function PlanningHebdo({ onClose, majPlanning, peutValider }) {
           );
         })()}
       </div>
-      {confirm && (
-        <Modal title="Intégrer le planning officiel" onClose={() => setConfirm(false)}
-          footer={<Btn variant="accent" full onClick={integrer}><Lock size={16} /> Intégrer {nbSeances} séances</Btn>}>
-          <div style={{ fontSize: 13, color: C.encre, lineHeight: 1.55 }}>Les {nbSeances} séances de ce planning officiel vont être créées dans le <b>planning des terrains</b> sur la semaine en cours (<b>{jjmm(semaine[0])} au {jjmm(semaine[6])}</b>), en tant qu'entraînements validés.</div>
-          <div style={{ fontSize: 12.5, color: C.gris, marginTop: 10, lineHeight: 1.5 }}>Ensuite, dans « Planning des terrains », tu cliques sur « Répéter chaque semaine (sceller) » pour les figer et les faire se répéter automatiquement. Si tu intègres plusieurs fois, les mêmes séances sont simplement réécrites (pas de doublon).</div>
-        </Modal>
-      )}
     </div>
   );
 }
