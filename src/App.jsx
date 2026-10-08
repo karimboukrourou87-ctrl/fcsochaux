@@ -2364,7 +2364,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v5.6
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v5.7
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -8248,12 +8248,26 @@ function PlanningSemaine({ planning, cat, type, onClose }) {
     const hebdo = (pl.hebdo && pl.hebdo[type]) || {};
     const vacances = pl.vacances || [];
     const estVac = (dstr) => vacances.some((v) => v.debut && v.fin && dstr >= v.debut && dstr <= v.fin);
+    // Rattache une équipe (ex. ponctuel "U13") à sa ligne officielle (ex. "U13-U12") quand c'est possible.
+    const officiels = [];
+    PLANNING_HEBDO.forEach((sec) => sec.lignes.forEach((l) => officiels.push(l.cat)));
+    const rattacher = (equipe) => {
+      if (!equipe) return equipe;
+      if (officiels.includes(equipe)) return equipe;
+      const parts = String(equipe).split(/[\s+]+/).filter(Boolean);
+      for (const lab of officiels) {
+        const toks = lab.split(/[\s\-+/]+/).filter(Boolean);
+        if (parts.some((p) => toks.includes(p))) return lab;
+      }
+      return equipe;
+    };
     const map = {};
     const ajout = (equipe, ji, ter, debut, dfin) => {
+      const cle2 = rattacher(equipe);
       const horaire = (debut && dfin && dfin !== debut) ? `${debut}-${dfin}` : (debut || "");
       const sig = `${ter}|${horaire}`;
-      map[equipe] = map[equipe] || {}; map[equipe][ji] = map[equipe][ji] || [];
-      if (!map[equipe][ji].some((x) => x.sig === sig)) map[equipe][ji].push({ ter, horaire, debut, sig });
+      map[cle2] = map[cle2] || {}; map[cle2][ji] = map[cle2][ji] || [];
+      if (!map[cle2][ji].some((x) => x.sig === sig)) map[cle2][ji].push({ ter, horaire, debut, sig });
     };
     jours.forEach((dstr, ji) => {
       const jour = (new Date(dstr + "T00:00:00").getDay() + 6) % 7;
