@@ -2364,7 +2364,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v5.5
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v5.6
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -8289,7 +8289,10 @@ function PlanningSemaine({ planning, cat, type, onClose }) {
       setMsg(null);
     } catch (e) { setMsg("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
   }
-  const occ = occupation();
+  const sections = sectionsSemaine();
+  const terShortN = (t) => t === "Synthétique dôme" ? "Dôme" : t === "Synthétique centre" ? "Synthé centre" : t === "Herbe centre (nouveau synthétique)" ? "Herbe centre" : t;
+  const bgTer = (t) => t === "Synthétique dôme" ? "#E7EEF6" : t === "Synthétique centre" ? "#E2F4E9" : t === "Pouges" ? "#FBEAD9" : "#EDF2F8";
+  const colTer = (t) => t === "Synthétique dôme" ? C.bleu : t === "Synthétique centre" ? C.vert : t === "Pouges" ? "#B87A2B" : C.bleu;
   return (
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 70, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "16px 16px 14px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
@@ -8306,30 +8309,43 @@ function PlanningSemaine({ planning, cat, type, onClose }) {
         {msg && <div style={{ fontSize: 12.5, color: C.encre, background: C.fond, borderRadius: 10, padding: 10 }}>{msg}</div>}
       </div>
       <div style={{ flex: 1, overflow: "auto", padding: 14 }}>
-        <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>Occupation des {typeLabel.toLowerCase()} de la catégorie {cat} pour la semaine. Fais défiler sur le côté ou tourne l'écran en paysage pour tout voir.</div>
-        {occ.length ? (
+        <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>Planning des {typeLabel.toLowerCase()} de la semaine, par catégorie. Fais défiler sur le côté ou tourne l'écran en paysage pour tout voir. C'est cette présentation qui s'imprime en PDF.</div>
+        {sections.length ? (
           <div style={{ overflowX: "auto", border: `1px solid ${C.grisClair}`, borderRadius: 12, background: "#fff", WebkitOverflowScrolling: "touch" }}>
-            <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 120 + 7 * 128 }}>
+            <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 120 + 7 * 104 }}>
               <thead>
                 <tr>
-                  <th style={{ position: "sticky", left: 0, background: C.bleu, color: "#fff", fontSize: 11, fontWeight: 800, padding: "8px", textAlign: "left", minWidth: 120, zIndex: 1 }}>{typeLabel}</th>
+                  <th style={{ position: "sticky", left: 0, background: C.bleu, color: "#fff", fontSize: 11.5, fontWeight: 800, padding: "9px 8px", textAlign: "left", minWidth: 120, zIndex: 1 }}>Catégorie</th>
                   {jours.map((dstr) => (
-                    <th key={dstr} style={{ background: C.bleu, color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "8px 6px", minWidth: 128, borderLeft: "1px solid rgba(255,255,255,0.15)", textTransform: "capitalize", lineHeight: 1.3 }}>
-                      {new Date(dstr + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "long" })}<br />{jjmm(dstr)}
+                    <th key={dstr} style={{ background: C.bleu, color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "8px 6px", minWidth: 104, borderLeft: "1px solid rgba(255,255,255,0.15)", textTransform: "capitalize", lineHeight: 1.3 }}>
+                      {new Date(dstr + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "short" })}<br />{jjmm(dstr)}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {occ.map((o, ri) => (
-                  <tr key={o.nom} style={{ background: ri % 2 ? "#F7F9FC" : "#fff" }}>
-                    <td style={{ position: "sticky", left: 0, background: ri % 2 ? "#EEF2F8" : "#fff", fontSize: 12, fontWeight: 800, color: C.encre, padding: "8px", borderTop: `1px solid ${C.grisClair}`, verticalAlign: "top", zIndex: 1 }}>{o.nom}</td>
-                    {o.cells.map((cell, i) => (
-                      <td key={i} style={{ borderTop: `1px solid ${C.grisClair}`, borderLeft: `1px solid ${C.grisClair}`, padding: 6, verticalAlign: "top", minWidth: 128 }}>
-                        {cell.length ? cell.map((t, k) => <div key={k} style={{ fontSize: 10.5, color: couleur, fontWeight: 600, padding: "3px 0", lineHeight: 1.3, borderBottom: `1px solid ${C.fond}` }}>{t}</div>) : <span style={{ fontSize: 11, color: C.gris }}>-</span>}
-                      </td>
+                {sections.map((sec) => (
+                  <React.Fragment key={sec.section}>
+                    <tr><td colSpan={1 + jours.length} style={{ background: "#EEF2F8", color: C.bleu, fontSize: 11.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5, padding: "7px 8px" }}>{sec.section}</td></tr>
+                    {sec.lignes.map((l, ri) => (
+                      <tr key={l.cat} style={{ background: ri % 2 ? "#F7F9FC" : "#fff" }}>
+                        <td style={{ position: "sticky", left: 0, background: ri % 2 ? "#EEF2F8" : "#fff", fontSize: 12, fontWeight: 800, color: C.encre, padding: "8px", borderTop: `1px solid ${C.grisClair}`, zIndex: 1 }}>{l.cat}</td>
+                        {jours.map((dstr, i) => {
+                          const sess = l.parJour[i] || [];
+                          return (
+                            <td key={dstr} style={{ borderTop: `1px solid ${C.grisClair}`, borderLeft: `1px solid ${C.grisClair}`, padding: 4, verticalAlign: "middle", textAlign: "center" }}>
+                              {sess.map((s, k) => (
+                                <div key={k} style={{ background: bgTer(s.ter), borderRadius: 7, padding: "5px 4px", marginTop: k ? 4 : 0 }}>
+                                  <div style={{ fontSize: 10.5, fontWeight: 800, color: colTer(s.ter) }}>{terShortN(s.ter)}</div>
+                                  {s.horaire && <div style={{ fontSize: 10, color: C.gris, fontWeight: 600, marginTop: 1 }}>{s.horaire}</div>}
+                                </div>
+                              ))}
+                            </td>
+                          );
+                        })}
+                      </tr>
                     ))}
-                  </tr>
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
