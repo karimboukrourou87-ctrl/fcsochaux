@@ -2399,7 +2399,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v6.1
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v6.2
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -7884,7 +7884,8 @@ function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValid
     const debut = (mvDebut || "").replace(":", "h");
     if (!debut) return;
     const res = estHebdo ? onDeplacer({ jour: +mvJour, debut, col: mvCol }) : onDeplacer({ date: mvDate || dateCourante, debut, col: mvCol });
-    if (res === false) setMoveErr("Ce terrain est déjà réservé sur cet horaire. Choisis un autre créneau ou un autre terrain.");
+    if (res === "verrou") setMoveErr("Opération impossible : ce créneau est verrouillé. Décoche « Verrouiller ce créneau » plus haut et enregistre d'abord.");
+    else if (res === false) setMoveErr("Ce terrain est déjà réservé sur cet horaire. Choisis un autre créneau ou un autre terrain.");
     else setMoveErr(null);
   };
   const [delOpen, setDelOpen] = useState(false);
@@ -8516,10 +8517,14 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
     return steps;
   };
   // Glisser-déposer (ordinateur) : attrape une réservation et la relâche sur une autre case pour la déplacer.
-  const bloqueDrag = (c) => verrouille(c) || !!(c && c.verrou && c.mdp); // mot de passe : déplacement uniquement via la fenêtre
   const propsDrag = (c, dstr, cr, col) => ({
-    draggable: !!c && !bloqueDrag(c),
-    onDragStart: (e) => { if (!c || bloqueDrag(c)) { e.preventDefault(); return; } setDragSrc({ a: c, date: dstr, jour: jourSem(dstr), cr: (c.debut || cr), col }); try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", "1"); } catch (er) {} },
+    draggable: !!c,
+    onDragStart: (e) => {
+      if (!c) { e.preventDefault(); return; }
+      if (c.verrou) { e.preventDefault(); setConflitMsg("Opération impossible : ce créneau est verrouillé. Déverrouille-le d'abord pour le déplacer."); return; }
+      if (verrouille(c)) { e.preventDefault(); return; }
+      setDragSrc({ a: c, date: dstr, jour: jourSem(dstr), cr: (c.debut || cr), col }); try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", "1"); } catch (er) {}
+    },
     onDragOver: (e) => { if (dragSrc) e.preventDefault(); },
     onDrop: (e) => { e.preventDefault(); if (!dragSrc) return; const dc = caseA(dstr, cr, col); if (dc && verrouille(dc)) { setDragSrc(null); return; } const src = { date: dragSrc.date, jour: dragSrc.jour, cr: dragSrc.cr, col: dragSrc.col }; const dst = { date: dstr, jour: jourSem(dstr), debut: cr, col }; if (conflitDeplacement(dragSrc.a, src, dst)) { setConflitMsg("Déplacement impossible : ce terrain est déjà réservé sur cet horaire. Choisis un autre créneau."); setDragSrc(null); return; } deplacerReservation(dragSrc.a, src, dst); setDragSrc(null); },
   });
@@ -8914,6 +8919,7 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
             verrou={verrou} monCat={cat} jourNom={jourNom}
             colonnes={colonnes} dateCourante={dt}
             onDeplacer={(dest) => {
+              if (actuel && actuel.verrou) return "verrou";
               const src = { date: dt, jour, cr: (actuel && actuel.debut) || edit.cr, col: edit.col };
               const dst = { date: dest.date || dt, jour: dest.jour != null ? dest.jour : jour, debut: dest.debut, col: dest.col };
               if (conflitDeplacement(actuel, src, dst)) return false;
@@ -8924,10 +8930,16 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
             onSupprimerTranche={(de, a2) => { supprimerTranche(actuel, { estHebdo: !!(actuel && actuel.estHebdo), date: dt, jour, col: edit.col, cr: edit.cr }, de, a2); setEdit(null); }}
             onClose={() => setEdit(null)}
             onSave={(equipe, activite, fin, recurrent, verrou, mdp) => {
+              const deb = (actuel && actuel.debut) || edit.cr;
               if (recurrent && peutValider) {
-                ecrireHebdoPlage(edit.cr, edit.col, { equipe, activite: type === "terrains" ? activite : undefined, cat, verrou: !!verrou, mdp: verrou ? (mdp || "") : "" }, fin, jour);
+                if (actuel && !actuel.estHebdo) ecrirePlage(deb, edit.col, null, actuel.fin, edit.dateJour); // retire l'ancienne réservation ponctuelle
+                ecrireHebdoPlage(deb, edit.col, { equipe, activite: type === "terrains" ? activite : undefined, cat, verrou: !!verrou, mdp: verrou ? (mdp || "") : "" }, fin, jour);
               } else {
-                ecrirePlage(edit.cr, edit.col, { equipe, activite: type === "terrains" ? activite : undefined, statut: peutValider ? "valide" : "attente", demandeur: moi, cat, verrou: peutValider ? !!verrou : false, mdp: (peutValider && verrou) ? (mdp || "") : "" }, fin, edit.dateJour);
+                if (actuel) { // on remplace entièrement l'ancienne réservation (évite les restes de plage)
+                  if (actuel.estHebdo) ecrireHebdoPlage(deb, edit.col, null, actuel.fin, jour);
+                  else ecrirePlage(deb, edit.col, null, actuel.fin, edit.dateJour);
+                }
+                ecrirePlage(deb, edit.col, { equipe, activite: type === "terrains" ? activite : undefined, statut: peutValider ? "valide" : "attente", demandeur: moi, cat, verrou: peutValider ? !!verrou : false, mdp: (peutValider && verrou) ? (mdp || "") : "" }, fin, edit.dateJour);
               }
               setEdit(null);
             }}
