@@ -2259,7 +2259,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v4.3
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v4.4
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2573,16 +2573,26 @@ function ScoresWeekend({ onClose, localDb }) {
               else if (r.score_pour === r.score_contre) { res = "N"; }
               else { bg = "#FBE3E3"; col = C.rouge; res = "D"; }
             }
-            const dom = r.lieu === "Domicile";
             return (
               <Card key={i} style={{ padding: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                  <Pastille bg={C.bleu} color="#fff">{r.categorie}</Pastille>
-                  <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>{r.date_match ? jourLong(r.date_match) : ""}</span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                    <Pastille bg={C.bleu} color="#fff">{r.categorie}</Pastille>
+                    <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>{r.date_match ? jourLong(r.date_match) : ""}</span>
+                  </div>
+                  {joue ? <Pastille bg={bg} color={col}>{res}</Pastille> : <Pastille bg={C.jaune} color={C.bleuNuit}>À venir</Pastille>}
                 </div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                  <div style={{ fontWeight: 800, fontSize: 14, minWidth: 0 }}>{dom ? CLUB : (r.adversaire || "Adversaire")} <span style={{ color: C.gris, fontWeight: 600 }}>c.</span> {dom ? (r.adversaire || "Adversaire") : CLUB}</div>
-                  {joue ? <Pastille bg={bg} color={col}>{dom ? `${r.score_pour} - ${r.score_contre}` : `${r.score_contre} - ${r.score_pour}`}</Pastille> : <Pastille bg={C.jaune} color={C.bleuNuit}>{res}</Pastille>}
+                <div style={{ display: "grid", gap: 3 }}>
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <span style={{ width: 34, flex: "0 0 auto" }} />
+                    <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: 800, fontSize: 15, padding: "0 6px" }}>{CLUB}</span>
+                    <span style={{ width: 34, flex: "0 0 auto", textAlign: "right", fontWeight: 900, fontSize: 18, color: C.bleu }}>{joue ? r.score_pour : ""}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <span style={{ width: 34, flex: "0 0 auto" }} />
+                    <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: 800, fontSize: 15, padding: "0 6px" }}>{r.adversaire || "Adversaire"}</span>
+                    <span style={{ width: 34, flex: "0 0 auto", textAlign: "right", fontWeight: 900, fontSize: 18, color: C.bleu }}>{joue ? r.score_contre : ""}</span>
+                  </div>
                 </div>
               </Card>
             );
