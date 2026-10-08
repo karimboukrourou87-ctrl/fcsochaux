@@ -2364,7 +2364,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v5.3
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v5.5
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -7827,9 +7827,10 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
 const CRENEAUX_ANCIEN = ["08h00", "09h00", "10h00", "11h00", "12h00", "13h00", "13h30", "14h00", "14h30", "15h30", "16h30", "17h30", "18h00", "19h00", "20h00"];
 const CRENEAUX_DEFAUT = (() => { const a = []; for (let m = 8 * 60; m <= 21 * 60 + 30; m += 30) a.push(`${pad(Math.floor(m / 60))}h${pad(m % 60)}`); return a; })();
 
-function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValider, avecActivite, estPlage, verrou, monCat, jourNom, colonnes, dateCourante, onDeplacer, onClose, onSave, onDelete, onDeleteUn, onValider }) {
+function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValider, avecActivite, estPlage, verrou, monCat, jourNom, colonnes, dateCourante, onDeplacer, onSupprimerTranche, onClose, onSave, onDelete, onDeleteUn, onValider }) {
   const estHebdo = !!(actuel && actuel.estHebdo);
   const JOURS_SEM = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+  const plus30 = (t) => { const p = String(t || "").replace("h", ":").split(":"); let m = (+p[0]) * 60 + (+(p[1] || 0)) + 30; return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; };
   const [occupants, setOccupants] = useState(actuel && actuel.equipe ? actuel.equipe.split(" + ").map((x) => x.trim()).filter(Boolean) : []);
   const [saisie, setSaisie] = useState("");
   const [activite, setActivite] = useState((actuel && actuel.activite) || "match");
@@ -7848,6 +7849,15 @@ function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValid
     if (!debut) return;
     if (estHebdo) onDeplacer({ jour: +mvJour, debut, col: mvCol });
     else onDeplacer({ date: mvDate || dateCourante, debut, col: mvCol });
+  };
+  const [delOpen, setDelOpen] = useState(false);
+  const [trDe, setTrDe] = useState((actuel && actuel.debut ? actuel.debut : creneau).replace("h", ":"));
+  const [trA, setTrA] = useState(plus30(actuel && actuel.debut ? actuel.debut : creneau));
+  const faireSupprTranche = () => {
+    if (!onSupprimerTranche) return;
+    const de = (trDe || "").replace(":", "h"), a2 = (trA || "").replace(":", "h");
+    if (!de || !a2) return;
+    onSupprimerTranche(de, a2);
   };
 
   const descrStatut = estHebdo
@@ -7882,17 +7892,8 @@ function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValid
   return (
     <Modal title={`${typeLabel} ${colonne}`} onClose={onClose}
       footer={
-        <>
-          <Btn variant="accent" full disabled={occupants.length === 0} onClick={() => onSave(occupants.join(" + "), activite, fin, recurrent)}><Save size={16} /> {boutonLabel}</Btn>
-          {actuel && onDelete && <Btn variant="danger" onClick={estPlage ? onDeleteUn : onDelete}><Trash2 size={16} /></Btn>}
-        </>
+        <Btn variant="accent" full disabled={occupants.length === 0} onClick={() => onSave(occupants.join(" + "), activite, fin, recurrent)}><Save size={16} /> {boutonLabel}</Btn>
       }>
-      {actuel && estPlage && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <Btn variant="danger" size="sm" full onClick={onDeleteUn}><Trash2 size={15} /> Effacer ce créneau ({creneau})</Btn>
-          <Btn variant="danger" size="sm" full onClick={onDelete}><Trash2 size={15} /> Effacer {estHebdo ? "toute la séance" : "toute la plage"}</Btn>
-        </div>
-      )}
       <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12 }}>Créneau de {creneau}. Tu peux mettre plusieurs équipes qui se partagent ce {typeLabel.toLowerCase()}, par exemple U14 et U15, ou ajouter le district. {peutValider ? "En tant que responsable, ton attribution est directement validée." : "Ta demande sera affichée « en cours de traitement » jusqu'à validation par le responsable."}</div>
 
       {peutValider && (
@@ -7941,6 +7942,33 @@ function EditCasePlanning({ typeLabel, colonne, creneau, actuel, cats, peutValid
               <Btn variant="accent" full disabled={!mvDebut || !mvCol} onClick={faireDeplacer}><ArrowRightLeft size={16} /> Déplacer ici</Btn>
             </div>
           )}
+        </div>
+      )}
+
+      {actuel && onDelete && (
+        <div style={{ marginBottom: 14, border: "1px solid #EBD3AE", borderRadius: 11, overflow: "hidden" }}>
+          <div style={{ background: "#FBEAD9", color: "#B5483F", padding: "10px 12px", fontWeight: 800, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 7, width: "100%", boxSizing: "border-box" }}><Trash2 size={15} /> Supprimer</div>
+          <div style={{ padding: 12, background: "#fff" }}>
+            <Btn variant="danger" full onClick={onDelete}><Trash2 size={15} /> Supprimer tout le créneau{estHebdo ? " (toutes les semaines)" : ""}</Btn>
+            {estPlage && onSupprimerTranche && (
+              <div style={{ marginTop: 10 }}>
+                <button onClick={() => setDelOpen(!delOpen)} style={{ width: "100%", border: `1px solid ${C.grisClair}`, background: delOpen ? "#EEF2F8" : "#fff", color: C.bleu, cursor: "pointer", padding: "9px 12px", fontWeight: 800, fontSize: 12.5, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span>Supprimer seulement une tranche horaire</span>
+                  <span style={{ fontSize: 11, fontWeight: 700 }}>{delOpen ? "Fermer" : "Ouvrir"}</span>
+                </button>
+                {delOpen && (
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Retire une partie du créneau (ex: libérer la dernière demi-heure). Le reste est conservé.</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <Field label="De"><Inp type="time" value={trDe} onChange={(e) => setTrDe(e.target.value)} /></Field>
+                      <Field label="À"><Inp type="time" value={trA} onChange={(e) => setTrA(e.target.value)} /></Field>
+                    </div>
+                    <Btn variant="danger" full disabled={!trDe || !trA || trA <= trDe} onClick={faireSupprTranche}><Trash2 size={15} /> Supprimer cette tranche</Btn>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -8069,6 +8097,73 @@ function exporterPlanningHebdoPDF(jsPDF) {
   doc.save(nomPdf("Planning", "hebdomadaire", "entrainements"));
 }
 
+// PDF de la semaine affichée, en grille par catégorie (comme l'écran hebdomadaire), cases colorées par terrain.
+function exporterPlanningSemaineGrillePDF(jsPDF, sections, label, joursDates, typeLabel) {
+  const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
+  const W = 842, H = 595, M = 24;
+  const navy = [14, 30, 51], bleu = [26, 53, 83], orr = [198, 162, 76], encre = [22, 32, 46], gris = [122, 130, 142], trait = [210, 215, 222], blanc = [255, 255, 255];
+  const bandeau = [238, 242, 248];
+  const terBg = { "Synthétique dôme": [231, 238, 246], "Synthétique centre": [226, 244, 233], "Pouges": [251, 234, 217] };
+  const terFg = { "Synthétique dôme": [26, 53, 83], "Synthétique centre": [47, 109, 67], "Pouges": [184, 122, 43] };
+  const terShort = (t) => t === "Synthétique dôme" ? "Dôme" : t === "Synthétique centre" ? "Synthé centre" : t === "Herbe centre (nouveau synthétique)" ? "Herbe centre" : t;
+  const sc = (a) => doc.setTextColor(a[0], a[1], a[2]);
+  const sf = (a) => doc.setFillColor(a[0], a[1], a[2]);
+  const sd = (a) => doc.setDrawColor(a[0], a[1], a[2]);
+  const jc = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+  const nJ = joursDates.length;
+  const labW = 118, colW = (W - 2 * M - labW) / nJ, x0 = M;
+  function enTete() {
+    sf(navy); doc.rect(0, 0, W, 4, "F");
+    sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(CLUB_LONG, M, 26);
+    sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text("Planning des " + typeLabel.toLowerCase() + " - semaine du " + label, M, 39);
+    sd(orr); doc.setLineWidth(1); doc.line(M, 45, W - M, 45); doc.setLineWidth(0.5);
+  }
+  function ligneJours(y) {
+    sf(bleu); doc.rect(x0, y, labW, 26, "F"); sc(blanc); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.text("Catégorie", x0 + 5, y + 16);
+    joursDates.forEach((dstr, i) => {
+      const x = x0 + labW + i * colW; sf(bleu); doc.rect(x, y, colW, 26, "F");
+      doc.setFontSize(8.5); doc.text(jc[i], x + colW / 2, y + 11, { align: "center" });
+      doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.text(jjmm(dstr), x + colW / 2, y + 21, { align: "center" }); doc.setFont("helvetica", "bold");
+    });
+    return y + 26;
+  }
+  enTete();
+  let y = 58;
+  y = ligneJours(y);
+  sections.forEach((sec) => {
+    if (y + 16 + 30 > H - 22) { doc.addPage(); enTete(); y = 58; y = ligneJours(y); }
+    sf(bandeau); doc.rect(x0, y, labW + nJ * colW, 16, "F");
+    sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.text(sec.section.toUpperCase(), x0 + 5, y + 11);
+    y += 16;
+    sec.lignes.forEach((l, ri) => {
+      const maxS = Math.max(1, ...joursDates.map((_, i) => (l.parJour[i] || []).length));
+      const rowH = Math.max(28, maxS * 20 + 8);
+      if (y + rowH > H - 22) { doc.addPage(); enTete(); y = 58; y = ligneJours(y); }
+      const bg = ri % 2 ? [247, 249, 252] : blanc;
+      sf(bg); doc.rect(x0, y, labW, rowH, "F"); sd(trait); doc.rect(x0, y, labW, rowH);
+      sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+      const lw = doc.splitTextToSize(l.cat, labW - 10); lw.forEach((ln, k) => doc.text(ln, x0 + 5, y + rowH / 2 - (lw.length - 1) * 5 + k * 10 + 3));
+      joursDates.forEach((_, i) => {
+        const x = x0 + labW + i * colW;
+        sf(bg); doc.rect(x, y, colW, rowH, "F"); sd(trait); doc.rect(x, y, colW, rowH);
+        const sess = l.parJour[i] || [];
+        let yy = y + 4;
+        sess.forEach((s) => {
+          sf(terBg[s.ter] || [237, 242, 248]); doc.roundedRect(x + 3, yy, colW - 6, 17, 3, 3, "F");
+          sc(terFg[s.ter] || bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.text(terShort(s.ter), x + colW / 2, yy + 7, { align: "center" });
+          sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(6.8); doc.text(s.horaire, x + colW / 2, yy + 14, { align: "center" });
+          yy += 20;
+        });
+      });
+      y += rowH;
+    });
+  });
+  y += 12;
+  sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+  doc.text("Synthé centre : synthétique plein air  -  Dôme : synthétique du dôme  -  Édité le " + new Date().toLocaleDateString("fr-FR"), M, H - 12);
+  doc.save(nomPdf("Planning", typeLabel.toLowerCase(), "semaine", label));
+}
+
 function exporterPlanningSemainePDF(jsPDF, sem, occ, label, cat, typeLabel, codeCouleur) {
   const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
   const W = 842, H = 595, M = 28;
@@ -8148,12 +8243,49 @@ function PlanningSemaine({ planning, cat, type, onClose }) {
       return { nom: type === "vestiaires" ? "Vestiaire " + nom : nom, cells, used: cells.some((c) => c.length) };
     }).filter((o) => o.used);
   }
+  // Regroupe les séances de la semaine par catégorie (équipe) et par jour, pour l'impression en grille façon planning hebdomadaire.
+  function sectionsSemaine() {
+    const hebdo = (pl.hebdo && pl.hebdo[type]) || {};
+    const vacances = pl.vacances || [];
+    const estVac = (dstr) => vacances.some((v) => v.debut && v.fin && dstr >= v.debut && dstr <= v.fin);
+    const map = {};
+    const ajout = (equipe, ji, ter, debut, dfin) => {
+      const horaire = (debut && dfin && dfin !== debut) ? `${debut}-${dfin}` : (debut || "");
+      const sig = `${ter}|${horaire}`;
+      map[equipe] = map[equipe] || {}; map[equipe][ji] = map[equipe][ji] || [];
+      if (!map[equipe][ji].some((x) => x.sig === sig)) map[equipe][ji].push({ ter, horaire, debut, sig });
+    };
+    jours.forEach((dstr, ji) => {
+      const jour = (new Date(dstr + "T00:00:00").getDay() + 6) % 7;
+      const cases = (pl[type] && pl[type][dstr]) || {};
+      const seen = new Set();
+      Object.keys(cases).forEach((k) => {
+        const idx = k.indexOf("__"); const col = k.slice(idx + 2); const c = cases[k];
+        const sig = `P|${col}|${c.debut}|${c.fin}|${c.equipe}`; if (seen.has(sig)) return; seen.add(sig);
+        ajout(c.equipe, ji, col, c.debut, c.fin);
+      });
+      if (!estVac(dstr)) Object.keys(hebdo).forEach((k) => {
+        const parts = k.split("__"); const j = +parts[0]; const col = parts.slice(2).join("__"); if (j !== jour) return;
+        const c = hebdo[k]; const sig = `H|${col}|${c.debut}|${c.fin}|${c.equipe}`; if (seen.has(sig)) return; seen.add(sig);
+        ajout(c.equipe, ji, col, c.debut, c.fin);
+      });
+    });
+    Object.keys(map).forEach((eq) => Object.keys(map[eq]).forEach((ji) => map[eq][ji].sort((a, b) => (a.debut || "").localeCompare(b.debut || ""))));
+    const sections = []; const vus = new Set();
+    PLANNING_HEBDO.forEach((sec) => {
+      const lignes = sec.lignes.filter((l) => map[l.cat]).map((l) => { vus.add(l.cat); return { cat: l.cat, parJour: map[l.cat] }; });
+      sec.lignes.forEach((l) => vus.add(l.cat));
+      if (lignes.length) sections.push({ section: sec.section, lignes });
+    });
+    const extras = Object.keys(map).filter((eq) => !vus.has(eq)).sort();
+    if (extras.length) sections.push({ section: "Autres réservations", lignes: extras.map((eq) => ({ cat: eq, parJour: map[eq] })) });
+    return sections;
+  }
   async function telecharger() {
     setMsg("Préparation du PDF...");
     try {
       const jsPDF = await chargerJsPDF();
-      const sem = jours.map((dstr) => ({ court: new Date(dstr + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "short" }) + " " + jjmm(dstr) }));
-      exporterPlanningSemainePDF(jsPDF, sem, occupation(), label, cat, typeLabel, codeCouleur);
+      exporterPlanningSemaineGrillePDF(jsPDF, sectionsSemaine(), label, jours, typeLabel);
       setMsg(null);
     } catch (e) { setMsg("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
   }
@@ -8364,6 +8496,29 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
         d[type][dest.date] = d[type][dest.date] || {};
         dstSteps.forEach((cr) => { d[type][dest.date][`${cr}__${dest.col}`] = { equipe: a.equipe, activite: a.activite, statut: a.statut, cat: a.cat, demandeur: a.demandeur, debut: dest.debut, fin: destFin }; });
       }
+      return d;
+    });
+  }
+  // Supprime une tranche horaire [de, a) d'une réservation, en conservant le reste (et en le recoupant proprement).
+  function supprimerTranche(a, ctx, deTime, aTime) {
+    if (!a) return;
+    const toMin = (s) => { const p = String(s || "").replace("h", ":").split(":"); return (+p[0]) * 60 + (+(p[1] || 0)); };
+    const dM = toMin(deTime), aM = toMin(aTime);
+    if (aM <= dM) return;
+    const occ = creneauxEntre(a.debut || ctx.cr, a.fin);
+    const reste = occ.filter((cr) => { const m = toMin(cr); return m < dM || m >= aM; });
+    const segs = [];
+    reste.forEach((cr) => { const m = toMin(cr); const last = segs[segs.length - 1]; if (last && toMin(last[last.length - 1]) === m - 30) last.push(cr); else segs.push([cr]); });
+    majPlanning((d) => {
+      let store;
+      if (ctx.estHebdo) { d.hebdo = d.hebdo || { vestiaires: {}, terrains: {} }; d.hebdo[type] = d.hebdo[type] || {}; store = d.hebdo[type]; }
+      else { d[type] = d[type] || {}; d[type][ctx.date] = d[type][ctx.date] || {}; store = d[type][ctx.date]; }
+      const key = (cr) => ctx.estHebdo ? `${ctx.jour}__${cr}__${ctx.col}` : `${cr}__${ctx.col}`;
+      occ.forEach((cr) => delete store[key(cr)]);
+      segs.forEach((seg) => {
+        const deb = seg[0], finCell = seg[seg.length - 1];
+        seg.forEach((cr) => { store[key(cr)] = ctx.estHebdo ? { equipe: a.equipe, activite: a.activite, cat: a.cat, debut: deb, fin: finCell } : { equipe: a.equipe, activite: a.activite, statut: a.statut, cat: a.cat, demandeur: a.demandeur, debut: deb, fin: finCell }; });
+      });
       return d;
     });
   }
@@ -8622,6 +8777,7 @@ function Planning({ planning, majPlanning, chargement, cats, profil, peutValider
               deplacerReservation(actuel, { date: dt, jour, cr: (actuel && actuel.debut) || edit.cr, col: edit.col }, { date: dest.date || dt, jour: dest.jour != null ? dest.jour : jour, debut: dest.debut, col: dest.col });
               setEdit(null);
             }}
+            onSupprimerTranche={(de, a2) => { supprimerTranche(actuel, { estHebdo: !!(actuel && actuel.estHebdo), date: dt, jour, col: edit.col, cr: edit.cr }, de, a2); setEdit(null); }}
             onClose={() => setEdit(null)}
             onSave={(equipe, activite, fin, recurrent) => {
               if (recurrent && peutValider) {
