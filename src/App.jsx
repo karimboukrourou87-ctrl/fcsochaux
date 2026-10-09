@@ -2689,7 +2689,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.1
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.2
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -6301,7 +6301,7 @@ function exporterDefiJonglageLiguePDF(jsPDF, j, match) {
   const rulesH = 118;
   sf(PEACH); sd(ORB); doc.setLineWidth(1); doc.rect(M, y, W - 2 * M, rulesH, "FD"); doc.setLineWidth(0.4);
   sc(REDTITLE); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.text("RÈGLES DU DÉFI", M + 12, y + 16);
-  sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+  sc(ENCRE); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
   const regles = [
     "Chaque joueur inscrit sur la feuille de match y participe et il a 2 essais pour réaliser au maximum 50 jonglages",
     "pied droit, 50 jonglages pied gauche et 50 jonglages alternés. Départ ballon au sol, possibilité de lever le ballon avec",
@@ -6311,7 +6311,19 @@ function exporterDefiJonglageLiguePDF(jsPDF, j, match) {
     "vérifiera pour mettre à jour le classement).",
     "Photo nette de la feuille à renvoyer par le club recevant à la ligue (avant le lundi 14h00) : sportif@lbfc.fff.fr",
   ];
-  regles.forEach((ln, i) => doc.text(ln, M + 12, y + 32 + i * 11.5));
+  regles.forEach((ln, i) => {
+    const yy = y + 32 + i * 11.5;
+    const idx = ln.indexOf("10 meilleurs");
+    if (idx === -1) { doc.setFont("helvetica", "normal"); doc.text(ln, M + 12, yy); return; }
+    const avant = ln.slice(0, idx), phrase = "10 meilleurs", apres = ln.slice(idx + phrase.length);
+    let x = M + 12;
+    doc.setFont("helvetica", "normal"); doc.text(avant, x, yy); x += doc.getTextWidth(avant);
+    doc.setFont("helvetica", "bold"); doc.text(phrase, x, yy);
+    const wPhrase = doc.getTextWidth(phrase);
+    sd(ENCRE); doc.setLineWidth(0.6); doc.line(x, yy + 1.6, x + wPhrase, yy + 1.6); doc.setLineWidth(0.4);
+    x += wPhrase;
+    doc.setFont("helvetica", "normal"); doc.text(apres, x, yy);
+  });
   y += rulesH + 14;
 
   sf(GREYBAND); doc.rect(M, y, W - 2 * M, 20, "F");
