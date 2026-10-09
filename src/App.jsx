@@ -2689,7 +2689,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.2
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.3
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -6272,12 +6272,13 @@ const LOGO_DEFI_U11 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFsAAABaCAI
 function exporterDefiJonglageLiguePDF(jsPDF, j, match) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const W = 595, H = 842, M = 40;
-  const NAVY = [40, 54, 84], GOLD = [200, 164, 78], RED = [178, 68, 55];
-  const PEACH = [253, 246, 239], ORB = [214, 158, 92], REDTITLE = [150, 52, 42];
-  const GREYBAND = [232, 232, 236], ENCRE = [30, 38, 52], GRIS = [110, 120, 132];
+  // Couleurs exactes relevées sur le document officiel Ligue BFC (V3)
+  const NAVY = [28, 63, 143], GOLD = [245, 166, 35], RED = [232, 86, 42];
+  const PEACH = [255, 248, 236], ORB = [222, 165, 120], REDTITLE = [232, 86, 42];
+  const GREYBAND = [244, 244, 244], ENCRE = [0, 32, 96], GRIS = [136, 136, 136];
   const BORDER = [176, 184, 196], WHITE = [255, 255, 255];
-  const HOME_TOTAL = [200, 214, 235], HOME_ALT = [238, 242, 249];
-  const VIS_TOTAL = [245, 224, 212], VIS_ALT = [240, 240, 242];
+  const HOME_TOTAL = [220, 228, 245], HOME_ALT = [244, 244, 244];
+  const VIS_TOTAL = [251, 227, 216], VIS_ALT = [244, 244, 244];
   const sc = (c) => doc.setTextColor(c[0], c[1], c[2]);
   const sd = (c) => doc.setDrawColor(c[0], c[1], c[2]);
   const sf = (c) => doc.setFillColor(c[0], c[1], c[2]);
@@ -6298,31 +6299,53 @@ function exporterDefiJonglageLiguePDF(jsPDF, j, match) {
   doc.text("de Football", W - M - 16, 74, { align: "right" });
 
   let y = 108;
-  const rulesH = 118;
-  sf(PEACH); sd(ORB); doc.setLineWidth(1); doc.rect(M, y, W - 2 * M, rulesH, "FD"); doc.setLineWidth(0.4);
-  sc(REDTITLE); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.text("RÈGLES DU DÉFI", M + 12, y + 16);
-  sc(ENCRE); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-  const regles = [
-    "Chaque joueur inscrit sur la feuille de match y participe et il a 2 essais pour réaliser au maximum 50 jonglages",
-    "pied droit, 50 jonglages pied gauche et 50 jonglages alternés. Départ ballon au sol, possibilité de lever le ballon avec",
-    "le pied « fort » pour le jonglage pied « faible ». Pas de surface de rattrapage. Pied posé au sol entre chaque contact.",
-    "Les joueurs jongleront par 2 (un de chaque équipe. Ex : le N°2 avec le N°2 adverse).",
-    "Effectuer les totaux pour chaque équipe en prenant les 10 meilleurs résultats totaux (la commission sportive",
-    "vérifiera pour mettre à jour le classement).",
-    "Photo nette de la feuille à renvoyer par le club recevant à la ligue (avant le lundi 14h00) : sportif@lbfc.fff.fr",
+  // RÈGLES DU DÉFI : texte justifié pleine largeur, police Times, « Ex » et « 10 meilleurs » en gras souligné, comme l'original Ligue
+  const rtx = M + 12, rtw = W - 2 * M - 24, lineH = 11.4, topReg = 34;
+  doc.setFont("times", "normal"); doc.setFontSize(9);
+  const spaceW = doc.getTextWidth(" ");
+  const bullets = [
+    "- Chaque joueur inscrit sur la feuille de match y participe et il a 2 essais pour réaliser au maximum 50 jonglages pied droit, 50 jonglages pied gauche et 50 jonglages alternés. Départ ballon au sol, possibilité de lever le ballon avec le pied « fort » pour le jonglage pied « faible ». Pas de surface de rattrapage. Les joueurs devront poser le pied au sol entre chaque contact avec le ballon.",
+    "- Les joueurs jongleront par 2 (un de chaque équipe. Ex : Le N°2 avec le N°2 adverse).",
+    "- Effectuer les totaux pour chaque équipe en prenant les 10 meilleurs résultats totaux (la commission sportive vérifiera pour mettre à jour le classement).",
+    "- Prendre une photo nette de la feuille et la renvoyer après chaque rencontre par le club recevant à la ligue (avant le lundi 14h00) par e-mail à l’adresse suivante : sportif@lbfc.fff.fr",
   ];
-  regles.forEach((ln, i) => {
-    const yy = y + 32 + i * 11.5;
-    const idx = ln.indexOf("10 meilleurs");
-    if (idx === -1) { doc.setFont("helvetica", "normal"); doc.text(ln, M + 12, yy); return; }
-    const avant = ln.slice(0, idx), phrase = "10 meilleurs", apres = ln.slice(idx + phrase.length);
-    let x = M + 12;
-    doc.setFont("helvetica", "normal"); doc.text(avant, x, yy); x += doc.getTextWidth(avant);
-    doc.setFont("helvetica", "bold"); doc.text(phrase, x, yy);
-    const wPhrase = doc.getTextWidth(phrase);
-    sd(ENCRE); doc.setLineWidth(0.6); doc.line(x, yy + 1.6, x + wPhrase, yy + 1.6); doc.setLineWidth(0.4);
-    x += wPhrase;
-    doc.setFont("helvetica", "normal"); doc.text(apres, x, yy);
+  const toksOf = (txt) => {
+    const mots = txt.split(" "), out = [];
+    for (let i = 0; i < mots.length; i++) {
+      if (mots[i] === "10" && mots[i + 1] === "meilleurs") { out.push({ t: "10 meilleurs", e: true }); i++; }
+      else if (mots[i] === "Ex") out.push({ t: "Ex", e: true });
+      else out.push({ t: mots[i], e: false });
+    }
+    return out;
+  };
+  const tw = (t, e) => { doc.setFont("times", e ? "bold" : "normal"); return doc.getTextWidth(t); };
+  const allLines = [];
+  bullets.forEach((b) => {
+    const toks = toksOf(b); let cur = [], curW = 0;
+    toks.forEach((tk) => {
+      const w = tw(tk.t, tk.e);
+      if (cur.length && curW + spaceW + w > rtw) { allLines.push({ toks: cur, w: curW, last: false }); cur = [tk]; curW = w; }
+      else { if (cur.length) curW += spaceW; curW += w; cur.push(tk); }
+    });
+    if (cur.length) allLines.push({ toks: cur, w: curW, last: true });
+  });
+  const rulesH = topReg + allLines.length * lineH + 4;
+  sf(PEACH); sd(ORB); doc.setLineWidth(1); doc.rect(M, y, W - 2 * M, rulesH, "FD"); doc.setLineWidth(0.4);
+  sc(REDTITLE); doc.setFont("times", "bold"); doc.setFontSize(10.5); doc.text("RÈGLES DU DÉFI", rtx, y + 16);
+  sc(ENCRE); doc.setFontSize(9);
+  let ry = y + topReg;
+  allLines.forEach((ln) => {
+    const gaps = ln.toks.length - 1;
+    const extra = (!ln.last && gaps > 0) ? (rtw - ln.w) / gaps : 0;
+    let x = rtx;
+    ln.toks.forEach((tk, ti) => {
+      doc.setFont("times", tk.e ? "bold" : "normal");
+      doc.text(tk.t, x, ry);
+      const w = doc.getTextWidth(tk.t);
+      if (tk.e) { sd(ENCRE); doc.setLineWidth(0.6); doc.line(x, ry + 1.7, x + w, ry + 1.7); doc.setLineWidth(0.4); }
+      x += w + (ti < gaps ? spaceW + extra : 0);
+    });
+    ry += lineH;
   });
   y += rulesH + 14;
 
