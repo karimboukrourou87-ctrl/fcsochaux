@@ -2689,7 +2689,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.4
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.6
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -6403,10 +6403,16 @@ function exporterDefiJonglageLiguePDF(jsPDF, j, match) {
   bloc("ÉQUIPE À DOMICILE", j.domNom || CLUB_LONG, j.dom, NAVY, HOME_TOTAL, HOME_ALT);
   bloc("ÉQUIPE VISITEUSE", j.visNom || match.adversaire, j.vis, RED, VIS_TOTAL, VIS_ALT);
 
-  sc(REDTITLE); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.text("PRÉCISIONS :", M, y + 4);
+  // Mention officielle en italique, alignée à droite, juste au-dessus des précisions (comme l'original)
+  sc(GRIS); doc.setFont("times", "italic"); doc.setFontSize(7); doc.text("Ligue Bourgogne-Franche-Comté de Football", W - M, y + 4, { align: "right" });
+
+  const precY = y + 24;
+  sc(REDTITLE); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.text("PRÉCISIONS :", M, precY);
+  const wPrec = doc.getTextWidth("PRÉCISIONS :");
+  sd(REDTITLE); doc.setLineWidth(0.9); doc.line(M, precY + 2.5, M + wPrec, precY + 2.5); doc.setLineWidth(0.4);
   sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
   const prec = "Si le club recevant ne renvoie pas la fiche de jonglerie, il se verra attribuer le total de 0 jonglage pour la journée identifiée. Le club visiteur se verra totaliser la moyenne des jonglages de ses performances de la journée précédente (ou la moyenne des autres équipes s'il s'agit de la Journée 1).";
-  doc.splitTextToSize(prec, W - 2 * M).forEach((ln, i) => doc.text(ln, M, y + 15 + i * 9.5));
+  doc.splitTextToSize(prec, W - 2 * M).forEach((ln, i) => doc.text(ln, M, precY + 13 + i * 9.5));
 
   doc.save(nomPdf("Defi jonglage", catLabel, j.matchNum || match.date || ""));
 }
