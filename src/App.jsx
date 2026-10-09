@@ -2689,7 +2689,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.3
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.4
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -6299,15 +6299,17 @@ function exporterDefiJonglageLiguePDF(jsPDF, j, match) {
   doc.text("de Football", W - M - 16, 74, { align: "right" });
 
   let y = 108;
-  // RÈGLES DU DÉFI : texte justifié pleine largeur, police Times, « Ex » et « 10 meilleurs » en gras souligné, comme l'original Ligue
-  const rtx = M + 12, rtw = W - 2 * M - 24, lineH = 11.4, topReg = 34;
-  doc.setFont("times", "normal"); doc.setFontSize(9);
-  const spaceW = doc.getTextWidth(" ");
-  const bullets = [
-    "- Chaque joueur inscrit sur la feuille de match y participe et il a 2 essais pour réaliser au maximum 50 jonglages pied droit, 50 jonglages pied gauche et 50 jonglages alternés. Départ ballon au sol, possibilité de lever le ballon avec le pied « fort » pour le jonglage pied « faible ». Pas de surface de rattrapage. Les joueurs devront poser le pied au sol entre chaque contact avec le ballon.",
-    "- Les joueurs jongleront par 2 (un de chaque équipe. Ex : Le N°2 avec le N°2 adverse).",
-    "- Effectuer les totaux pour chaque équipe en prenant les 10 meilleurs résultats totaux (la commission sportive vérifiera pour mettre à jour le classement).",
-    "- Prendre une photo nette de la feuille et la renvoyer après chaque rencontre par le club recevant à la ligue (avant le lundi 14h00) par e-mail à l’adresse suivante : sportif@lbfc.fff.fr",
+  // RÈGLES DU DÉFI : mêmes coupures de lignes que l'original, justifiées pleine largeur, police Times, « Ex » et « 10 meilleurs » en gras souligné
+  const rtx = M + 10, rtw = W - 2 * M - 20, topReg = 26;
+  const lignesReg = [
+    ["- Chaque joueur inscrit sur la feuille de match y participe et il a 2 essais pour réaliser au maximum 50 jonglages pied droit, 50 jonglages pied gauche", 0],
+    ["et 50 jonglages alternés. Départ ballon au sol, possibilité de lever le ballon avec le pied « fort » pour le jonglage pied « faible ». Pas de surface de", 0],
+    ["rattrapage. Les joueurs devront poser le pied au sol entre chaque contact avec le ballon.", 1],
+    ["- Les joueurs jongleront par 2 (un de chaque équipe. Ex : Le N°2 avec le N°2 adverse).", 1],
+    ["- Effectuer les totaux pour chaque équipe en prenant les 10 meilleurs résultats totaux (la commission sportive vérifiera pour mettre à jour le", 0],
+    ["classement).", 1],
+    ["- Prendre une photo nette de la feuille et la renvoyer après chaque rencontre par le club recevant à la ligue (avant le lundi 14h00) par e-mail à l’adresse", 0],
+    ["suivante : sportif@lbfc.fff.fr", 1],
   ];
   const toksOf = (txt) => {
     const mots = txt.split(" "), out = [];
@@ -6318,31 +6320,30 @@ function exporterDefiJonglageLiguePDF(jsPDF, j, match) {
     }
     return out;
   };
-  const tw = (t, e) => { doc.setFont("times", e ? "bold" : "normal"); return doc.getTextWidth(t); };
-  const allLines = [];
-  bullets.forEach((b) => {
-    const toks = toksOf(b); let cur = [], curW = 0;
-    toks.forEach((tk) => {
-      const w = tw(tk.t, tk.e);
-      if (cur.length && curW + spaceW + w > rtw) { allLines.push({ toks: cur, w: curW, last: false }); cur = [tk]; curW = w; }
-      else { if (cur.length) curW += spaceW; curW += w; cur.push(tk); }
-    });
-    if (cur.length) allLines.push({ toks: cur, w: curW, last: true });
-  });
-  const rulesH = topReg + allLines.length * lineH + 4;
+  const lignes = lignesReg.map(([t, last]) => ({ toks: toksOf(t), last }));
+  // On choisit la taille de police pour que la ligne la plus large remplisse exactement la largeur, comme l'original
+  doc.setFontSize(10);
+  const sp10 = (() => { doc.setFont("times", "normal"); return doc.getTextWidth(" "); })();
+  const largeur = (toks) => { let w = 0; toks.forEach((tk, i) => { doc.setFont("times", tk.e ? "bold" : "normal"); w += doc.getTextWidth(tk.t); if (i < toks.length - 1) w += sp10; }); return w; };
+  let maxNat = 0; lignes.forEach((l) => { maxNat = Math.max(maxNat, largeur(l.toks)); });
+  const fs = Math.max(6.4, Math.min(9, 10 * rtw / maxNat));
+  const lineH = fs * 1.42;
+  const rulesH = topReg + (lignes.length - 1) * lineH + fs * 0.85 + 3;
   sf(PEACH); sd(ORB); doc.setLineWidth(1); doc.rect(M, y, W - 2 * M, rulesH, "FD"); doc.setLineWidth(0.4);
   sc(REDTITLE); doc.setFont("times", "bold"); doc.setFontSize(10.5); doc.text("RÈGLES DU DÉFI", rtx, y + 16);
-  sc(ENCRE); doc.setFontSize(9);
+  sc(ENCRE); doc.setFontSize(fs);
+  const spaceW = (() => { doc.setFont("times", "normal"); return doc.getTextWidth(" "); })();
   let ry = y + topReg;
-  allLines.forEach((ln) => {
+  lignes.forEach((ln) => {
+    let nat = 0; ln.toks.forEach((tk, i) => { doc.setFont("times", tk.e ? "bold" : "normal"); nat += doc.getTextWidth(tk.t); if (i < ln.toks.length - 1) nat += spaceW; });
     const gaps = ln.toks.length - 1;
-    const extra = (!ln.last && gaps > 0) ? (rtw - ln.w) / gaps : 0;
+    const extra = (!ln.last && gaps > 0) ? Math.max(0, (rtw - nat) / gaps) : 0;
     let x = rtx;
     ln.toks.forEach((tk, ti) => {
       doc.setFont("times", tk.e ? "bold" : "normal");
       doc.text(tk.t, x, ry);
       const w = doc.getTextWidth(tk.t);
-      if (tk.e) { sd(ENCRE); doc.setLineWidth(0.6); doc.line(x, ry + 1.7, x + w, ry + 1.7); doc.setLineWidth(0.4); }
+      if (tk.e) { sd(ENCRE); doc.setLineWidth(0.5); doc.line(x, ry + fs * 0.16, x + w, ry + fs * 0.16); doc.setLineWidth(0.4); }
       x += w + (ti < gaps ? spaceW + extra : 0);
     });
     ry += lineH;
