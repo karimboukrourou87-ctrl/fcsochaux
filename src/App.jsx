@@ -2376,9 +2376,15 @@ export default function App() {
     let annule = false;
     (async () => {
       try {
-        if (!cacheRef.current[cat]) cacheRef.current[cat] = await loadCat(cat);
-        if (!annule) setDb(cacheRef.current[cat]);
-      } catch (e) { if (!annule) setDb({ ...EMPTY_DB }); }
+        // Affichage instantané depuis le cache si disponible, puis on recharge la catégorie pour avoir les ajouts récents des autres comptes (blessés, etc.)
+        if (cacheRef.current[cat] && !annule) setDb(cacheRef.current[cat]);
+        if (savingCountRef.current === 0 && !dirtyCatsRef.current.has(cat)) {
+          const fresh = await loadCat(cat);
+          if (!annule) { cacheRef.current[cat] = fresh; setDb(fresh); }
+        } else if (!cacheRef.current[cat] && !annule) {
+          cacheRef.current[cat] = await loadCat(cat); setDb(cacheRef.current[cat]);
+        }
+      } catch (e) { if (!annule && !cacheRef.current[cat]) setDb({ ...EMPTY_DB }); }
     })();
     return () => { annule = true; };
   }, [session, cat, demo]);
@@ -2683,7 +2689,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v7.9
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.0
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
