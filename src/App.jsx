@@ -2360,8 +2360,10 @@ export default function App() {
         if (annule) return;
         const role = (prof && prof.role) || "educateur";
         const affCats = (aff || []).map((a) => a.categorie);
-        const cats = role === "direction" ? CATEGORIES.map((c) => c.id) : affCats;
-        const catsModif = role === "direction" ? CATEGORIES.map((c) => c.id) : affCats;
+        // L'équipe médicale suit tout le club sur les catégories prises en charge médicalement (U17 NAT, U19 NAT, N2, pros), quelles que soient ses affectations.
+        const catsMedical = CATEGORIES.map((c) => c.id).filter((id) => priseEnChargeMedicale(id) !== "parents");
+        const cats = role === "direction" ? CATEGORIES.map((c) => c.id) : role === "medical" ? catsMedical : affCats;
+        const catsModif = role === "direction" ? CATEGORIES.map((c) => c.id) : role === "medical" ? catsMedical : affCats;
         setProfil({ role, nom: prof && prof.nom, cats, catsModif });
         setCat((prev) => (prev && cats.includes(prev) ? prev : (cats[0] || null)));
       } catch (e) { if (!annule) setProfil({ role: "educateur", cats: [] }); }
@@ -2396,6 +2398,20 @@ export default function App() {
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [session, cat, demo]);
+
+  // Recharge les données de la catégorie courante (blessés, etc.) sans écraser une modification en cours
+  const rafraichirDb = useCallback(async () => {
+    if (demo || !session || !cat) return;
+    if (savingCountRef.current > 0) return;
+    if (dirtyCatsRef.current.has(cat)) return;
+    try { const fresh = await loadCat(cat); if (fresh) { cacheRef.current[cat] = fresh; setDb(fresh); } } catch (e) {}
+  }, [demo, session, cat]);
+  // Rafraîchissement automatique de la catégorie toutes les 18 s, pour que les blessés et autres saisies des autres comptes apparaissent sans quitter l'application
+  useEffect(() => {
+    if (demo || !session) return;
+    const id = setInterval(() => { if (document.visibilityState === "visible") rafraichirDb(); }, 18000);
+    return () => clearInterval(id);
+  }, [demo, session, rafraichirDb]);
 
   useEffect(() => {
     if (demo) return;
@@ -2639,7 +2655,7 @@ export default function App() {
     majTransportClub((s) => { const x = (s.demandes || []).find((y) => y.id === dem.id); if (x) { x.statut = "refusee"; x.cause = cause || ""; } return s; });
     notifTransport(dem, "refus", cause || "");
   };
-  const rafraichirTout = () => { if (rafraichirPlanning) rafraichirPlanning(); if (rafraichirTransport) rafraichirTransport(); };
+  const rafraichirTout = () => { if (rafraichirPlanning) rafraichirPlanning(); if (rafraichirTransport) rafraichirTransport(); rafraichirDb(); };
   const estMedical = !demo && !!(profil && profil.role === "medical");
   const lectureSeuleCat = !demo && !!(profil && Array.isArray(profil.catsModif) && cat && !profil.catsModif.includes(cat));
   const groupesDispo = GROUPES.filter((g) => CATEGORIES.some((c) => c.groupe === g && cats.includes(c.id)));
@@ -2667,7 +2683,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v7.5
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v7.7
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3065,7 +3081,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
     { titre: "Organisation des matchs", sous: "Terrain, vestiaires, transport et encadrement", icon: MapPin, action: onOrganisation, badge: nbOrga },
     { titre: "Programme de la semaine", sous: "Récapitulatif des matchs à imprimer", icon: ClipboardList, action: onProgramme },
     { titre: "Documents administratifs", sous: "Licences et contrôle médical à surveiller", icon: ShieldAlert, action: onDocuments, badge: alerteDocs },
-    { titre: "Suivi médical", sous: "Blessés suivis par l'équipe médicale (U17 aux pros)", icon: Activity, action: priseEnChargeMedicale(cat) !== "parents" ? onSuivi : null, badge: priseEnChargeMedicale(cat) !== "parents" ? enSuiviMedical : 0 },
+    { titre: "Suivi médical", sous: "Blessés suivis par l'équipe médicale (U17 aux pros)", icon: Activity, action: (estMedical || priseEnChargeMedicale(cat) !== "parents") ? onSuivi : null, badge: (estMedical || priseEnChargeMedicale(cat) !== "parents") ? enSuiviMedical : 0 },
     { titre: "Bilan de saison de l'équipe", sous: "Résultats, buteurs et passeurs de la saison", icon: Trophy, action: onBilan },
     { titre: "Réunions", sous: "Programmer les réunions et recueillir les présences", icon: Users, action: onReunions, badge: alerteReunions },
     { titre: "Calendrier du club", sous: "Tous les événements, toutes catégories réunies", icon: CalendarDays, action: onCalendrier },
@@ -3098,7 +3114,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
       <style>{"@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}"}</style>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 18 }}>
         {stat("Joueurs", players.length, Users, () => setTab("effectif"))}
-        {stat("Blessés", blesses, HeartPulse, () => setTab("effectif"))}
+        {stat("Blessés", blesses, HeartPulse, () => (priseEnChargeMedicale(cat) !== "parents" ? onSuivi() : setTab("effectif")))}
         {stat("À préparer", nbOrga, MapPin, onOrganisation)}
       </div>
 
@@ -3347,7 +3363,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
             </div>
           )}
           {blesses > 0 && (
-            <div onClick={() => setTab("entrainements")} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: (alerteDemRecues > 0 || alerteDemEnvoyees > 0 || alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0 || aRisqueSusp > 0 || alerteSuivi > 0) ? "1px solid #EBD3AE" : "none" }}>
+            <div onClick={() => (priseEnChargeMedicale(cat) !== "parents" ? onSuivi() : setTab("entrainements"))} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: (alerteDemRecues > 0 || alerteDemEnvoyees > 0 || alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0 || aRisqueSusp > 0 || alerteSuivi > 0) ? "1px solid #EBD3AE" : "none" }}>
               <HeartPulse size={15} color={C.rouge} /> <span style={{ flex: 1 }}>{blesses} joueur{blesses > 1 ? "s" : ""} blessé{blesses > 1 ? "s" : ""} en cours de soin</span>
               <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
             </div>
