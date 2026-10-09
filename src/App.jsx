@@ -2630,9 +2630,9 @@ export default function App() {
       if (b.datePriseEnCharge && (b.pathologie || b.zone) && !avant) {
         pousserNotifBlessure({ ...base, sous: "diagnostic", pourCat: b.cat, accuseRole: "medical", diagnostic: (b.pathologie && b.pathologie !== "Autre" ? b.pathologie : (b.zone || "")), datePEC: b.datePriseEnCharge });
       }
-      // 3. Étape P4, test de retour validé, retour sur le terrain -> alerte au coach
-      const avantRetour = ancien && ancien.phase === "P4" && ancien.testRetour === "valide";
-      if (b.phase === "P4" && b.testRetour === "valide" && !avantRetour) {
+      // 3. Joueur rétabli et de retour (P4 validé ou case « rétabli » cochée) -> alerte au coach
+      const avantRetabli = ancien && ancien.fini;
+      if (b.fini && !avantRetabli) {
         pousserNotifBlessure({ ...base, sous: "retour", pourCat: b.cat, accuseRole: "medical" });
       }
     }
@@ -2683,7 +2683,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v7.7
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v7.8
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3129,7 +3129,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
             const label = n.typeLieu === "vestiaires" ? "vestiaire" : "terrain";
             const horaire = n.fin && n.fin !== n.debut ? `${n.debut} à ${n.fin}` : n.debut;
             const titre = estBlessure
-              ? (n.sous === "signalement" ? "Nouveau joueur blessé signalé" : n.sous === "diagnostic" ? "Diagnostic médical reçu" : "Retour sur le terrain validé (P4)")
+              ? (n.sous === "signalement" ? "Nouveau joueur blessé signalé" : n.sous === "diagnostic" ? "Diagnostic médical reçu" : "Joueur rétabli, de retour sur le terrain")
               : estJoueur
                 ? (valide ? "Votre demande de joueur a été acceptée" : annule ? "Une demande de joueur a été annulée" : "Votre demande de joueur a été refusée")
                 : estTransport
