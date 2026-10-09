@@ -2683,7 +2683,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v7.8
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v7.9
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -7886,7 +7886,7 @@ function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessur
         onEdit={() => { setEdit(open); setOpen(null); }}
         onDelete={() => { mutate((d) => { d.trainings = d.trainings.filter((x) => x.id !== open.id); return d; }); setOpen(null); }} />}
 
-      {blessure && <EditBlessure blessure={blessure} players={players} onClose={() => setBlessure(null)}
+      {blessure && <EditBlessure blessure={blessure} players={players} medical={estMedical} lecture={!estMedical && priseEnChargeMedicale(blessure.cat) !== "parents" && !!(blessure.datePriseEnCharge || blessure.pathologie || blessure.phase)} onClose={() => setBlessure(null)}
         onSave={(b) => { const ancien = b.id ? (db.injuries || []).find((x) => x.id === b.id) : null; mutate((d) => { b.id ? (d.injuries[d.injuries.findIndex((x) => x.id === b.id)] = b) : d.injuries.push({ ...b, id: uid() }); return d; }); if (onSignalerBlessure) onSignalerBlessure(ancien, b, !!estMedical); setBlessure(null); }}
         onDelete={blessure.id ? () => { mutate((d) => { d.injuries = d.injuries.filter((x) => x.id !== blessure.id); return d; }); setBlessure(null); } : null} />}
 
@@ -8205,11 +8205,15 @@ function priseEnChargeMedicale(cat) {
 }
 function texteCote(c) { return c === "droit" ? "côté droit" : c === "gauche" ? "côté gauche" : c === "deux" ? "des deux côtés" : ""; }
 function texteCirconstance(c) { return c === "entrainement" ? "à l'entraînement" : c === "match" ? "en match" : c === "test" ? "lors d'un test physique" : c === "autre" ? "autre circonstance" : ""; }
-function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete }) {
+function EditBlessure({ blessure, players, medical, lecture, onClose, onSave, onDelete }) {
   const [f, setF] = useState({ fini: false, pathologie: "", cote: "", circonstance: "", kine: "", dateRetour: "", datePriseEnCharge: "", phase: "", testRetour: "", raisonNonRetour: "", priseEnCharge: (priseEnChargeMedicale(blessure.cat) === "parents" ? "parents" : "club"), ...blessure });
-  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const set = (k, v) => { if (lecture) return; setF((p) => ({ ...p, [k]: v })); };
   const sousType = priseEnChargeMedicale(f.cat);
   const interne = f.priseEnCharge === "club";
+  const coachEdit = !lecture && !medical;                     // champs de signalement renseignés par le coach
+  const soinsEdit = !lecture && (interne ? medical : true);   // kiné, dates de soin, rétabli : équipe médicale si club, coach si parents
+  const medEdit = !lecture && medical;                        // champs strictement médicaux (club) : réservés à l'équipe médicale
+  const griseStyle = { background: "#F0F1F3", color: C.gris };
   const [msgPdf, setMsgPdf] = useState(null);
   async function exporterDossier() {
     setMsgPdf("Préparation du PDF...");
@@ -8217,13 +8221,13 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
     catch (e) { setMsgPdf("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
   }
   return (
-    <Modal title={blessure.id ? "Suivi médical" : "Nouvelle blessure"} onClose={onClose}
-      footer={<>
+    <Modal title={lecture ? "Dossier médical · consultation" : (blessure.id ? "Suivi médical" : "Nouvelle blessure")} onClose={onClose}
+      footer={lecture ? <Btn variant="ghost" full onClick={onClose}>Fermer</Btn> : <>
         <Btn variant="accent" full onClick={() => onSave({ ...f, fini: (f.phase === "P4" && f.testRetour === "valide") ? true : f.fini })}><Save size={16} /> Enregistrer</Btn>
         {onDelete && <BtnSuppr nom="cette blessure" onConfirm={onDelete} />}
       </>}>
       <Field label="Joueur">
-        <Sel value={f.joueurId || ""} onChange={(e) => set("joueurId", e.target.value)}>
+        <Sel value={f.joueurId || ""} onChange={(e) => set("joueurId", e.target.value)} disabled={lecture} style={lecture ? griseStyle : undefined}>
           <option value="">Choisir un joueur</option>
           {players.map((p) => <option key={p.id} value={p.id}>{p.prenom} {p.nom}</option>)}
         </Sel>
@@ -8236,9 +8240,9 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
         {[["parents", "Par les parents"], ["club", "Par le club (équipe médicale)"]].map(([v, lab]) => {
           const on = f.priseEnCharge === v;
           return (
-            <button key={v} onClick={() => { if (medical) return; set("priseEnCharge", v); }} disabled={medical} style={{
-              flex: 1, border: "none", cursor: medical ? "not-allowed" : "pointer", borderRadius: 10, padding: "10px 6px", fontWeight: 800, fontSize: 12.5,
-              background: on ? C.bleu : "#EEF2F8", color: on ? "#fff" : C.gris, opacity: (medical && !on) ? 0.55 : 1,
+            <button key={v} onClick={() => { if (!coachEdit) return; set("priseEnCharge", v); }} disabled={!coachEdit} style={{
+              flex: 1, border: "none", cursor: coachEdit ? "pointer" : "not-allowed", borderRadius: 10, padding: "10px 6px", fontWeight: 800, fontSize: 12.5,
+              background: on ? C.bleu : "#EEF2F8", color: on ? "#fff" : C.gris, opacity: (!coachEdit && !on) ? 0.55 : 1,
             }}>{lab}</button>
           );
         })}
@@ -8246,8 +8250,9 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
       {interne
         ? <div style={{ fontSize: 11.5, color: C.bleu, marginBottom: 12, fontWeight: 700 }}>{sousType === "pro" ? "Professionnels du club" : "Centre de formation"}. Ce joueur apparaît dans la rubrique Suivi médical, renseignée par l'équipe médicale.</div>
         : <div style={{ fontSize: 11.5, color: "#B87A2B", marginBottom: 12 }}>Soins gérés par les parents. Renseigne les retours ci-dessous.</div>}
+      {lecture && <div style={{ background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 10, padding: "9px 12px", fontSize: 12, color: C.bleu, fontWeight: 700, marginBottom: 12, lineHeight: 1.5 }}>Consultation seule. Le dossier médical est renseigné uniquement par l'équipe médicale.</div>}
       {medical && <div style={{ background: "#EAF0F7", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "9px 12px", fontSize: 12, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Informations renseignées par le coach, non modifiables ici. Complète le suivi médical plus bas.</div>}
-      {!medical && (
+      {coachEdit && (
         <>
           <Field label="Blessure visible (optionnel)">
             <Inp value={f.signeCoach || ""} onChange={(e) => set("signeCoach", e.target.value)} placeholder="Seulement si c'est évident, par exemple entorse cheville" />
@@ -8255,24 +8260,24 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
           <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Tu n'as pas besoin de donner la pathologie précise, c'est l'équipe médicale qui la renseignera. Indique seulement ce qui se voit, si c'est le cas.</div>
         </>
       )}
-      {medical && (
+      {(medical || lecture) && interne && (
         <>
           {f.signeCoach ? <div style={{ fontSize: 12.5, color: C.encre, background: "#F4F7FB", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "9px 12px", marginBottom: 12 }}>Signalé par le coach : {f.signeCoach}</div> : null}
           <Field label="Pathologie">
-            <Sel value={f.pathologie || ""} onChange={(e) => set("pathologie", e.target.value)}>
+            <Sel value={f.pathologie || ""} onChange={(e) => set("pathologie", e.target.value)} disabled={!medEdit} style={!medEdit ? griseStyle : undefined}>
               <option value="">Choisir une pathologie</option>
               {PATHOLOGIES.map((p) => <option key={p}>{p}</option>)}
             </Sel>
           </Field>
-          {f.pathologie === "Autre" && <Field label="Préciser la pathologie"><Inp value={f.zone || ""} onChange={(e) => set("zone", e.target.value)} placeholder="Nature de la blessure" /></Field>}
+          {f.pathologie === "Autre" && <Field label="Préciser la pathologie"><Inp value={f.zone || ""} onChange={(e) => set("zone", e.target.value)} disabled={!medEdit} style={!medEdit ? griseStyle : undefined} placeholder="Nature de la blessure" /></Field>}
           <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Côté touché</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
             {[["droit", "Droit"], ["gauche", "Gauche"], ["deux", "Les deux"]].map(([v, lab]) => {
               const on = f.cote === v;
               return (
-                <button key={v} onClick={() => set("cote", on ? "" : v)} style={{
-                  flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "10px 6px", fontWeight: 800, fontSize: 13,
-                  background: on ? C.bleu : "#EEF2F8", color: on ? "#fff" : C.gris,
+                <button key={v} onClick={() => { if (!medEdit) return; set("cote", on ? "" : v); }} disabled={!medEdit} style={{
+                  flex: 1, border: "none", cursor: medEdit ? "pointer" : "not-allowed", borderRadius: 10, padding: "10px 6px", fontWeight: 800, fontSize: 13,
+                  background: on ? C.bleu : "#EEF2F8", color: on ? "#fff" : C.gris, opacity: (!medEdit && !on) ? 0.55 : 1,
                 }}>{lab}</button>
               );
             })}
@@ -8280,7 +8285,7 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
         </>
       )}
       <Field label="Survenue lors de">
-        <Sel value={f.circonstance || ""} onChange={(e) => set("circonstance", e.target.value)} disabled={medical} style={medical ? { background: "#F0F1F3", color: C.gris } : undefined}>
+        <Sel value={f.circonstance || ""} onChange={(e) => set("circonstance", e.target.value)} disabled={!coachEdit} style={!coachEdit ? griseStyle : undefined}>
           <option value="">Non précisé</option>
           <option value="entrainement">Un entraînement</option>
           <option value="match">Un match</option>
@@ -8288,22 +8293,22 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
           <option value="autre">Autre</option>
         </Sel>
       </Field>
-      <Field label="Kiné qui suit le joueur"><Inp value={f.kine || ""} onChange={(e) => set("kine", e.target.value)} placeholder="Nom du kiné" /></Field>
+      <Field label="Kiné qui suit le joueur"><Inp value={f.kine || ""} onChange={(e) => set("kine", e.target.value)} disabled={!soinsEdit} style={!soinsEdit ? griseStyle : undefined} placeholder="Nom du kiné" /></Field>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Field label="Date de la blessure"><Inp type="date" value={f.debut || ""} onChange={(e) => set("debut", e.target.value)} disabled={medical} style={medical ? { background: "#F0F1F3", color: C.gris } : undefined} />{medical ? <span style={{ display: "block", fontSize: 11, color: C.gris, marginTop: 3 }}>Renseignée par le coach, non modifiable ici</span> : null}</Field>
-        <Field label="Date de retour prévue"><Inp type="date" value={f.dateRetour || ""} onChange={(e) => set("dateRetour", e.target.value)} /></Field>
+        <Field label="Date de la blessure"><Inp type="date" value={f.debut || ""} onChange={(e) => set("debut", e.target.value)} disabled={!coachEdit} style={!coachEdit ? griseStyle : undefined} />{!coachEdit && interne ? <span style={{ display: "block", fontSize: 11, color: C.gris, marginTop: 3 }}>Renseignée par le coach</span> : null}</Field>
+        <Field label="Date de retour prévue"><Inp type="date" value={f.dateRetour || ""} onChange={(e) => set("dateRetour", e.target.value)} disabled={!soinsEdit} style={!soinsEdit ? griseStyle : undefined} /></Field>
       </div>
-      {interne && (
+      {(medical || lecture) && interne && (
         <>
-          <Field label="Date de prise en charge par l'équipe médicale"><Inp type="date" value={f.datePriseEnCharge || ""} onChange={(e) => set("datePriseEnCharge", e.target.value)} disabled={!medical} style={!medical ? { background: "#F0F1F3", color: C.gris } : undefined} />{!medical ? <span style={{ display: "block", fontSize: 11, color: C.gris, marginTop: 3 }}>Renseignée par l'équipe médicale</span> : null}</Field>
+          <Field label="Date de prise en charge par l'équipe médicale"><Inp type="date" value={f.datePriseEnCharge || ""} onChange={(e) => set("datePriseEnCharge", e.target.value)} disabled={!medEdit} style={!medEdit ? griseStyle : undefined} />{!medEdit ? <span style={{ display: "block", fontSize: 11, color: C.gris, marginTop: 3 }}>Renseignée par l'équipe médicale</span> : null}</Field>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6, marginTop: 2 }}>Évolution de la réathlétisation</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
             {["P1", "P2", "P3", "P4"].map((ph) => {
               const on = f.phase === ph;
               return (
-                <button key={ph} onClick={() => set("phase", on ? "" : ph)} style={{
-                  flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "11px 0", fontWeight: 900, fontSize: 15,
-                  background: on ? C.bleu : "#EEF2F8", color: on ? "#fff" : C.gris,
+                <button key={ph} onClick={() => { if (!medEdit) return; set("phase", on ? "" : ph); }} disabled={!medEdit} style={{
+                  flex: 1, border: "none", cursor: medEdit ? "pointer" : "not-allowed", borderRadius: 10, padding: "11px 0", fontWeight: 900, fontSize: 15,
+                  background: on ? C.bleu : "#EEF2F8", color: on ? "#fff" : C.gris, opacity: (!medEdit && !on) ? 0.55 : 1,
                 }}>{ph}</button>
               );
             })}
@@ -8315,21 +8320,21 @@ function EditBlessure({ blessure, players, medical, onClose, onSave, onDelete })
                 {[["valide", "Validé, retour terrain"], ["non", "Non validé"]].map(([v, lab]) => {
                   const on = f.testRetour === v;
                   return (
-                    <button key={v} onClick={() => set("testRetour", on ? "" : v)} style={{
-                      flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "11px 6px", fontWeight: 800, fontSize: 13,
-                      background: on ? (v === "valide" ? C.vert : C.rouge) : "#EEF2F8", color: on ? "#fff" : C.gris,
+                    <button key={v} onClick={() => { if (!medEdit) return; set("testRetour", on ? "" : v); }} disabled={!medEdit} style={{
+                      flex: 1, border: "none", cursor: medEdit ? "pointer" : "not-allowed", borderRadius: 10, padding: "11px 6px", fontWeight: 800, fontSize: 13,
+                      background: on ? (v === "valide" ? C.vert : C.rouge) : "#EEF2F8", color: on ? "#fff" : C.gris, opacity: (!medEdit && !on) ? 0.55 : 1,
                     }}>{lab}</button>
                   );
                 })}
               </div>
-              {f.testRetour === "non" && <Field label="Pourquoi le retour n'est pas validé"><textarea value={f.raisonNonRetour || ""} onChange={(e) => set("raisonNonRetour", e.target.value)} rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} placeholder="Douleur persistante, test non concluant..." /></Field>}
+              {f.testRetour === "non" && <Field label="Pourquoi le retour n'est pas validé"><textarea value={f.raisonNonRetour || ""} onChange={(e) => set("raisonNonRetour", e.target.value)} disabled={!medEdit} rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit", ...(!medEdit ? griseStyle : {}) }} placeholder="Douleur persistante, test non concluant..." /></Field>}
             </>
           )}
         </>
       )}
-      <Field label="Suivi / soins"><textarea value={f.suivi || ""} onChange={(e) => set("suivi", e.target.value)} rows={3} placeholder="Protocole, rééducation, reprise progressive..." style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} /></Field>
-      <label style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer", marginTop: 4 }}>
-        <input type="checkbox" checked={!!f.fini} onChange={(e) => set("fini", e.target.checked)} style={{ width: 19, height: 19 }} />
+      <Field label="Suivi / soins"><textarea value={f.suivi || ""} onChange={(e) => set("suivi", e.target.value)} disabled={!soinsEdit} rows={3} placeholder="Protocole, rééducation, reprise progressive..." style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit", ...(!soinsEdit ? griseStyle : {}) }} /></Field>
+      <label style={{ display: "flex", alignItems: "center", gap: 9, cursor: soinsEdit ? "pointer" : "not-allowed", marginTop: 4, opacity: soinsEdit ? 1 : 0.6 }}>
+        <input type="checkbox" checked={!!f.fini} disabled={!soinsEdit} onChange={(e) => set("fini", e.target.checked)} style={{ width: 19, height: 19 }} />
         <span style={{ fontWeight: 700 }}>Joueur rétabli et de retour</span>
       </label>
     </Modal>
@@ -9896,8 +9901,8 @@ function SuiviMedical({ db, mutate, cat, estMedical, onSignalerBlessure, onClose
         <div style={{ fontWeight: 800, fontSize: 16 }}>Suivi médical · {cat}</div>
       </header>
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
-        <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 14, lineHeight: 1.5 }}>Rubrique de l'équipe médicale : joueurs pris en charge par le club, en réathlétisation ou convalescence. {sousType === "pro" ? "Catégorie professionnelle." : sousType === "formation" ? "Centre de formation." : "Cette catégorie est normalement suivie par les parents ; un joueur n'apparaît ici que si le coach a choisi une prise en charge par le club."}</div>
-        <Btn variant="accent" full style={{ marginBottom: 16 }} onClick={() => setEdit({ cat, priseEnCharge: "club" })}><Plus size={16} /> Ajouter un joueur en suivi</Btn>
+        <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 14, lineHeight: 1.5 }}>Rubrique de l'équipe médicale : joueurs pris en charge par le club, en réathlétisation ou convalescence. {sousType === "pro" ? "Catégorie professionnelle." : sousType === "formation" ? "Centre de formation." : "Cette catégorie est normalement suivie par les parents ; un joueur n'apparaît ici que si le coach a choisi une prise en charge par le club."}{!estMedical ? " Consultation seule : seule l'équipe médicale peut renseigner ce dossier." : ""}</div>
+        {estMedical && <Btn variant="accent" full style={{ marginBottom: 16 }} onClick={() => setEdit({ cat, priseEnCharge: "club" })}><Plus size={16} /> Ajouter un joueur en suivi</Btn>}
         {blessures.length === 0 ? (
           <Empty icon={<Activity size={24} color={C.gris} />} text="Aucun joueur en suivi médical" sub="Les blessés pris en charge par le club apparaissent ici" />
         ) : (
@@ -9923,7 +9928,7 @@ function SuiviMedical({ db, mutate, cat, estMedical, onSignalerBlessure, onClose
           </div>
         )}
       </div>
-      {edit && <EditBlessure blessure={edit} players={players} medical onClose={() => setEdit(null)}
+      {edit && <EditBlessure blessure={edit} players={players} medical={estMedical} lecture={!estMedical} onClose={() => setEdit(null)}
         onSave={(b) => { const ancien = b.id ? (db.injuries || []).find((x) => x.id === b.id) : null; mutate((d) => { d.injuries = d.injuries || []; if (b.id) { d.injuries[d.injuries.findIndex((x) => x.id === b.id)] = b; } else { d.injuries.push({ ...b, id: uid() }); } return d; }); if (onSignalerBlessure) onSignalerBlessure(ancien, b, !!estMedical); setEdit(null); }}
         onDelete={edit.id ? () => { mutate((d) => { d.injuries = (d.injuries || []).filter((x) => x.id !== edit.id); return d; }); setEdit(null); } : null} />}
     </div>
