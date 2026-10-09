@@ -2689,7 +2689,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.0
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.1
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -6285,7 +6285,8 @@ function exporterDefiJonglageLiguePDF(jsPDF, j, match) {
   const cap = (v) => Math.min(50, Math.max(0, Math.round(+v) || 0));
   const has = (v) => v !== "" && v != null;
   const totalJ = (r) => cap(r.pd) + cap(r.pg) + cap(r.alt);
-  const totalEq = (arr) => (arr || []).reduce((s, r) => s + totalJ(r), 0);
+  // V3 Ligue : le total d'équipe ne retient que les 10 meilleurs résultats sur les 12
+  const totalEq = (arr) => (arr || []).map(totalJ).sort((a, b) => b - a).slice(0, 10).reduce((s, v) => s + v, 0);
 
   const catLabel = /F$/.test(match.cat || "") ? (match.cat || "U13F") : ((match.cat || "U13") + "R");
   sf(NAVY); doc.rect(M, 30, W - 2 * M, 66, "F");
@@ -6306,8 +6307,8 @@ function exporterDefiJonglageLiguePDF(jsPDF, j, match) {
     "pied droit, 50 jonglages pied gauche et 50 jonglages alternés. Départ ballon au sol, possibilité de lever le ballon avec",
     "le pied « fort » pour le jonglage pied « faible ». Pas de surface de rattrapage. Pied posé au sol entre chaque contact.",
     "Les joueurs jongleront par 2 (un de chaque équipe. Ex : le N°2 avec le N°2 adverse).",
-    "Le résultat est l'addition des jonglages de chaque joueur (somme pour les 12 joueurs, noté 0 par joueur manquant).",
-    "Effectuer les totaux pour chaque équipe (la commission sportive vérifiera pour mettre à jour le classement).",
+    "Effectuer les totaux pour chaque équipe en prenant les 10 meilleurs résultats totaux (la commission sportive",
+    "vérifiera pour mettre à jour le classement).",
     "Photo nette de la feuille à renvoyer par le club recevant à la ligue (avant le lundi 14h00) : sportif@lbfc.fff.fr",
   ];
   regles.forEach((ln, i) => doc.text(ln, M + 12, y + 32 + i * 11.5));
@@ -6379,7 +6380,8 @@ function DefiJonglageLigue({ match, players, db, mutate, onClose }) {
   const [msgPdf, setMsgPdf] = useState(null);
   const cap = (v) => v === "" ? "" : Math.min(50, Math.max(0, Math.round(+v) || 0));
   const totalJ = (r) => (Math.min(50, +r.pd || 0)) + (Math.min(50, +r.pg || 0)) + (Math.min(50, +r.alt || 0));
-  const totalEq = (arr) => (arr || []).reduce((s, r) => s + totalJ(r), 0);
+  // V3 Ligue : le total d'équipe ne retient que les 10 meilleurs résultats sur les 12
+  const totalEq = (arr) => (arr || []).map(totalJ).sort((a, b) => b - a).slice(0, 10).reduce((s, v) => s + v, 0);
   const catLabel = /F$/.test(match.cat || "") ? (match.cat || "U13F") : ((match.cat || "U13") + "R");
 
   function domInit() {
@@ -6454,7 +6456,7 @@ function DefiJonglageLigue({ match, players, db, mutate, onClose }) {
           })}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, background: "#FFF9E6", border: `1px solid #F0DBA8`, borderRadius: 9, padding: "8px 10px" }}>
-          <span style={{ fontWeight: 800, fontSize: 13 }}>TOTAL ÉQUIPE</span>
+          <span style={{ fontWeight: 800, fontSize: 13 }}>TOTAL ÉQUIPE <span style={{ fontWeight: 600, fontSize: 11, color: C.gris }}>(10 meilleurs)</span></span>
           <span style={{ fontWeight: 900, fontSize: 18, color: C.jauneFonce }}>{totalEq(j[cote])}</span>
         </div>
       </div>
@@ -6465,7 +6467,7 @@ function DefiJonglageLigue({ match, players, db, mutate, onClose }) {
     <Modal title={"Défi jonglage " + catLabel + " (Ligue)"} onClose={onClose}
       footer={<><Btn variant="ghost" full onClick={() => { enregistrer(); onClose(); }}><Save size={16} /> Enregistrer</Btn><Btn variant="accent" full onClick={telecharger}><FileDown size={16} /> Fiche PDF</Btn></>}>
       <div style={{ fontSize: 12, color: C.gris, lineHeight: 1.5, marginBottom: 12, background: C.fond, borderRadius: 10, padding: 10 }}>
-        Fiche officielle Ligue Bourgogne-Franche-Comté (compétition U13 régionale). Chaque joueur, 2 essais, maximum 50 par pied droit, pied gauche et alterné. Total automatique par joueur et par équipe.
+        Fiche officielle Ligue Bourgogne-Franche-Comté (compétition U13 régionale), version V3. Chaque joueur, 2 essais, maximum 50 par pied droit, pied gauche et alterné. Le total d'équipe retient automatiquement les 10 meilleurs résultats sur les 12 de la feuille de match.
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
         <Field label="Date"><Inp type="date" value={j.date || ""} onChange={(e) => setJ((o) => ({ ...o, date: e.target.value }))} /></Field>
