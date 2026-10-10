@@ -2689,7 +2689,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v9.1
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v9.2
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -7106,14 +7106,14 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
           <div style={{ display: "flex", alignItems: "center" }}>
             <span style={{ width: 54, flex: "0 0 auto" }} />
             <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: 800, fontSize: 16, padding: "0 6px" }}>{CLUB}</span>
-            <input type="text" inputMode="numeric" pattern="[0-9]*" value={match.scorePour ?? ""} placeholder="–"
+            <input type="text" inputMode="numeric" pattern="[0-9]*" value={cur.scorePour ?? ""} placeholder="–"
               onChange={(e) => setScore("scorePour", e.target.value.replace(/[^0-9]/g, ""))}
               style={{ width: 54, flex: "0 0 auto", textAlign: "center", fontWeight: 900, fontSize: 24, color: C.bleu, border: `1.5px solid ${C.grisClair}`, borderRadius: 9, padding: "4px 0", background: "#fff" }} />
           </div>
           <div style={{ display: "flex", alignItems: "center" }}>
             <span style={{ width: 54, flex: "0 0 auto" }} />
             <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: 800, fontSize: 16, padding: "0 6px" }}>{match.adversaire || "Adversaire"}</span>
-            <input type="text" inputMode="numeric" pattern="[0-9]*" value={match.scoreContre ?? ""} placeholder="–"
+            <input type="text" inputMode="numeric" pattern="[0-9]*" value={cur.scoreContre ?? ""} placeholder="–"
               onChange={(e) => setScore("scoreContre", e.target.value.replace(/[^0-9]/g, ""))}
               style={{ width: 54, flex: "0 0 auto", textAlign: "center", fontWeight: 900, fontSize: 24, color: C.bleu, border: `1.5px solid ${C.grisClair}`, borderRadius: 9, padding: "4px 0", background: "#fff" }} />
           </div>
