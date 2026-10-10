@@ -2689,7 +2689,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.9
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v9.0
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -7101,10 +7101,10 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
         <BtnSuppr nom={"le match contre " + (match.adversaire || "l'adversaire") + (match.date ? " du " + fmtDate(match.date) : "")} onConfirm={onDelete} />
       </>}>
       <Card style={{ marginBottom: 14 }}>
-        <div style={{ fontWeight: 800, marginBottom: 8 }}>Score du match</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <Field label={"Buts " + CLUB}><Inp type="number" min="0" inputMode="numeric" value={match.scorePour ?? ""} onChange={(e) => setScore("scorePour", e.target.value)} placeholder="—" /></Field>
-          <Field label={"Buts " + (match.adversaire || "adverse")}><Inp type="number" min="0" inputMode="numeric" value={match.scoreContre ?? ""} onChange={(e) => setScore("scoreContre", e.target.value)} placeholder="—" /></Field>
+        <div style={{ fontWeight: 800, marginBottom: 10 }}>Score du match</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <ScoreStep label={"Buts " + CLUB} val={match.scorePour} onChange={(v) => setScore("scorePour", v)} />
+          <ScoreStep label={"Buts " + (match.adversaire || "adverse")} val={match.scoreContre} onChange={(v) => setScore("scoreContre", v)} />
         </div>
       </Card>
 
@@ -7303,6 +7303,23 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
         </Modal>
       )}
     </Modal>
+  );
+}
+
+function ScoreStep({ label, val, onChange }) {
+  const cur = (val == null || val === "") ? null : +val;
+  const b = { width: 38, height: 42, borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 900, fontSize: 22, background: C.grisClair, color: C.bleu, flex: "0 0 auto", display: "grid", placeItems: "center" };
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: C.gris, fontWeight: 700, marginBottom: 6 }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <button type="button" style={b} onClick={() => onChange(String(Math.max(0, (cur || 0) - 1)))}>−</button>
+        <input type="number" min="0" inputMode="numeric" value={cur == null ? "" : cur} placeholder="—"
+          onChange={(e) => onChange(e.target.value === "" ? "" : String(Math.max(0, +e.target.value)))}
+          style={{ flex: 1, minWidth: 0, textAlign: "center", padding: "9px 6px", borderRadius: 10, border: `1px solid ${C.grisClair}`, fontSize: 22, fontWeight: 900, color: C.bleu, background: "#fff" }} />
+        <button type="button" style={{ ...b, background: C.jaune, color: C.bleuNuit }} onClick={() => onChange(String((cur || 0) + 1))}>+</button>
+      </div>
+    </div>
   );
 }
 
