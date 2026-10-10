@@ -2689,7 +2689,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.7
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.8
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -6350,13 +6350,16 @@ function exporterDefiJonglageLiguePDF(jsPDF, j, match) {
   });
   y += rulesH + 14;
 
-  sf(GREYBAND); doc.rect(M, y, W - 2 * M, 20, "F");
+  sf(GREYBAND); doc.rect(M, y, W - 2 * M, 30, "F");
   sc(ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
   const dtx = has(j.date) ? new Date(j.date + "T00:00:00").toLocaleDateString("fr-FR") : (match.date ? new Date(match.date + "T00:00:00").toLocaleDateString("fr-FR") : "....... / ....... / 2026");
-  doc.text("Date : " + dtx, M + 10, y + 13.5);
-  doc.text("Journée N° : " + (has(j.journee) ? j.journee : "........"), M + 200, y + 13.5);
-  doc.text("Match N° : " + (has(j.matchNum) ? j.matchNum : "..............."), M + 330, y + 13.5);
-  y += 32;
+  doc.text("Date : " + dtx, M + 10, y + 12);
+  doc.text("Journée N° : " + (has(j.journee) ? j.journee : "........"), M + 200, y + 12);
+  doc.text("Match N° : " + (has(j.matchNum) ? j.matchNum : "..............."), M + 330, y + 12);
+  const sDom = has(j.scoreDom) ? String(j.scoreDom) : "....", sVis = has(j.scoreVis) ? String(j.scoreVis) : "....";
+  const nomDom = (j.domNom || CLUB_LONG).slice(0, 26), nomVis = (j.visNom || match.adversaire || "Adversaire").slice(0, 26);
+  doc.text("Score du match : " + nomDom + "  " + sDom + " - " + sVis + "  " + nomVis, M + 10, y + 25);
+  y += 40;
 
   const colX = [M, M + 30, M + 160, M + 292, M + 356, M + 420, M + 468, W - M];
   const heads = ["N°", "NOM", "Prénom", "Pied droit", "Pied gauche", "Alterné", "Total"];
@@ -6454,6 +6457,8 @@ function DefiJonglageLigue({ match, players, db, mutate, onClose }) {
     type: "ligue",
     journee: j0.journee || cur.journee || "", matchNum: j0.matchNum || cur.numeroRencontre || "", date: j0.date || match.date || "",
     domNom: j0.domNom || CLUB_LONG, visNom: j0.visNom || match.adversaire || "",
+    scoreDom: j0.scoreDom != null ? j0.scoreDom : (cur.scorePour != null && cur.scorePour !== "" ? cur.scorePour : ""),
+    scoreVis: j0.scoreVis != null ? j0.scoreVis : (cur.scoreContre != null && cur.scoreContre !== "" ? cur.scoreContre : ""),
     dom: (j0.dom && j0.dom.length) ? j0.dom : domInit(),
     vis: (j0.vis && j0.vis.length) ? j0.vis : vide(),
   });
@@ -6518,6 +6523,10 @@ function DefiJonglageLigue({ match, players, db, mutate, onClose }) {
         <Field label="Date"><Inp type="date" value={j.date || ""} onChange={(e) => setJ((o) => ({ ...o, date: e.target.value }))} /></Field>
         <Field label="Journée N°"><Inp value={j.journee} onChange={(e) => setJ((o) => ({ ...o, journee: e.target.value }))} /></Field>
         <Field label="Match N°"><Inp value={j.matchNum} onChange={(e) => setJ((o) => ({ ...o, matchNum: e.target.value }))} /></Field>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+        <Field label="Score domicile"><Inp type="number" inputMode="numeric" value={j.scoreDom} onChange={(e) => setJ((o) => ({ ...o, scoreDom: e.target.value }))} placeholder="Buts marqués" /></Field>
+        <Field label="Score visiteuse"><Inp type="number" inputMode="numeric" value={j.scoreVis} onChange={(e) => setJ((o) => ({ ...o, scoreVis: e.target.value }))} placeholder="Buts adverses" /></Field>
       </div>
       {tableau("dom", "ÉQUIPE À DOMICILE")}
       {tableau("vis", "ÉQUIPE VISITEUSE")}
