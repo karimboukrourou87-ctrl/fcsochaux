@@ -2689,7 +2689,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.6
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.7
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -6393,10 +6393,13 @@ function exporterDefiJonglageLiguePDF(jsPDF, j, match) {
       y += h;
     }
     sf(accent); doc.rect(M, y, W - 2 * M, 18, "F");
-    sf(WHITE); doc.rect(colX[6] + 1, y + 1, colX[7] - colX[6] - 2, 16, "F");
+    // Comme l'original : les 3 colonnes (pied droit, gauche, alterné) de la bande sont en teinte claire, la colonne Total reste pleine
+    sf(totalCol); doc.rect(colX[3], y, colX[6] - colX[3], 18, "F");
+    sd(BORDER); doc.setLineWidth(0.4);
+    [colX[3], colX[4], colX[5], colX[6]].forEach((x) => doc.line(x, y, x, y + 18));
     sc(WHITE); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
     doc.text("TOTAL ÉQUIPE", ctr(2), y + 12.5, { align: "center" });
-    sc(accent); doc.setFontSize(12); doc.text(String(totalEq(rows)), ctr(6), y + 13, { align: "center" });
+    sc(WHITE); doc.setFontSize(12); doc.text(String(totalEq(rows)), ctr(6), y + 13, { align: "center" });
     y += 28;
   }
 
