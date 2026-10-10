@@ -2689,7 +2689,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.8
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v8.9
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -6854,6 +6854,13 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
   function setRapport(txt) {
     mutate((d) => { d.matches.find((x) => x.id === match.id).rapport = txt; return d; });
   }
+  function setScore(champ, val) {
+    mutate((d) => {
+      const m = d.matches.find((x) => x.id === match.id);
+      m[champ] = (val === "" || val == null) ? null : +val;
+      return d;
+    });
+  }
   function cycleJaune(joueurId) {
     mutate((d) => {
       const m = d.matches.find((x) => x.id === match.id);
@@ -7093,6 +7100,14 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
         <Btn variant="ghost" onClick={onEdit} full><Edit3 size={16} /> Modifier</Btn>
         <BtnSuppr nom={"le match contre " + (match.adversaire || "l'adversaire") + (match.date ? " du " + fmtDate(match.date) : "")} onConfirm={onDelete} />
       </>}>
+      <Card style={{ marginBottom: 14 }}>
+        <div style={{ fontWeight: 800, marginBottom: 8 }}>Score du match</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <Field label={"Buts " + CLUB}><Inp type="number" min="0" inputMode="numeric" value={match.scorePour ?? ""} onChange={(e) => setScore("scorePour", e.target.value)} placeholder="—" /></Field>
+          <Field label={"Buts " + (match.adversaire || "adverse")}><Inp type="number" min="0" inputMode="numeric" value={match.scoreContre ?? ""} onChange={(e) => setScore("scoreContre", e.target.value)} placeholder="—" /></Field>
+        </div>
+      </Card>
+
       <Card style={{ marginBottom: 14, textAlign: "center" }}>
         <div style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>{fmtDate(match.date)} · {match.lieu}{match.type ? ` · ${match.type}` : ""}{match.competition ? ` · ${match.competition}` : ""}</div>
         <div style={{ display: "grid", gap: 4, marginTop: 10 }}>
