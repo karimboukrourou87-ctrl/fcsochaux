@@ -2226,6 +2226,66 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
     });
   }
 
+  if (grilleRemplie(p.grilleEval)) {
+    section("Grille d'évaluation");
+    if (p.grilleEval.date || p.grilleEval.educateur) {
+      sc(GRIS); doc.setFont("helvetica", "italic"); doc.setFontSize(8.5);
+      doc.text(`${p.grilleEval.date ? new Date(p.grilleEval.date + "T00:00:00").toLocaleDateString("fr-FR") : ""}${p.grilleEval.date && p.grilleEval.educateur ? "   ·   " : ""}${p.grilleEval.educateur || ""}`, M, y);
+      doc.setFont("helvetica", "normal"); y += 13;
+    }
+    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.text("T.B : Très bien      B : Bien      DIF : Difficulté", M, y); y += 16;
+    const GRILLE_PDF_COL = { tb: [47, 163, 107], b: [184, 122, 43], dif: [181, 72, 63] };
+    const cw = 46, cg = 6, nbCols = GRILLE_NIVEAUX.length;
+    const block = nbCols * cw + (nbCols - 1) * cg;
+    const xCols = W - M - block;
+    GRILLE_ASPECTS.forEach((a) => {
+      const A = (p.grilleEval.aspects || {})[a.k] || {};
+      const n = A.n || {};
+      const hasRows = a.sous.some((s) => n[s]);
+      if (!hasRows && !(A.remarque && A.remarque.trim())) return;
+      sautPage(30 + a.sous.length * 17 + 50);
+      // bandeau de l'aspect + en-têtes de colonnes
+      sf(NAVY); doc.roundedRect(M, y - 9, W - 2 * M, 18, 3, 3, "F");
+      sc([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+      doc.text(a.label, M + 7, y + 3.5);
+      GRILLE_NIVEAUX.forEach((nv, i) => {
+        const cx = xCols + i * (cw + cg);
+        sc([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+        doc.text(nv.label, cx + cw / 2, y + 3.5, { align: "center" });
+      });
+      y += 19;
+      const rowH = 17;
+      a.sous.forEach((s, ri) => {
+        sautPage(rowH + 4);
+        if (ri % 2) { sf([250, 250, 247]); doc.rect(M, y - 11, W - 2 * M, rowH, "F"); }
+        sc(ENCRE); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+        doc.text(s, M + 7, y);
+        GRILLE_NIVEAUX.forEach((nv, i) => {
+          const cx = xCols + i * (cw + cg);
+          const cwBox = 22, chBox = 13, bx = cx + (cw - cwBox) / 2, byb = y - 10;
+          if (n[s] === nv.k) {
+            sf(GRILLE_PDF_COL[nv.k]); doc.roundedRect(bx, byb, cwBox, chBox, 3, 3, "F");
+            sc([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+            doc.text("X", bx + cwBox / 2, byb + 9, { align: "center" });
+          } else {
+            sd(TRAIT); doc.setLineWidth(0.6); doc.roundedRect(bx, byb, cwBox, chBox, 3, 3);
+          }
+        });
+        sd(TRAIT); doc.setLineWidth(0.5); doc.line(M, y + 4, W - M, y + 4);
+        y += rowH;
+      });
+      if (A.remarque && A.remarque.trim()) {
+        y += 7;
+        sc(GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+        doc.text("REMARQUE", M + 2, y); y += 10;
+        sc(ENCRE); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+        doc.splitTextToSize(String(A.remarque), W - 2 * M - 8).forEach((l) => { sautPage(12); doc.text(l, M + 4, y); y += 10.5; });
+      }
+      y += 12;
+    });
+  }
+
   const nbPagesFiche = doc.getNumberOfPages();
   for (let pn = 1; pn <= nbPagesFiche; pn++) {
     doc.setPage(pn);
@@ -2706,7 +2766,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v9.3
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v9.4
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
