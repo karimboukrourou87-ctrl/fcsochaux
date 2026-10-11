@@ -2229,7 +2229,7 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
   }
 
   if (grilleRemplie(p.grilleEval)) {
-    section("Grille d'évaluation");
+    section("Bilan et entretien");
     if (p.grilleEval.date || p.grilleEval.educateur) {
       sc(GRIS); doc.setFont("helvetica", "italic"); doc.setFontSize(8.5);
       doc.text(`${p.grilleEval.date ? new Date(p.grilleEval.date + "T00:00:00").toLocaleDateString("fr-FR") : ""}${p.grilleEval.date && p.grilleEval.educateur ? "   ·   " : ""}${p.grilleEval.educateur || ""}`, M, y);
@@ -2797,7 +2797,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v9.5
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v9.7
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -4385,9 +4385,10 @@ function GrilleEvalTable({ data, editable, onCell, onRemarque }) {
   );
 }
 
-function EditGrilleEval({ grille, educateurs, onClose, onSave }) {
+function EditGrilleEval({ grille, educateurs, onClose, onSave, onDelete, onAjouterEncadrant, encadrementListe, encadrementMaj }) {
   const [f, setF] = useState({ date: hoyISO(), educateur: "", aspects: {}, ...grille });
   const [autre, setAutre] = useState(!!(grille && grille.educateur) && educateurs.length > 0 && !educateurs.includes(grille.educateur));
+  const [gererDir, setGererDir] = useState(false);
   const setCell = (ak, s, v) => setF((o) => {
     const A = { ...((o.aspects || {})[ak] || {}) }; const n = { ...(A.n || {}) };
     if (v == null) delete n[s]; else n[s] = v; A.n = n;
@@ -4395,11 +4396,11 @@ function EditGrilleEval({ grille, educateurs, onClose, onSave }) {
   });
   const setRem = (ak, v) => setF((o) => ({ ...o, aspects: { ...(o.aspects || {}), [ak]: { ...((o.aspects || {})[ak] || {}), remarque: v } } }));
   return (
-    <Modal title="Grille d'évaluation" onClose={onClose}
-      footer={<Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-        <Field label="Date de l'évaluation"><Inp type="date" value={f.date || ""} onChange={(e) => setF((o) => ({ ...o, date: e.target.value }))} /></Field>
-        <Field label="Évaluateur">
+    <Modal title="Bilan et entretien" onClose={onClose}
+      footer={<><Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{onDelete && <BtnSuppr nom="ce bilan" onConfirm={onDelete} />}</>}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 6 }}>
+        <Field label="Date du bilan"><Inp type="date" value={f.date || ""} onChange={(e) => setF((o) => ({ ...o, date: e.target.value }))} /></Field>
+        <Field label="Dirigeant / coach qui fait le bilan">
           {educateurs.length > 0 && !autre ? (
             <Sel value={f.educateur || ""} onChange={(e) => { if (e.target.value === "__a__") { setAutre(true); setF((o) => ({ ...o, educateur: "" })); } else setF((o) => ({ ...o, educateur: e.target.value })); }}>
               <option value="">Choisir</option>
@@ -4407,10 +4408,22 @@ function EditGrilleEval({ grille, educateurs, onClose, onSave }) {
               <option value="__a__">Autre (saisir)</option>
             </Sel>
           ) : (
-            <Inp value={f.educateur || ""} onChange={(e) => setF((o) => ({ ...o, educateur: e.target.value }))} placeholder="Nom et prénom" />
+            <>
+              <Inp value={f.educateur || ""} onChange={(e) => setF((o) => ({ ...o, educateur: e.target.value }))} placeholder="Nom et prénom" />
+              <div style={{ display: "flex", gap: 16, marginTop: 6, flexWrap: "wrap" }}>
+                {onAjouterEncadrant && (
+                  <button type="button" disabled={!(f.educateur || "").trim()} onClick={() => { onAjouterEncadrant(f.educateur); setAutre(false); }} style={{ background: "none", border: "none", color: (f.educateur || "").trim() ? C.vert : C.gris, fontWeight: 700, fontSize: 12.5, cursor: (f.educateur || "").trim() ? "pointer" : "default", padding: 0, textDecoration: "underline" }}>+ Ajouter à l'encadrement</button>
+                )}
+                {educateurs.length > 0 && (
+                  <button type="button" onClick={() => { setAutre(false); setF((o) => ({ ...o, educateur: "" })); }} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline" }}>← Revenir à la liste</button>
+                )}
+              </div>
+            </>
           )}
         </Field>
       </div>
+      {encadrementMaj && !autre && <button type="button" onClick={() => setGererDir(true)} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline", marginTop: -2, marginBottom: 12 }}>Gérer les dirigeants (ajouter, renommer, supprimer)</button>}
+      {gererDir && <GestionDirigeants liste={encadrementListe} maj={encadrementMaj} onClose={() => setGererDir(false)} />}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12, fontSize: 11.5, color: C.gris }}>
         {GRILLE_NIVEAUX.map((nv) => (
           <span key={nv.k} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
@@ -4436,8 +4449,8 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
   const [testEdit, setTestEdit] = useState(false);
   const [pdfMsg, setPdfMsg] = useState(null);
   const [saisonSel, setSaisonSel] = useState(saisonCourante());
-  const [bilanEdit, setBilanEdit] = useState(null);
   const [grilleEdit, setGrilleEdit] = useState(false);
+  const [confirmAnciens, setConfirmAnciens] = useState(false);
   const [listeEnc, majEnc] = useEncadrementClub(demo, db, mutate);
   const saisonsJoueur = (() => {
     const set = new Set();
@@ -4519,7 +4532,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
     setPdfMsg("Préparation du PDF...");
     try {
       const jsPDF = await chargerJsPDF();
-      exporterFichePDF(jsPDF, p, db, tests, stats, bilansSaison.slice(0, 1), saisonSel, { passages: passagesTot, oublis: oublisTot }, moyGroupeBilan);
+      exporterFichePDF(jsPDF, p, db, tests, stats, [], saisonSel, { passages: passagesTot, oublis: oublisTot }, moyGroupeBilan);
       setPdfMsg(null);
     } catch (e) {
       setPdfMsg("Téléchargement du module PDF impossible (vérifie la connexion). Réessaie.");
@@ -4781,17 +4794,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
       )}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "4px 0 8px" }}>
-        <div style={{ fontWeight: 800, color: C.bleu, display: "flex", alignItems: "center", gap: 7 }}><ClipboardList size={16} /> Bilans et entretiens</div>
-        <button onClick={() => setBilanEdit({ date: hoyISO() })} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><Plus size={14} /> Nouveau bilan</button>
-      </div>
-      {bilansSaison.length === 0 ? (
-        <Card style={{ marginBottom: 14, textAlign: "center", color: C.gris, fontSize: 13, padding: 16 }}>Aucun bilan pour la saison {saisonSel}</Card>
-      ) : (
-        <div style={{ marginBottom: 6 }}>{bilansSaison.map((b) => <CarteBilan key={b.id} b={b} moy={moyGroupeBilan} onEdit={() => setBilanEdit(b)} />)}</div>
-      )}
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "14px 0 8px" }}>
-        <div style={{ fontWeight: 800, color: C.bleu, display: "flex", alignItems: "center", gap: 7 }}><ClipboardList size={16} /> Grille d'évaluation</div>
+        <div style={{ fontWeight: 800, color: C.bleu, display: "flex", alignItems: "center", gap: 7 }}><ClipboardList size={16} /> Bilan et entretien</div>
         {!lectureSeule && (
           <button onClick={() => setGrilleEdit(true)} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
             {grilleRemplie(p.grilleEval) ? <><Edit3 size={13} /> Modifier</> : <><Plus size={14} /> Compléter</>}
@@ -4812,7 +4815,16 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
           )}
         </div>
       ) : (
-        <Card style={{ marginBottom: 16, textAlign: "center", color: C.gris, fontSize: 13, padding: 16 }}>Grille d'évaluation non renseignée</Card>
+        <Card style={{ marginBottom: 16, textAlign: "center", color: C.gris, fontSize: 13, padding: 16 }}>Bilan et entretien non renseigné</Card>
+      )}
+
+      {!lectureSeule && (p.bilans || []).length > 0 && (
+        <div style={{ marginTop: 2, marginBottom: 16, background: "#FBEAD9", border: "1px solid #E7C9A6", borderRadius: 12, padding: 12 }}>
+          <div style={{ fontSize: 12.5, color: "#8A5A1E", lineHeight: 1.5, marginBottom: 9 }}>
+            {(p.bilans || []).length} ancien{(p.bilans || []).length > 1 ? "s" : ""} bilan{(p.bilans || []).length > 1 ? "s" : ""} de l'ancienne méthode {(p.bilans || []).length > 1 ? "sont" : "est"} encore enregistré{(p.bilans || []).length > 1 ? "s" : ""} en base. Tu peux les supprimer définitivement.
+          </div>
+          <Btn variant="danger" size="sm" onClick={() => setConfirmAnciens(true)}><Trash2 size={14} /> Supprimer les anciens bilans</Btn>
+        </div>
       )}
 
       {p.parcours && p.parcours.length > 0 && (
@@ -4822,26 +4834,17 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
         </>
       )}
 
-      {bilanEdit && <EditBilan bilan={bilanEdit} educateurs={educateurs} onAjouterEncadrant={ajouterEncadrant} encadrementListe={listeEnc} encadrementMaj={majEnc} axesPrecedent={(() => { const autres = (p.bilans || []).filter((x) => x.id && x.id !== bilanEdit.id && x.axesProgres).sort((a, b) => (b.date || "").localeCompare(a.date || "")); return autres.length ? autres[0].axesProgres : ""; })()} onClose={() => setBilanEdit(null)}
-        onSave={(b) => {
-          mutate((d) => {
-            const pl = d.players.find((x) => x.id === p.id);
-            pl.bilans = pl.bilans || [];
-            if (b.id) { const i = pl.bilans.findIndex((x) => x.id === b.id); pl.bilans[i] = b; }
-            else pl.bilans.push({ ...b, id: uid() });
-            return d;
-          });
-          setBilanEdit(null);
-        }}
-        onDelete={bilanEdit.id ? () => {
-          mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.bilans = (pl.bilans || []).filter((x) => x.id !== bilanEdit.id); return d; });
-          setBilanEdit(null);
-        } : null} />}
 
-      {grilleEdit && <EditGrilleEval grille={p.grilleEval || {}} educateurs={educateurs} onClose={() => setGrilleEdit(false)} onSave={(g) => {
-        mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.grilleEval = g; return d; });
-        setGrilleEdit(false);
-      }} />}
+      {grilleEdit && <EditGrilleEval grille={p.grilleEval || {}} educateurs={educateurs} onAjouterEncadrant={ajouterEncadrant} encadrementListe={listeEnc} encadrementMaj={majEnc}
+        onClose={() => setGrilleEdit(false)}
+        onSave={(g) => {
+          mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.grilleEval = g; return d; });
+          setGrilleEdit(false);
+        }}
+        onDelete={grilleRemplie(p.grilleEval) ? () => {
+          mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.grilleEval = null; return d; });
+          setGrilleEdit(false);
+        } : null} />}
 
       {testEdit && <EditTest joueur={p} onClose={() => setTestEdit(false)} onSave={(t) => {
         mutate((d) => {
@@ -4851,6 +4854,13 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
         });
         setTestEdit(false);
       }} />}
+
+      {confirmAnciens && (
+        <Modal title="Supprimer les anciens bilans" onClose={() => setConfirmAnciens(false)}
+          footer={<><Btn variant="ghost" full onClick={() => setConfirmAnciens(false)}>Annuler</Btn><Btn variant="danger" full onClick={() => { mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.bilans = []; return d; }); setConfirmAnciens(false); }}>Supprimer définitivement</Btn></>}>
+          <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.5 }}>Supprimer définitivement les {(p.bilans || []).length} ancien{(p.bilans || []).length > 1 ? "s" : ""} bilan{(p.bilans || []).length > 1 ? "s" : ""} de <strong>{p.prenom} {p.nom}</strong> (ancienne méthode de notation) ? Cette action est irréversible. Le nouveau bilan et le reste de la fiche ne sont pas touchés.</div>
+        </Modal>
+      )}
 
       {confirmer && (
         <Modal title="Supprimer le joueur" onClose={() => setConfirmer(false)}
