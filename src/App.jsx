@@ -1666,6 +1666,38 @@ function nomPdf(...parts) {
   return (s || "Document") + ".pdf";
 }
 
+// Téléchargement d'un PDF jsPDF : on force un vrai enregistrement de fichier (Blob + lien)
+// au lieu de laisser le navigateur ouvrir le PDF dans sa visionneuse.
+function telechargerDoc(doc, nom) {
+  const nomFichier = (nom && /\.pdf$/i.test(nom)) ? nom : ((nom || "Document") + ".pdf");
+  // Méthode principale : Blob téléchargé via un lien avec attribut download
+  try {
+    const blob = doc.output("blob");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nomFichier;
+    a.rel = "noopener";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { try { a.remove(); URL.revokeObjectURL(url); } catch (e) {} }, 4000);
+    return;
+  } catch (e) {}
+  // Secours 1 : enregistrement natif jsPDF
+  try { doc.save(nomFichier); return; } catch (e) {}
+  // Secours 2 : lien à partir d'une URL blob fournie par jsPDF
+  try {
+    const url = doc.output("bloburl");
+    const a = document.createElement("a");
+    a.href = url; a.download = nomFichier; a.rel = "noopener";
+    document.body.appendChild(a); a.click(); a.remove();
+    return;
+  } catch (e) {}
+  // Secours 3 : ouverture dans un nouvel onglet
+  try { doc.output("dataurlnewwindow"); } catch (e) {}
+}
+
 // Reponses aux demandes de joueur deja vues par le demandeur (par appareil)
 const CLE_DEM_VUES = "fcsm-dem-reponses-vues";
 function lireDemVues() {
@@ -2327,18 +2359,7 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
   }
 
   const fichier = nomPdf("Fiche", (p.nom || "joueur").toUpperCase(), p.prenom || "");
-  try {
-    doc.save(fichier);
-  } catch (e) {
-    try {
-      const url = doc.output("bloburl");
-      const a = document.createElement("a");
-      a.href = url; a.download = fichier; a.target = "_blank"; a.rel = "noopener";
-      document.body.appendChild(a); a.click(); a.remove();
-    } catch (e2) {
-      doc.output("dataurlnewwindow");
-    }
-  }
+  telechargerDoc(doc, fichier);
 }
 
 
@@ -2797,7 +2818,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v9.8
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v10.0
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -5253,7 +5274,7 @@ async function exporterCompositionPDF(jsPDF, fmt, data) {
   const pied = String(data.pied || "").toUpperCase();
   doc.text(pied, W / 2 - (doc.getTextWidth(pied) + (pied.length - 1) * 1.4) / 2, H * 0.965, { charSpace: 1.4 });
 
-  doc.save(nomPdf(data.titre || "Composition", fmt.toUpperCase()));
+  telechargerDoc(doc, nomPdf(data.titre || "Composition", fmt.toUpperCase()));
 }
 
 const FORMATS_MULTI = { U13: [8, 10, 11], "Foot loisirs": [11, 9, 8], "Foot santé": [6, 5] };
@@ -6559,7 +6580,7 @@ function exporterRapportMatchPDF(jsPDF, match, players, db, educateur, avecPhoto
     w.forEach((ln) => { if (y > H - 40) { doc.addPage(); y = 50; } doc.text(ln, M, y); y += 13; });
   }
   sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text("Édité le " + new Date().toLocaleDateString("fr-FR"), M, H - 16);
-  doc.save(nomPdf("Rapport", match.cat || "match", match.date || ""));
+  telechargerDoc(doc, nomPdf("Rapport", match.cat || "match", match.date || ""));
 }
 
 
@@ -6718,7 +6739,7 @@ function exporterDefiJonglageLiguePDF(jsPDF, j, match) {
   const prec = "Si le club recevant ne renvoie pas la fiche de jonglerie, il se verra attribuer le total de 0 jonglage pour la journée identifiée. Le club visiteur se verra totaliser la moyenne des jonglages de ses performances de la journée précédente (ou la moyenne des autres équipes s'il s'agit de la Journée 1).";
   doc.splitTextToSize(prec, W - 2 * M).forEach((ln, i) => doc.text(ln, M, precY + 13 + i * 9.5));
 
-  doc.save(nomPdf("Defi jonglage", catLabel, j.matchNum || match.date || ""));
+  telechargerDoc(doc, nomPdf("Defi jonglage", catLabel, j.matchNum || match.date || ""));
 }
 
 function DefiJonglageLigue({ match, players, db, mutate, onClose }) {
@@ -7000,7 +7021,7 @@ function exporterDefiJonglagePDF(jsPDF, j, match) {
   doc.line(exx[4] + 4, ey + 15, exx[5] - 4, ey + 3);
   doc.setLineWidth(0.5);
 
-  doc.save(nomPdf("Feuille defi jonglerie", match.cat || "", j.matchNum || match.date || ""));
+  telechargerDoc(doc, nomPdf("Feuille defi jonglerie", match.cat || "", j.matchNum || match.date || ""));
 }
 
 function DefiJonglage({ match, players, db, mutate, onClose }) {
@@ -9039,7 +9060,7 @@ function exporterPlanningHebdoPDF(jsPDF) {
   y += 14;
   sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
   doc.text("Synthé centre : synthétique plein air  -  Dôme : synthétique du dôme  -  Édité le " + new Date().toLocaleDateString("fr-FR"), M, H - 14);
-  doc.save(nomPdf("Planning", "hebdomadaire", "entrainements"));
+  telechargerDoc(doc, nomPdf("Planning", "hebdomadaire", "entrainements"));
 }
 
 // PDF de la semaine affichée, en grille par catégorie (comme l'écran hebdomadaire), cases colorées par terrain.
@@ -9107,7 +9128,7 @@ function exporterPlanningSemaineGrillePDF(jsPDF, sections, label, joursDates, ty
   y += 12;
   sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
   doc.text("Synthé centre : synthétique plein air  -  Dôme : synthétique du dôme  -  Édité le " + new Date().toLocaleDateString("fr-FR"), M, H - 12);
-  doc.save(nomPdf("Planning", typeLabel.toLowerCase(), "semaine", label));
+  telechargerDoc(doc, nomPdf("Planning", typeLabel.toLowerCase(), "semaine", label));
 }
 
 function exporterPlanningSemainePDF(jsPDF, sem, occ, label, cat, typeLabel, codeCouleur) {
@@ -9148,7 +9169,7 @@ function exporterPlanningSemainePDF(jsPDF, sem, occ, label, cat, typeLabel, code
   y += 16;
   sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
   doc.text("Édité le " + new Date().toLocaleDateString("fr-FR"), M, H - 14);
-  doc.save(nomPdf("Planning", typeLabel.toLowerCase(), "semaine", label));
+  telechargerDoc(doc, nomPdf("Planning", typeLabel.toLowerCase(), "semaine", label));
 }
 
 function PlanningSemaine({ planning, cat, type, onClose }) {
@@ -10084,7 +10105,7 @@ function exporterProgrammePDF(jsPDF, matchs, label) {
   doc.text(`Édité le ${new Date().toLocaleDateString("fr-FR")}`, M, H - 10);
   doc.text("FC SOCHAUX-MONTBÉLIARD", W - M, H - 10, { align: "right" });
 
-  doc.save(nomPdf("Programme semaine", label));
+  telechargerDoc(doc, nomPdf("Programme semaine", label));
 }
 
 function ProgrammeSemaine({ db, onClose }) {
@@ -10256,7 +10277,7 @@ function exporterSuiviMedicalPDF(jsPDF, blessures, db, cat) {
   doc.text("Édité le " + new Date().toLocaleDateString("fr-FR"), M, H - 19);
   doc.text(CLUB_LONG, W - M, H - 19, { align: "right" });
 
-  doc.save(nomPdf("Suivi medical", cat || "", new Date().toISOString().slice(0, 10)));
+  telechargerDoc(doc, nomPdf("Suivi medical", cat || "", new Date().toISOString().slice(0, 10)));
 }
 
 function SuiviMedical({ db, mutate, cat, estMedical, onSignalerBlessure, onClose }) {
@@ -10513,7 +10534,7 @@ function exporterBilanPDF(jsPDF, { cat, saison, nbMatchs, v, n, d, bp, bc, buteu
     doc.text(CLUB_LONG, W - M, H - 19, { align: "right" });
   }
 
-  doc.save(`Bilan_${cat}_${saison}.pdf`.replace(/\s+/g, "_"));
+  telechargerDoc(doc, `Bilan_${cat}_${saison}.pdf`.replace(/\s+/g, "_"));
 }
 
 function BilanEquipe({ db, players, cat, onClose, onTournois }) {
@@ -10911,7 +10932,7 @@ function exporterPlateauPDF(jsPDF, titre, org) {
     doc.text("Rien a exporter pour le moment. Ajoute des equipes, genere le planning ou saisis des scores.", M, y);
   }
 
-  doc.save(nomPdf(titre || "Plateau"));
+  telechargerDoc(doc, nomPdf(titre || "Plateau"));
 }
 
 function OrganiserPlateau({ tournoi, onClose, onSave }) {
