@@ -2034,7 +2034,7 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
   const dernier = tests[tests.length - 1] || {};
   if (dernier.date) {
     sc(GRIS); doc.setFont("helvetica", "italic"); doc.setFontSize(8.5);
-    doc.text(`Dernier test du ${new Date(dernier.date + "T00:00:00").toLocaleDateString("fr-FR")}`, M, y);
+    doc.text(`Dernier test du ${new Date(dernier.date + "T00:00:00").toLocaleDateString("fr-FR")}${dernier.par ? "   ·   réalisé par " + dernier.par : ""}`, M, y);
     doc.setFont("helvetica", "normal"); y += 13;
   }
   const sousTitre = (t) => {
@@ -2797,7 +2797,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v9.7
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v9.8
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -4446,7 +4446,7 @@ function EditGrilleEval({ grille, educateurs, onClose, onSave, onDelete, onAjout
 
 function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, demo }) {
   const [confirmer, setConfirmer] = useState(false);
-  const [testEdit, setTestEdit] = useState(false);
+  const [testEdit, setTestEdit] = useState(null);
   const [pdfMsg, setPdfMsg] = useState(null);
   const [saisonSel, setSaisonSel] = useState(saisonCourante());
   const [grilleEdit, setGrilleEdit] = useState(false);
@@ -4760,14 +4760,35 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "4px 0 8px" }}>
         <div style={{ fontWeight: 800, color: C.bleu, display: "flex", alignItems: "center", gap: 7 }}><Gauge size={16} /> Tests physiques</div>
-        <button onClick={() => setTestEdit(true)} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><Plus size={14} /> Nouveau test</button>
+        {!lectureSeule && <button onClick={() => setTestEdit({ nouveau: true })} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><Plus size={14} /> Nouveau test</button>}
       </div>
       {tests.length === 0 ? (
         <Card style={{ marginBottom: 14, textAlign: "center", color: C.gris, fontSize: 13, padding: 18 }}>Aucun test enregistré</Card>
       ) : (
-        <Card style={{ marginBottom: 14 }}>
-          <GraphTests tests={tests} cat={p.cat} />
-        </Card>
+        <>
+          <Card style={{ marginBottom: 10 }}>
+            <GraphTests tests={tests} cat={p.cat} />
+          </Card>
+          <div style={{ display: "grid", gap: 7, marginBottom: 14 }}>
+            {tests.slice().reverse().map((tt, i) => {
+              const details = [tt.vma ? `VMA ${tt.vma}` : null, tt.v10 ? `10m ${tt.v10}s` : null, tt.v20 ? `20m ${tt.v20}s` : null, tt.v40 ? `40m ${tt.v40}s` : null].filter(Boolean).join("  ·  ");
+              const row = (
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: 13.5 }}>{tt.date ? new Date(tt.date + "T00:00:00").toLocaleDateString("fr-FR") : "Test"}{tt.par ? <span style={{ fontWeight: 600, color: C.gris }}>{"  ·  réalisé par "}{tt.par}</span> : ""}</div>
+                  <div style={{ fontSize: 11.5, color: C.gris, marginTop: 1 }}>{details || "Test physique"}</div>
+                </div>
+              );
+              return lectureSeule ? (
+                <div key={tt.id || i} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10 }}>{row}</div>
+              ) : (
+                <button key={tt.id || i} onClick={() => setTestEdit(tt)} style={{ textAlign: "left", background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "9px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
+                  {row}
+                  <Edit3 size={15} color={C.bleu} style={{ flex: "0 0 auto" }} />
+                </button>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {jumpActif(p.cat) && (
@@ -4846,14 +4867,22 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
           setGrilleEdit(false);
         } : null} />}
 
-      {testEdit && <EditTest joueur={p} onClose={() => setTestEdit(false)} onSave={(t) => {
-        mutate((d) => {
-          const pl = d.players.find((x) => x.id === p.id);
-          pl.tests = pl.tests || []; pl.tests.push({ ...t, id: uid() });
-          return d;
-        });
-        setTestEdit(false);
-      }} />}
+      {testEdit && <EditTest joueur={p} test={testEdit.nouveau ? null : testEdit} educateurs={educateurs} onAjouterEncadrant={ajouterEncadrant} encadrementListe={listeEnc} encadrementMaj={majEnc}
+        onClose={() => setTestEdit(null)}
+        onSave={(tv) => {
+          mutate((d) => {
+            const pl = d.players.find((x) => x.id === p.id);
+            pl.tests = pl.tests || [];
+            if (tv.id) { const i = pl.tests.findIndex((x) => x.id === tv.id); if (i >= 0) pl.tests[i] = tv; else pl.tests.push(tv); }
+            else pl.tests.push({ ...tv, id: uid() });
+            return d;
+          });
+          setTestEdit(null);
+        }}
+        onDelete={(!testEdit.nouveau && testEdit.id) ? () => {
+          mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.tests = (pl.tests || []).filter((x) => x.id !== testEdit.id); return d; });
+          setTestEdit(null);
+        } : null} />}
 
       {confirmAnciens && (
         <Modal title="Supprimer les anciens bilans" onClose={() => setConfirmAnciens(false)}
@@ -4905,10 +4934,12 @@ function GraphTests({ tests, cat }) {
   );
 }
 
-function EditTest({ joueur, onClose, onSave }) {
+function EditTest({ joueur, test, educateurs = [], onClose, onSave, onDelete, onAjouterEncadrant, encadrementListe, encadrementMaj }) {
   const avecJump = jumpActif(joueur.cat);
   const d0 = new Date();
-  const [t, setT] = useState({ date: `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`, vma: "", v10: "", v20: "", v40: "", sj: "", cmj: "", cmjb: "", dj: "" });
+  const [t, setT] = useState({ date: `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`, vma: "", v10: "", v20: "", v40: "", sj: "", cmj: "", cmjb: "", dj: "", par: "", ...(test || {}) });
+  const [autre, setAutre] = useState(!!(test && test.par) && educateurs.length > 0 && !educateurs.includes(test.par));
+  const [gererDir, setGererDir] = useState(false);
   const set = (k, v) => setT((o) => ({ ...o, [k]: v }));
   const champNum = (k, lab, unit) => (
     <Field label={`${lab}${unit ? ` (${unit})` : ""}`}>
@@ -4916,9 +4947,34 @@ function EditTest({ joueur, onClose, onSave }) {
     </Field>
   );
   return (
-    <Modal title="Nouveau test physique" onClose={onClose}
-      footer={<Btn variant="accent" full onClick={() => onSave(t)}><Save size={16} /> Enregistrer le test</Btn>}>
-      <Field label="Date du test"><Inp type="date" value={t.date} onChange={(e) => set("date", e.target.value)} /></Field>
+    <Modal title={test && test.id ? "Modifier le test physique" : "Nouveau test physique"} onClose={onClose}
+      footer={<><Btn variant="accent" full onClick={() => onSave(t)}><Save size={16} /> Enregistrer le test</Btn>{onDelete && <BtnSuppr nom="ce test physique" onConfirm={onDelete} />}</>}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <Field label="Date du test"><Inp type="date" value={t.date} onChange={(e) => set("date", e.target.value)} /></Field>
+        <Field label="Réalisé par (prépa / coach / staff)">
+          {educateurs.length > 0 && !autre ? (
+            <Sel value={t.par || ""} onChange={(e) => { if (e.target.value === "__a__") { setAutre(true); set("par", ""); } else set("par", e.target.value); }}>
+              <option value="">Choisir</option>
+              {educateurs.map((n) => <option key={n}>{n}</option>)}
+              <option value="__a__">Autre (saisir)</option>
+            </Sel>
+          ) : (
+            <>
+              <Inp value={t.par || ""} onChange={(e) => set("par", e.target.value)} placeholder="Nom et prénom" />
+              <div style={{ display: "flex", gap: 16, marginTop: 6, flexWrap: "wrap" }}>
+                {onAjouterEncadrant && (
+                  <button type="button" disabled={!(t.par || "").trim()} onClick={() => { onAjouterEncadrant(t.par); setAutre(false); }} style={{ background: "none", border: "none", color: (t.par || "").trim() ? C.vert : C.gris, fontWeight: 700, fontSize: 12.5, cursor: (t.par || "").trim() ? "pointer" : "default", padding: 0, textDecoration: "underline" }}>+ Ajouter à l'encadrement</button>
+                )}
+                {educateurs.length > 0 && (
+                  <button type="button" onClick={() => { setAutre(false); set("par", ""); }} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline" }}>← Revenir à la liste</button>
+                )}
+              </div>
+            </>
+          )}
+        </Field>
+      </div>
+      {encadrementMaj && !autre && <button type="button" onClick={() => setGererDir(true)} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline", marginTop: -2, marginBottom: 12 }}>Gérer les dirigeants (ajouter, renommer, supprimer)</button>}
+      {gererDir && <GestionDirigeants liste={encadrementListe} maj={encadrementMaj} onClose={() => setGererDir(false)} />}
       <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13, margin: "6px 0 8px" }}>Vitesse</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         {champNum("vma", "VMA", "km/h")}
