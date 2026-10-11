@@ -1145,23 +1145,6 @@ function niveauBilan(k) { return NIVEAUX_BILAN.find((n) => n.k === k) || null; }
 function noteAspectBilan(b, k) { const a = b && b.aspects && b.aspects[k]; const v = a && a.note; return (v === "" || v == null) ? null : +v; }
 function noteGlobaleBilan(b) { const ns = ASPECTS_BILAN.map((a) => noteAspectBilan(b, a.k)).filter((v) => v != null); return ns.length ? ns.reduce((x, y) => x + y, 0) / ns.length : null; }
 function dernierBilanAspects(j) { return (j.bilans || []).filter((b) => b.aspects && ASPECTS_BILAN.some((a) => noteAspectBilan(b, a.k) != null)).sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0] || null; }
-// Grille d'évaluation à cocher (Très bien / Bien / Difficulté) par sous-aspect
-const GRILLE_ASPECTS = [
-  { k: "technique", label: "Technique", sous: ["Contrôle et passe", "Conduite de balle", "Dribbles", "Frappe", "Technique offensive", "Technique défensive"] },
-  { k: "tactique", label: "Tactique", sous: ["Compréhension du jeu", "Placement", "Transitions", "Adaptabilité", "Travail collectif"] },
-  { k: "physique", label: "Physique", sous: ["Endurance", "Vitesse", "Puissance", "Coordination", "Répétition des efforts"] },
-  { k: "mental", label: "Mental", sous: ["Concentration", "Motivation", "Résilience", "Confiance en soi"] },
-  { k: "social", label: "Social", sous: ["Leadership", "Comportement", "Esprit d'équipe", "Capacité d'écoute"] },
-];
-const GRILLE_NIVEAUX = [
-  { k: "tb", label: "T.B", full: "Très bien", color: "#2FA36B", bg: "#E2F4E9" },
-  { k: "b", label: "B", full: "Bien", color: "#B87A2B", bg: "#FBEAD9" },
-  { k: "dif", label: "DIF", full: "Difficulté", color: "#B5483F", bg: "#FBE3E3" },
-];
-function grilleRemplie(g) {
-  return !!(g && g.aspects && GRILLE_ASPECTS.some((a) => { const A = g.aspects[a.k] || {}; return (A.n && Object.values(A.n).some(Boolean)) || (A.remarque && A.remarque.trim()); }));
-}
-
 function moyennesGroupeBilan(db, cat) {
   const res = { globale: null }; const acc = {}; const glob = [];
   ASPECTS_BILAN.forEach((a) => { acc[a.k] = []; });
@@ -2226,66 +2209,6 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
     });
   }
 
-  if (grilleRemplie(p.grilleEval)) {
-    section("Grille d'évaluation");
-    if (p.grilleEval.date || p.grilleEval.educateur) {
-      sc(GRIS); doc.setFont("helvetica", "italic"); doc.setFontSize(8.5);
-      doc.text(`${p.grilleEval.date ? new Date(p.grilleEval.date + "T00:00:00").toLocaleDateString("fr-FR") : ""}${p.grilleEval.date && p.grilleEval.educateur ? "   ·   " : ""}${p.grilleEval.educateur || ""}`, M, y);
-      doc.setFont("helvetica", "normal"); y += 13;
-    }
-    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-    doc.text("T.B : Très bien      B : Bien      DIF : Difficulté", M, y); y += 16;
-    const GRILLE_PDF_COL = { tb: [47, 163, 107], b: [184, 122, 43], dif: [181, 72, 63] };
-    const cw = 46, cg = 6, nbCols = GRILLE_NIVEAUX.length;
-    const block = nbCols * cw + (nbCols - 1) * cg;
-    const xCols = W - M - block;
-    GRILLE_ASPECTS.forEach((a) => {
-      const A = (p.grilleEval.aspects || {})[a.k] || {};
-      const n = A.n || {};
-      const hasRows = a.sous.some((s) => n[s]);
-      if (!hasRows && !(A.remarque && A.remarque.trim())) return;
-      sautPage(30 + a.sous.length * 17 + 50);
-      // bandeau de l'aspect + en-têtes de colonnes
-      sf(NAVY); doc.roundedRect(M, y - 9, W - 2 * M, 18, 3, 3, "F");
-      sc([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
-      doc.text(a.label, M + 7, y + 3.5);
-      GRILLE_NIVEAUX.forEach((nv, i) => {
-        const cx = xCols + i * (cw + cg);
-        sc([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
-        doc.text(nv.label, cx + cw / 2, y + 3.5, { align: "center" });
-      });
-      y += 19;
-      const rowH = 17;
-      a.sous.forEach((s, ri) => {
-        sautPage(rowH + 4);
-        if (ri % 2) { sf([250, 250, 247]); doc.rect(M, y - 11, W - 2 * M, rowH, "F"); }
-        sc(ENCRE); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-        doc.text(s, M + 7, y);
-        GRILLE_NIVEAUX.forEach((nv, i) => {
-          const cx = xCols + i * (cw + cg);
-          const cwBox = 22, chBox = 13, bx = cx + (cw - cwBox) / 2, byb = y - 10;
-          if (n[s] === nv.k) {
-            sf(GRILLE_PDF_COL[nv.k]); doc.roundedRect(bx, byb, cwBox, chBox, 3, 3, "F");
-            sc([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
-            doc.text("X", bx + cwBox / 2, byb + 9, { align: "center" });
-          } else {
-            sd(TRAIT); doc.setLineWidth(0.6); doc.roundedRect(bx, byb, cwBox, chBox, 3, 3);
-          }
-        });
-        sd(TRAIT); doc.setLineWidth(0.5); doc.line(M, y + 4, W - M, y + 4);
-        y += rowH;
-      });
-      if (A.remarque && A.remarque.trim()) {
-        y += 7;
-        sc(GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
-        doc.text("REMARQUE", M + 2, y); y += 10;
-        sc(ENCRE); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-        doc.splitTextToSize(String(A.remarque), W - 2 * M - 8).forEach((l) => { sautPage(12); doc.text(l, M + 4, y); y += 10.5; });
-      }
-      y += 12;
-    });
-  }
-
   const nbPagesFiche = doc.getNumberOfPages();
   for (let pn = 1; pn <= nbPagesFiche; pn++) {
     doc.setPage(pn);
@@ -2766,7 +2689,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v9.4
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v9.2
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -4307,96 +4230,12 @@ function EditBilan({ bilan, educateurs, axesPrecedent, onClose, onSave, onDelete
   );
 }
 
-function GrilleEvalTable({ data, editable, onCell, onRemarque }) {
-  const asp = (k) => (data.aspects || {})[k] || {};
-  return (
-    <div style={{ display: "grid", gap: 12 }}>
-      {GRILLE_ASPECTS.map((a) => {
-        const A = asp(a.k); const n = A.n || {};
-        return (
-          <div key={a.k} style={{ border: `1px solid ${C.grisClair}`, borderRadius: 13, overflow: "hidden", background: "#fff", boxShadow: "0 1px 2px rgba(16,32,64,0.04)" }}>
-            <div style={{ background: C.bleuNuit, color: "#fff", padding: "9px 12px", display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ flex: 1, fontWeight: 800, fontSize: 14, letterSpacing: 0.2 }}>{a.label}</span>
-              {GRILLE_NIVEAUX.map((nv) => (
-                <span key={nv.k} style={{ width: 40, textAlign: "center", fontSize: 10, fontWeight: 900, color: nv.color, background: "#fff", borderRadius: 5, padding: "3px 0" }}>{nv.label}</span>
-              ))}
-            </div>
-            {a.sous.map((s, i) => {
-              const cur = n[s] || null;
-              return (
-                <div key={s} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderTop: `1px solid ${C.grisClair}`, background: i % 2 ? "#FAFAF7" : "#fff" }}>
-                  <span style={{ flex: 1, fontSize: 13, color: C.encre }}>{s}</span>
-                  {GRILLE_NIVEAUX.map((nv) => {
-                    const on = cur === nv.k;
-                    const st = { width: 40, height: 32, borderRadius: 8, display: "grid", placeItems: "center", border: `1.5px solid ${on ? nv.color : C.grisClair}`, background: on ? nv.bg : "#fff", color: on ? nv.color : "#D2D2CE", fontWeight: 900, fontSize: 16, cursor: editable ? "pointer" : "default", padding: 0, flex: "0 0 auto" };
-                    return editable
-                      ? <button key={nv.k} type="button" onClick={() => onCell(a.k, s, on ? null : nv.k)} style={st} title={nv.full}>{on ? "✓" : ""}</button>
-                      : <span key={nv.k} style={st}>{on ? "✓" : ""}</span>;
-                  })}
-                </div>
-              );
-            })}
-            {editable ? (
-              <div style={{ padding: "9px 12px", borderTop: `2px solid ${C.grisClair}`, background: "#FCFBF5" }}>
-                <textarea value={A.remarque || ""} maxLength={400} onChange={(e) => onRemarque(a.k, e.target.value)} rows={2} placeholder={"Remarque " + a.label.toLowerCase() + " (facultatif)"} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
-              </div>
-            ) : (A.remarque ? (
-              <div style={{ padding: "9px 12px", borderTop: `2px solid ${C.grisClair}`, background: "#FCFBF5", fontSize: 12.5, color: C.encre, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{A.remarque}</div>
-            ) : null)}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function EditGrilleEval({ grille, educateurs, onClose, onSave }) {
-  const [f, setF] = useState({ date: hoyISO(), educateur: "", aspects: {}, ...grille });
-  const [autre, setAutre] = useState(!!(grille && grille.educateur) && educateurs.length > 0 && !educateurs.includes(grille.educateur));
-  const setCell = (ak, s, v) => setF((o) => {
-    const A = { ...((o.aspects || {})[ak] || {}) }; const n = { ...(A.n || {}) };
-    if (v == null) delete n[s]; else n[s] = v; A.n = n;
-    return { ...o, aspects: { ...(o.aspects || {}), [ak]: A } };
-  });
-  const setRem = (ak, v) => setF((o) => ({ ...o, aspects: { ...(o.aspects || {}), [ak]: { ...((o.aspects || {})[ak] || {}), remarque: v } } }));
-  return (
-    <Modal title="Grille d'évaluation" onClose={onClose}
-      footer={<Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-        <Field label="Date de l'évaluation"><Inp type="date" value={f.date || ""} onChange={(e) => setF((o) => ({ ...o, date: e.target.value }))} /></Field>
-        <Field label="Évaluateur">
-          {educateurs.length > 0 && !autre ? (
-            <Sel value={f.educateur || ""} onChange={(e) => { if (e.target.value === "__a__") { setAutre(true); setF((o) => ({ ...o, educateur: "" })); } else setF((o) => ({ ...o, educateur: e.target.value })); }}>
-              <option value="">Choisir</option>
-              {educateurs.map((n) => <option key={n}>{n}</option>)}
-              <option value="__a__">Autre (saisir)</option>
-            </Sel>
-          ) : (
-            <Inp value={f.educateur || ""} onChange={(e) => setF((o) => ({ ...o, educateur: e.target.value }))} placeholder="Nom et prénom" />
-          )}
-        </Field>
-      </div>
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12, fontSize: 11.5, color: C.gris }}>
-        {GRILLE_NIVEAUX.map((nv) => (
-          <span key={nv.k} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-            <span style={{ width: 14, height: 14, borderRadius: 4, background: nv.bg, border: `1.5px solid ${nv.color}`, display: "inline-block" }} />
-            <strong style={{ color: nv.color }}>{nv.label}</strong> {nv.full}
-          </span>
-        ))}
-      </div>
-      <div style={{ fontSize: 12, color: C.gris, marginBottom: 10, lineHeight: 1.45 }}>Coche une case par ligne. Reclique pour effacer. Ajoute une remarque par aspect si besoin.</div>
-      <GrilleEvalTable data={f} editable onCell={setCell} onRemarque={setRem} />
-    </Modal>
-  );
-}
-
 function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, demo }) {
   const [confirmer, setConfirmer] = useState(false);
   const [testEdit, setTestEdit] = useState(false);
   const [pdfMsg, setPdfMsg] = useState(null);
   const [saisonSel, setSaisonSel] = useState(saisonCourante());
   const [bilanEdit, setBilanEdit] = useState(null);
-  const [grilleEdit, setGrilleEdit] = useState(false);
   const [listeEnc, majEnc] = useEncadrementClub(demo, db, mutate);
   const saisonsJoueur = (() => {
     const set = new Set();
@@ -4749,25 +4588,6 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
         <div style={{ marginBottom: 6 }}>{bilansSaison.map((b) => <CarteBilan key={b.id} b={b} moy={moyGroupeBilan} onEdit={() => setBilanEdit(b)} />)}</div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "14px 0 8px" }}>
-        <div style={{ fontWeight: 800, color: C.bleu, display: "flex", alignItems: "center", gap: 7 }}><ClipboardList size={16} /> Grille d'évaluation</div>
-        {!lectureSeule && (
-          <button onClick={() => setGrilleEdit(true)} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
-            {grilleRemplie(p.grilleEval) ? <><Edit3 size={13} /> Modifier</> : <><Plus size={14} /> Compléter</>}
-          </button>
-        )}
-      </div>
-      {grilleRemplie(p.grilleEval) ? (
-        <div style={{ marginBottom: 16 }}>
-          {(p.grilleEval.date || p.grilleEval.educateur) && (
-            <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 8 }}>{p.grilleEval.date ? new Date(p.grilleEval.date + "T00:00:00").toLocaleDateString("fr-FR") : ""}{p.grilleEval.date && p.grilleEval.educateur ? " · " : ""}{p.grilleEval.educateur || ""}</div>
-          )}
-          <GrilleEvalTable data={p.grilleEval} editable={false} />
-        </div>
-      ) : (
-        <Card style={{ marginBottom: 16, textAlign: "center", color: C.gris, fontSize: 13, padding: 16 }}>Grille d'évaluation non renseignée</Card>
-      )}
-
       {p.parcours && p.parcours.length > 0 && (
         <>
           <div style={{ fontWeight: 800, color: C.bleu, display: "flex", alignItems: "center", gap: 7, margin: "4px 0 8px" }}><Trophy size={16} /> Parcours ({p.parcours.length} saison{p.parcours.length > 1 ? "s" : ""})</div>
@@ -4790,11 +4610,6 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
           mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.bilans = (pl.bilans || []).filter((x) => x.id !== bilanEdit.id); return d; });
           setBilanEdit(null);
         } : null} />}
-
-      {grilleEdit && <EditGrilleEval grille={p.grilleEval || {}} educateurs={educateurs} onClose={() => setGrilleEdit(false)} onSave={(g) => {
-        mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.grilleEval = g; return d; });
-        setGrilleEdit(false);
-      }} />}
 
       {testEdit && <EditTest joueur={p} onClose={() => setTestEdit(false)} onSave={(t) => {
         mutate((d) => {
