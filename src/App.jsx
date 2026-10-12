@@ -457,8 +457,8 @@ function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose }) {
         mutate((d) => {
           if (m.id) { const i = d.matches.findIndex((x) => x.id === m.id); d.matches[i] = { ...d.matches[i], ...m }; }
           else d.matches.push({ ...m, id: uid(), buteurs: {}, passeurs: {}, tempsJeu: {}, notes: {} });
-          // Si le match créé/modifié tombe entre le carton et la suspension enregistrée d'un joueur,
-          // il devient le vrai « prochain match » : on décale automatiquement la suspension dessus.
+          // Si le match créé tombe entre le carton et la date de suspension enregistrée, il devient le vrai
+          // prochain match : la suspension se recale dessus automatiquement (ex. carton 10/10 → suspension au 17/10 dès que ce match existe).
           const catM = m.cat || cat;
           if (m.date) {
             (d.players || []).forEach((pl) => {
@@ -2862,7 +2862,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v12.0
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v12.2
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -5985,8 +5985,8 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }
         mutate((d) => {
           if (m.id) { const i = d.matches.findIndex((x) => x.id === m.id); d.matches[i] = { ...d.matches[i], ...m }; }
           else d.matches.push({ ...m, id: uid(), buteurs: {}, passeurs: {}, tempsJeu: {}, notes: {} });
-          // Si le match créé/modifié tombe entre le carton et la suspension enregistrée d'un joueur,
-          // il devient le vrai « prochain match » : on décale automatiquement la suspension dessus.
+          // Si le match créé tombe entre le carton et la date de suspension enregistrée, il devient le vrai
+          // prochain match : la suspension se recale dessus automatiquement (ex. carton 10/10 → suspension au 17/10 dès que ce match existe).
           const catM = m.cat || cat;
           if (m.date) {
             (d.players || []).forEach((pl) => {
@@ -6023,17 +6023,8 @@ function EditMatch({ match, db, onClose, onSave }) {
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const catMatch = match.cat || f.cat;
   const joueursCat = (f.date && db) ? (db.players || []).filter((pp) => pp.cat === catMatch) : [];
-  // Alerte rouge si : la date tombe dans la période de suspension enregistrée,
-  // OU le match est après le dernier carton mais avant la date de suspension enregistrée
-  // (ce match devient alors le vrai « prochain match » à purger — ex. match en semaine).
-  const suspPourDate = joueursCat.filter((pp) => {
-    if (estSuspenduPourDate(pp, f.date)) return true;
-    if ((+pp.suspension || 0) > 0 && pp.suspensionDebut) {
-      const dCarton = dateDernierCartonActif(pp, db);
-      if (dCarton && f.date > dCarton && f.date < pp.suspensionDebut) return true;
-    }
-    return false;
-  });
+  // Alerte rouge si la date du match tombe dans la période de suspension enregistrée du joueur (dates saisies = référence).
+  const suspPourDate = joueursCat.filter((pp) => estSuspenduPourDate(pp, f.date));
   return (
     <Modal title={match.id ? "Modifier le match" : "Nouveau match"} onClose={onClose}
       footer={<Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>}>
