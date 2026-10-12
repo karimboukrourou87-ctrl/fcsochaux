@@ -2848,7 +2848,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v10.7
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v10.9
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3893,25 +3893,29 @@ function estSuspendu(p) {
   // pas de date renseignée : suspendu tant qu'il reste des matchs à purger
   return (+p.suspension || 0) > 0;
 }
-// Calcule la période de suspension (début = 1er match concerné, fin = date « Disponible le » = 1er match de nouveau jouable)
+// Calcule la période de suspension (début = 1er match purgé, fin = dernier match purgé / dernier jour de suspension)
 // à partir d'une date de référence et d'un nombre de matchs à purger. Utilisé pour jaunes et rouges.
 function periodeSuspensionDepuis(matches, cat, refDate, nbMatchs, excludeId) {
   const N = Math.max(1, +nbMatchs || 1);
   const prochains = (matches || []).filter((x) => x.cat === cat && x.date && x.date >= refDate && x.id !== excludeId).sort((a, b) => a.date.localeCompare(b.date));
-  if (!prochains.length) return { debut: refDate, fin: addDays(refDate, 1) };
+  if (!prochains.length) return { debut: refDate, fin: refDate };
   const debut = prochains[0].date;
-  const fin = prochains.length > N ? prochains[N].date : addDays(prochains[prochains.length - 1].date, 1);
+  const fin = prochains[Math.min(N, prochains.length) - 1].date; // dernier match de suspension (inclus)
   return { debut, fin };
 }
 // Suspension évaluée pour la DATE d'un match précis (préparation d'une compo à venir).
-// « Disponible le » (suspensionFin) = date à partir de laquelle le joueur est de nouveau sélectionnable (incluse).
+// suspensionFin = DERNIER jour (ou dernier match) de suspension, INCLUS. Le joueur est de nouveau dispo le lendemain.
 function estSuspenduPourDate(p, dateMatch) {
   if (!p) return false;
-  if (!dateMatch) return estSuspendu(p);
+  if (!dateMatch) {
+    // pas de date de match : on bloque dès qu'une suspension est en cours ou à venir
+    if (p.suspensionFin) return true;
+    return (+p.suspension || 0) > 0;
+  }
   if (p.suspensionFin) {
-    if (dateMatch >= p.suspensionFin) return false;                       // match à partir de la date de disponibilité : joueur dispo
+    if (dateMatch > p.suspensionFin) return false;                        // match après le dernier jour de suspension : dispo
     if (p.suspensionDebut && dateMatch < p.suspensionDebut) return false; // match avant le début de la suspension
-    return true;
+    return true;                                                          // match dans la période (bornes incluses)
   }
   return (+p.suspension || 0) > 0;
 }
@@ -4806,7 +4810,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
             const setDateDebut = (v) => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.suspensionDebut = v || ""; return d; });
             const exclusion2j = !rougeDirectActif(p, db) && rougeActif(p, db);
             const bloque = estSuspendu(p);
-            const dispoTxt = p.suspensionFin ? `disponible le ${new Date(p.suspensionFin + "T00:00:00").toLocaleDateString("fr-FR")}` : "";
+            const dispoTxt = p.suspensionFin ? `disponible le ${new Date(addDays(p.suspensionFin, 1) + "T00:00:00").toLocaleDateString("fr-FR")}` : "";
             return (
               <div style={{ marginBottom: 16 }}>
                 {risque.alerte && (
@@ -4823,9 +4827,9 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
                   <Field label="Suspension à partir du"><Inp type="date" value={p.suspensionDebut || ""} onChange={(e) => setDateDebut(e.target.value)} /></Field>
-                  <Field label="Disponible le (fin)"><Inp type="date" value={p.suspensionFin || ""} onChange={(e) => setDateFin(e.target.value)} /></Field>
+                  <Field label="Suspendu jusqu'au (inclus)"><Inp type="date" value={p.suspensionFin || ""} onChange={(e) => setDateFin(e.target.value)} /></Field>
                 </div>
-                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 4, lineHeight: 1.5 }}>Le joueur est bloqué en composition pour tout match disputé entre la date de début et la veille de la date « Disponible le ». Il redevient sélectionnable à partir de la date « Disponible le » (le lendemain de son dernier match de suspension).</div>
+                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 4, lineHeight: 1.5 }}>Le joueur est bloqué en composition pour tout match disputé entre la date de début et la date « Suspendu jusqu'au » (ces deux dates incluses). Il redevient sélectionnable le lendemain de la date « Suspendu jusqu'au ».</div>
                 {exclusion2j ? (
                   <div style={{ fontSize: 11.5, color: "#B87A2B", fontWeight: 700, marginTop: 4, lineHeight: 1.5, background: "#FFF7E6", border: "1px solid #F0DBA8", borderRadius: 8, padding: "7px 9px" }}>Exclusion pour deux avertissements : pas de suspension automatique, c'est la commission qui décide. Saisis la date d'effet et la date de disponibilité une fois le procès-verbal reçu.</div>
                 ) : (
@@ -5531,6 +5535,29 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
           </select>
         </div>
       )}
+      {(() => {
+        if (!dateMatchCompo) return null;
+        const suspendusMatch = [...players, ...surclasses].filter((p) => estSuspenduPourDate(p, dateMatchCompo));
+        if (!suspendusMatch.length) return null;
+        return (
+          <div style={{ background: "#FBE3E3", border: `1.5px solid ${C.rouge}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 900, color: C.rouge, fontSize: 14, marginBottom: 6 }}>
+              <ShieldAlert size={18} /> Attention : {suspendusMatch.length} joueur{suspendusMatch.length > 1 ? "s" : ""} suspendu{suspendusMatch.length > 1 ? "s" : ""} pour ce match
+            </div>
+            <div style={{ display: "grid", gap: 5 }}>
+              {suspendusMatch.map((p) => (
+                <div key={p.id} style={{ fontSize: 13, color: C.encre, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 800 }}>{p.prenom} {p.nom}</span>
+                  {p.cat !== cat ? <Pastille bg="#E7EEF6" color={C.bleu}>{p.cat}</Pastille> : null}
+                  <span style={{ color: C.rouge, fontWeight: 700 }}>{p.suspensionFin ? `suspendu jusqu'au ${jjmm(p.suspensionFin)}, dispo ${jjmm(addDays(p.suspensionFin, 1))}` : "suspendu"}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 11.5, color: "#8A3A33", marginTop: 7, lineHeight: 1.5 }}>Ces joueurs ne peuvent pas figurer sur la feuille de match. Un carton rouge entraîne une suspension automatique dès le match suivant, en attendant la décision de la commission.</div>
+          </div>
+        );
+      })()}
+
       {compoVide && derniereCompo && (
         <div style={{ background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
           <div style={{ fontSize: 12.5, color: C.encre, marginBottom: 8, lineHeight: 1.4 }}>Ce match n'a pas encore de composition. Tu peux repartir de ta dernière composition plutôt que de tout refaire, puis l'ajuster.</div>
@@ -5723,7 +5750,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
                     <Avatar p={p} size={38} radius={10} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 800 }}>{p.prenom} {p.nom}</div>
-                      <div style={{ fontSize: 12, color: bloque ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(p.suspensionFin)}` : "")) : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
+                      <div style={{ fontSize: 12, color: bloque ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(addDays(p.suspensionFin, 1))}` : "")) : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
                       {p.licence ? <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 700, marginTop: 1 }}>Licence {p.licence}</div> : null}
                       {(() => {
                         const mnS = minutesSurclassementJoueur(p, db, saisonCourante());
@@ -5769,7 +5796,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
                   <Avatar p={p} size={38} radius={10} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 800 }}>{p.prenom} {p.nom}</div>
-                    <div style={{ fontSize: 12, color: (susp || rge) ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(p.suspensionFin)}` : "")) : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
+                    <div style={{ fontSize: 12, color: (susp || rge) ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(addDays(p.suspensionFin, 1))}` : "")) : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
                     {p.licence ? <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 700, marginTop: 1 }}>Licence {p.licence}</div> : null}
                     <div style={{ fontSize: 11, fontWeight: 700, marginTop: 3, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", color: (moyMinutesCompo > 0 && mn < moyMinutesCompo) ? "#E67E22" : C.gris }}>
                       <Timer size={11} /> {mn} min{mnSurcl > 0 && <span style={{ color: C.bleu, fontWeight: 700 }}>· {surclassementTexte(p, db, saisonCourante())}</span>}
