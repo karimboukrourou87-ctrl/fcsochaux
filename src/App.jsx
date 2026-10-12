@@ -2848,7 +2848,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v10.9
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v11.0
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -7426,7 +7426,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
       <Card key={p.id} style={{ padding: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: C.bleu, color: C.jaune, display: "grid", placeItems: "center", fontWeight: 900, fontSize: 12 }}>{initials(p)}</div>
-          <div style={{ flex: 1, fontWeight: 800 }}>{p.prenom} {p.nom}{p.surclasse ? <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 800, color: C.bleu, background: "#EAF0F7", borderRadius: 6, padding: "2px 6px" }}>Surclassé {p.cat}</span> : null}</div>
+          <div style={{ flex: 1, fontWeight: 800 }}>{p.prenom} {p.nom}{p.surclasse ? <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 800, color: C.bleu, background: "#EAF0F7", borderRadius: 6, padding: "2px 6px" }}>Surclassé {p.cat}</span> : null}{estSuspenduPourDate(p, match.date) ? <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 800, color: C.rouge, background: "#FBE3E3", borderRadius: 6, padding: "2px 6px" }}>Suspendu</span> : null}</div>
           <button onClick={() => setNoteFor(p)} style={{
             border: "none", cursor: "pointer", borderRadius: 10, padding: "6px 11px", fontWeight: 900,
             background: note ? C.jaune : C.grisClair, color: note ? C.bleuNuit : C.gris, fontSize: 14,
@@ -7574,6 +7574,27 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
           <ChevronLeft size={18} color={C.gris} style={{ transform: "rotate(180deg)" }} />
         </Card>
       )}
+
+      {(() => {
+        const suspendusRap = (players || []).filter((pp) => estSuspenduPourDate(pp, match.date));
+        if (!suspendusRap.length) return null;
+        return (
+          <div style={{ background: "#FBE3E3", border: `1.5px solid ${C.rouge}`, borderRadius: 12, padding: 12, marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 900, color: C.rouge, fontSize: 14, marginBottom: 6 }}>
+              <ShieldAlert size={18} /> Attention : {suspendusRap.length} joueur{suspendusRap.length > 1 ? "s" : ""} suspendu{suspendusRap.length > 1 ? "s" : ""} pour ce match
+            </div>
+            <div style={{ display: "grid", gap: 5 }}>
+              {suspendusRap.map((pp) => (
+                <div key={pp.id} style={{ fontSize: 13, color: C.encre, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 800 }}>{pp.prenom} {pp.nom}</span>
+                  <span style={{ color: C.rouge, fontWeight: 700 }}>{pp.suspensionFin ? `suspendu jusqu'au ${jjmm(pp.suspensionFin)}, dispo ${jjmm(addDays(pp.suspensionFin, 1))}` : "suspendu"}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 11.5, color: "#8A3A33", marginTop: 7, lineHeight: 1.5 }}>Ces joueurs ne doivent pas figurer sur la feuille de match. Un carton rouge entraîne une suspension automatique dès le match suivant, en attendant la décision de la commission.</div>
+          </div>
+        );
+      })()}
 
       <div style={{ fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
         <span>Feuille de match</span>
