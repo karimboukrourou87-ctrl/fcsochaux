@@ -2848,7 +2848,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v11.2
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v11.4
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3868,6 +3868,11 @@ function cartonsListe(p, db, saison) {
   });
   return list.sort((a, b) => a.date.localeCompare(b.date));
 }
+/* Date du dernier carton retenu (le plus récent) d'un joueur : sert de point de départ au calcul de la suspension */
+function dateDernierCartonActif(p, db) {
+  const liste = cartonsListe(p, db).filter((c) => c.retenu);
+  return liste.length ? liste[liste.length - 1].date : "";
+}
 /* Carton rouge DIRECT actif (hors exclusion pour deux jaunes), non révoqué */
 function rougeDirectActif(p, db) {
   if (!p) return false;
@@ -4794,8 +4799,13 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
               pl.suspension = N;
               if (N > 0) {
                 pl.discDate = hoyISO(); // toute suspension ferme révoque les avertissements
-                // on garde le début déjà fixé (date du carton) si présent, sinon on recalcule à partir d'aujourd'hui
-                const ref = pl.suspensionDebut || hoyISO();
+                // Départ : on garde le début déjà fixé si présent (ajustement commission),
+                // sinon la suspension commence au 1er match APRÈS le match du dernier carton (règle FFF).
+                let ref = pl.suspensionDebut;
+                if (!ref) {
+                  const dCarton = dateDernierCartonActif(pl, d);
+                  ref = dCarton ? addDays(dCarton, 1) : hoyISO();
+                }
                 const per = periodeSuspensionDepuis(d.matches, pl.cat, ref, N, null);
                 pl.suspensionDebut = per.debut;
                 pl.suspensionFin = per.fin;
@@ -4808,6 +4818,24 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
             const marquerVus = () => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); const a = assiduiteJoueur(pl, d, saisonCourante()); pl.discRef = { jaunes: a.jaunes, rouges: a.rouges }; return d; });
             const setDateFin = (v) => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.suspensionFin = v || ""; return d; });
             const setDateDebut = (v) => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.suspensionDebut = v || ""; return d; });
+            // Recalcule automatiquement les dates à partir du dernier carton (règle FFF), sans toucher au nombre de matchs
+            const recalculerDates = () => mutate((d) => {
+              const pl = d.players.find((x) => x.id === p.id);
+              const N = Math.max(1, +pl.suspension || 1);
+              pl.suspension = N;
+              const dCarton = dateDernierCartonActif(pl, d);
+              const ref = dCarton ? addDays(dCarton, 1) : hoyISO();
+              const per = periodeSuspensionDepuis(d.matches, pl.cat, ref, N, null);
+              pl.suspensionDebut = per.debut;
+              pl.suspensionFin = per.fin;
+              return d;
+            });
+            // Efface toute la saisie de suspension (en cas d'erreur)
+            const effacerSuspension = () => mutate((d) => {
+              const pl = d.players.find((x) => x.id === p.id);
+              pl.suspension = 0; pl.suspensionDebut = ""; pl.suspensionFin = "";
+              return d;
+            });
             const exclusion2j = !rougeDirectActif(p, db) && rougeActif(p, db);
             const bloque = estSuspendu(p);
             const dispoTxt = p.suspensionFin ? `disponible le ${new Date(addDays(p.suspensionFin, 1) + "T00:00:00").toLocaleDateString("fr-FR")}` : "";
@@ -4829,9 +4857,15 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
                   <Field label="Suspension à partir du"><Inp type="date" value={p.suspensionDebut || ""} onChange={(e) => setDateDebut(e.target.value)} /></Field>
                   <Field label="Suspendu jusqu'au (inclus)"><Inp type="date" value={p.suspensionFin || ""} onChange={(e) => setDateFin(e.target.value)} /></Field>
                 </div>
-                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 4, lineHeight: 1.5 }}>Le joueur est bloqué en composition pour tout match disputé entre la date de début et la date « Suspendu jusqu'au » (ces deux dates incluses). Il redevient sélectionnable le lendemain de la date « Suspendu jusqu'au ».</div>
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 8 }}>
+                  <button type="button" onClick={recalculerDates} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline", display: "inline-flex", alignItems: "center", gap: 5 }}><RefreshCw size={13} /> Recalculer les dates automatiquement</button>
+                  {(susp > 0 || p.suspensionDebut || p.suspensionFin) && (
+                    <button type="button" onClick={effacerSuspension} style={{ background: "none", border: "none", color: C.rouge, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline", display: "inline-flex", alignItems: "center", gap: 5 }}><Trash2 size={13} /> Effacer la saisie</button>
+                  )}
+                </div>
+                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6, lineHeight: 1.5 }}>Le joueur est bloqué en composition pour tout match disputé entre la date de début et la date « Suspendu jusqu'au » (ces deux dates incluses). Il redevient sélectionnable le lendemain de la date « Suspendu jusqu'au ». Les dates sont remplies automatiquement, mais tu peux les corriger à la main, ou tout effacer en cas d'erreur.</div>
                 {exclusion2j ? (
-                  <div style={{ fontSize: 11.5, color: "#B87A2B", fontWeight: 700, marginTop: 4, lineHeight: 1.5, background: "#FFF7E6", border: "1px solid #F0DBA8", borderRadius: 8, padding: "7px 9px" }}>Exclusion pour deux avertissements : pas de suspension automatique, c'est la commission qui décide. Saisis la date d'effet et la date de disponibilité une fois le procès-verbal reçu.</div>
+                  <div style={{ fontSize: 11.5, color: "#B87A2B", fontWeight: 700, marginTop: 4, lineHeight: 1.5, background: "#FFF7E6", border: "1px solid #F0DBA8", borderRadius: 8, padding: "7px 9px" }}>Exclusion pour deux avertissements : au minimum 1 match de suspension (barème FFF). Règle le nombre de matchs selon la décision de la commission ; les dates se remplissent automatiquement (bouton « Recalculer »).</div>
                 ) : (
                   <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.5 }}>Pour un rouge direct, un match de suspension est appliqué automatiquement. Indique le nombre de matchs ou ajuste les dates après la commission. La suspension se lève toute seule une fois la date de disponibilité passée.</div>
                 )}
