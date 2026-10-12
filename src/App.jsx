@@ -457,17 +457,6 @@ function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose }) {
         mutate((d) => {
           if (m.id) { const i = d.matches.findIndex((x) => x.id === m.id); d.matches[i] = { ...d.matches[i], ...m }; }
           else d.matches.push({ ...m, id: uid(), buteurs: {}, passeurs: {}, tempsJeu: {}, notes: {} });
-          // Recalcule les dates de suspension (automatiques) des joueurs encore suspendus de la catégorie,
-          // pour tenir compte d'un match qui vient d'être ajouté (ex. match en semaine avant la date prévue).
-          const catM = m.cat || cat;
-          (d.players || []).forEach((pl) => {
-            if (pl.cat !== catM || (+pl.suspension || 0) <= 0) return;
-            const dCarton = dateDernierCartonActif(pl, d);
-            const ref = dCarton ? addDays(dCarton, 1) : (pl.suspensionDebut || hoyISO());
-            const per = periodeSuspensionDepuis(d.matches, catM, ref, +pl.suspension || 1, null);
-            pl.suspensionDebut = per.debut;
-            pl.suspensionFin = per.fin;
-          });
           return d;
         });
         setEdit(null);
@@ -2859,7 +2848,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v11.5
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v11.7
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2969,7 +2958,7 @@ export default function App() {
       </nav>
 
       {dirty && !demo && saveStatus !== "saving" && (
-        <div style={{ position: "fixed", bottom: 72, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 40, padding: "0 12px", pointerEvents: "none" }}>
+        <div style={{ position: "fixed", bottom: 16, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 9000, padding: "0 12px", pointerEvents: "none" }}>
           <div style={{ pointerEvents: "auto", width: "100%", maxWidth: 760, background: C.bleuNuit, color: "#fff", borderRadius: 12, padding: "10px 14px", boxShadow: "0 6px 18px rgba(0,0,0,0.22)", display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>Modifications non enregistrées</span>
             <button onClick={enregistrerManuel} style={{ border: "none", background: C.jaune, color: C.bleuNuit, borderRadius: 9, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}><Save size={15} /> Enregistrer</button>
@@ -2978,7 +2967,7 @@ export default function App() {
       )}
 
       {saveStatus && !demo && (
-        <div style={{ position: "fixed", bottom: 88, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 45, padding: "0 16px", pointerEvents: "none" }}>
+        <div style={{ position: "fixed", bottom: 70, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 9001, padding: "0 16px", pointerEvents: "none" }}>
           <div style={{ pointerEvents: "auto", maxWidth: 400, background: saveStatus === "error" ? C.rouge : saveStatus === "ok" ? C.vert : C.bleu, color: "#fff", borderRadius: 12, padding: "10px 16px", fontSize: 13, fontWeight: 700, boxShadow: "0 4px 14px rgba(0,0,0,0.22)", display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ flex: 1 }}>{saveStatus === "saving" ? "Enregistrement en cours..." : saveStatus === "ok" ? "Enregistré" : saveStatus === "ro" ? "Consultation seule : cette catégorie n'est pas modifiable par toi." : "Échec de l'enregistrement. Vérifie ta connexion et réessaie."}</span>
             {saveStatus === "error" && <span onClick={() => setSaveStatus(null)} style={{ cursor: "pointer", textDecoration: "underline", flex: "0 0 auto" }}>OK</span>}
@@ -3923,10 +3912,12 @@ function periodeSuspensionDepuis(matches, cat, refDate, nbMatchs, excludeId) {
 // tient compte du compteur de matchs à purger, en insérant la date saisie dans le calendrier.
 function estSuspenduPourNouvelleDate(p, dateMatch, db) {
   if (!p || !dateMatch) return false;
-  if (estSuspenduPourDate(p, dateMatch)) return true;
+  // Les dates de suspension saisies font foi : si elles existent, on s'y tient strictement.
+  if (p.suspensionFin) return estSuspenduPourDate(p, dateMatch);
+  // Suspension au compteur SANS dates : on bloque les N premiers matchs après le dernier carton.
   const n = +p.suspension || 0;
   if (n <= 0) return false;
-  const ref = dateDernierCartonActif(p, db) || p.suspensionDebut || "";
+  const ref = dateDernierCartonActif(p, db) || "";
   if (!ref || dateMatch <= ref) return false;
   const dates = (db.matches || []).filter((m) => m.cat === p.cat && m.date && m.date > ref).map((m) => m.date);
   dates.push(dateMatch);
@@ -5980,17 +5971,6 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }
         mutate((d) => {
           if (m.id) { const i = d.matches.findIndex((x) => x.id === m.id); d.matches[i] = { ...d.matches[i], ...m }; }
           else d.matches.push({ ...m, id: uid(), buteurs: {}, passeurs: {}, tempsJeu: {}, notes: {} });
-          // Recalcule les dates de suspension (automatiques) des joueurs encore suspendus de la catégorie,
-          // pour tenir compte d'un match qui vient d'être ajouté (ex. match en semaine avant la date prévue).
-          const catM = m.cat || cat;
-          (d.players || []).forEach((pl) => {
-            if (pl.cat !== catM || (+pl.suspension || 0) <= 0) return;
-            const dCarton = dateDernierCartonActif(pl, d);
-            const ref = dCarton ? addDays(dCarton, 1) : (pl.suspensionDebut || hoyISO());
-            const per = periodeSuspensionDepuis(d.matches, catM, ref, +pl.suspension || 1, null);
-            pl.suspensionDebut = per.debut;
-            pl.suspensionFin = per.fin;
-          });
           return d;
         });
         setEdit(null);
