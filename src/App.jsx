@@ -2848,7 +2848,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v11.7
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v11.9
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -5994,7 +5994,18 @@ function EditMatch({ match, db, onClose, onSave }) {
   const [f, setF] = useState({ type: "Championnat", lieu: "Domicile", ...match });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const catMatch = match.cat || f.cat;
-  const suspPourDate = (f.date && db) ? (db.players || []).filter((pp) => pp.cat === catMatch && estSuspenduPourNouvelleDate(pp, f.date, db)) : [];
+  const joueursCat = (f.date && db) ? (db.players || []).filter((pp) => pp.cat === catMatch) : [];
+  // Alerte rouge si : la date tombe dans la période de suspension enregistrée,
+  // OU le match est après le dernier carton mais avant la date de suspension enregistrée
+  // (ce match devient alors le vrai « prochain match » à purger — ex. match en semaine).
+  const suspPourDate = joueursCat.filter((pp) => {
+    if (estSuspenduPourDate(pp, f.date)) return true;
+    if ((+pp.suspension || 0) > 0 && pp.suspensionDebut) {
+      const dCarton = dateDernierCartonActif(pp, db);
+      if (dCarton && f.date > dCarton && f.date < pp.suspensionDebut) return true;
+    }
+    return false;
+  });
   return (
     <Modal title={match.id ? "Modifier le match" : "Nouveau match"} onClose={onClose}
       footer={<Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>}>
