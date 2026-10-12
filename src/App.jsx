@@ -457,20 +457,6 @@ function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose }) {
         mutate((d) => {
           if (m.id) { const i = d.matches.findIndex((x) => x.id === m.id); d.matches[i] = { ...d.matches[i], ...m }; }
           else d.matches.push({ ...m, id: uid(), buteurs: {}, passeurs: {}, tempsJeu: {}, notes: {} });
-          // Si le match créé tombe entre le carton et la date de suspension enregistrée, il devient le vrai
-          // prochain match : la suspension se recale dessus automatiquement (ex. carton 10/10 → suspension au 17/10 dès que ce match existe).
-          const catM = m.cat || cat;
-          if (m.date) {
-            (d.players || []).forEach((pl) => {
-              if (pl.cat !== catM || (+pl.suspension || 0) <= 0 || !pl.suspensionDebut) return;
-              const dCarton = dateDernierCartonActif(pl, d);
-              if (dCarton && m.date > dCarton && m.date < pl.suspensionDebut) {
-                const per = periodeSuspensionDepuis(d.matches, catM, addDays(dCarton, 1), +pl.suspension || 1, null);
-                pl.suspensionDebut = per.debut;
-                pl.suspensionFin = per.fin;
-              }
-            });
-          }
           return d;
         });
         setEdit(null);
@@ -1629,11 +1615,10 @@ async function propagerRougeSurclasse(pid, pcat, dateMatch, ajouter) {
       const jAvant = jaunesActifsRegle(pl, d);
       pl.suspension = jAvant >= 2 ? 2 : 1;
       pl.discDate = dateMatch || hoyISO();
-      const auj = hoyISO();
-      const ref = (dateMatch && dateMatch > auj) ? dateMatch : auj;
-      const per = periodeSuspensionDepuis(d.matches, pcat, ref, pl.suspension, null);
+      const per = suspensionDepuisCarton(dateMatch || hoyISO(), pl.suspension);
       pl.suspensionDebut = per.debut;
       pl.suspensionFin = per.fin;
+      pl.suspensionManuelle = false;
     } else {
       if ((+pl.suspension || 0) === 1 || (+pl.suspension || 0) === 2) { pl.suspension = 0; pl.suspensionDebut = ""; pl.suspensionFin = ""; }
     }
@@ -2862,7 +2847,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v12.2
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v12.4
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3887,6 +3872,14 @@ function dateDernierCartonActif(p, db) {
   const liste = cartonsListe(p, db).filter((c) => c.retenu);
   return liste.length ? liste[liste.length - 1].date : "";
 }
+/* Période de suspension calculée À PARTIR DE LA DATE DU CARTON, indépendamment des matchs saisis.
+   Par défaut, le prochain week-end = carton + 7 jours ; N matchs = N week-ends.
+   Début = lendemain du carton (fenêtre d'alerte), fin = Nème week-end suivant. */
+function suspensionDepuisCarton(cardDate, nbMatchs) {
+  const N = Math.max(1, +nbMatchs || 1);
+  if (!cardDate) { const auj = hoyISO(); return { debut: auj, fin: addDays(auj, 7 * N) }; }
+  return { debut: addDays(cardDate, 1), fin: addDays(cardDate, 7 * N) };
+}
 /* Carton rouge DIRECT actif (hors exclusion pour deux jaunes), non révoqué */
 function rougeDirectActif(p, db) {
   if (!p) return false;
@@ -4829,41 +4822,36 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
               pl.suspension = N;
               if (N > 0) {
                 pl.discDate = hoyISO(); // toute suspension ferme révoque les avertissements
-                // Départ : on garde le début déjà fixé si présent (ajustement commission),
-                // sinon la suspension commence au 1er match APRÈS le match du dernier carton (règle FFF).
-                let ref = pl.suspensionDebut;
-                if (!ref) {
-                  const dCarton = dateDernierCartonActif(pl, d);
-                  ref = dCarton ? addDays(dCarton, 1) : hoyISO();
-                }
-                const per = periodeSuspensionDepuis(d.matches, pl.cat, ref, N, null);
+                // La suspension se calcule à partir de la DATE DU CARTON (prochain week-end = carton + 7 jours, N week-ends).
+                const per = suspensionDepuisCarton(dateDernierCartonActif(pl, d), N);
                 pl.suspensionDebut = per.debut;
                 pl.suspensionFin = per.fin;
+                pl.suspensionManuelle = false;
               } else {
                 pl.suspensionDebut = "";
                 pl.suspensionFin = "";
+                pl.suspensionManuelle = false;
               }
               return d;
             });
             const marquerVus = () => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); const a = assiduiteJoueur(pl, d, saisonCourante()); pl.discRef = { jaunes: a.jaunes, rouges: a.rouges }; return d; });
-            const setDateFin = (v) => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.suspensionFin = v || ""; return d; });
-            const setDateDebut = (v) => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.suspensionDebut = v || ""; return d; });
+            const setDateFin = (v) => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.suspensionFin = v || ""; pl.suspensionManuelle = true; return d; });
+            const setDateDebut = (v) => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.suspensionDebut = v || ""; pl.suspensionManuelle = true; return d; });
             // Recalcule automatiquement les dates à partir du dernier carton (règle FFF), sans toucher au nombre de matchs
             const recalculerDates = () => mutate((d) => {
               const pl = d.players.find((x) => x.id === p.id);
               const N = Math.max(1, +pl.suspension || 1);
               pl.suspension = N;
-              const dCarton = dateDernierCartonActif(pl, d);
-              const ref = dCarton ? addDays(dCarton, 1) : hoyISO();
-              const per = periodeSuspensionDepuis(d.matches, pl.cat, ref, N, null);
+              const per = suspensionDepuisCarton(dateDernierCartonActif(pl, d), N);
               pl.suspensionDebut = per.debut;
               pl.suspensionFin = per.fin;
+              pl.suspensionManuelle = false;
               return d;
             });
             // Efface toute la saisie de suspension (en cas d'erreur)
             const effacerSuspension = () => mutate((d) => {
               const pl = d.players.find((x) => x.id === p.id);
-              pl.suspension = 0; pl.suspensionDebut = ""; pl.suspensionFin = "";
+              pl.suspension = 0; pl.suspensionDebut = ""; pl.suspensionFin = ""; pl.suspensionManuelle = false;
               return d;
             });
             const exclusion2j = !rougeDirectActif(p, db) && rougeActif(p, db);
@@ -4893,7 +4881,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
                     <button type="button" onClick={effacerSuspension} style={{ background: "none", border: "none", color: C.rouge, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline", display: "inline-flex", alignItems: "center", gap: 5 }}><Trash2 size={13} /> Effacer la saisie</button>
                   )}
                 </div>
-                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6, lineHeight: 1.5 }}>Le joueur est bloqué en composition pour tout match disputé entre la date de début et la date « Suspendu jusqu'au » (ces deux dates incluses). Il redevient sélectionnable le lendemain de la date « Suspendu jusqu'au ». Les dates sont remplies automatiquement, mais tu peux les corriger à la main, ou tout effacer en cas d'erreur.</div>
+                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6, lineHeight: 1.5 }}>Les dates sont calculées à partir de la date du carton : par défaut le prochain week-end (carton + 7 jours), et un week-end de plus par match de suspension. Le joueur est bloqué en composition pour tout match disputé entre la date de début et la date « Suspendu jusqu'au » (incluses), et redevient sélectionnable le lendemain. Si un match est reporté, corrige la date « Suspendu jusqu'au » à la main.</div>
                 {exclusion2j ? (
                   <div style={{ fontSize: 11.5, color: "#B87A2B", fontWeight: 700, marginTop: 4, lineHeight: 1.5, background: "#FFF7E6", border: "1px solid #F0DBA8", borderRadius: 8, padding: "7px 9px" }}>Exclusion pour deux avertissements : au minimum 1 match de suspension (barème FFF). Règle le nombre de matchs selon la décision de la commission ; les dates se remplissent automatiquement (bouton « Recalculer »).</div>
                 ) : (
@@ -5985,20 +5973,6 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }
         mutate((d) => {
           if (m.id) { const i = d.matches.findIndex((x) => x.id === m.id); d.matches[i] = { ...d.matches[i], ...m }; }
           else d.matches.push({ ...m, id: uid(), buteurs: {}, passeurs: {}, tempsJeu: {}, notes: {} });
-          // Si le match créé tombe entre le carton et la date de suspension enregistrée, il devient le vrai
-          // prochain match : la suspension se recale dessus automatiquement (ex. carton 10/10 → suspension au 17/10 dès que ce match existe).
-          const catM = m.cat || cat;
-          if (m.date) {
-            (d.players || []).forEach((pl) => {
-              if (pl.cat !== catM || (+pl.suspension || 0) <= 0 || !pl.suspensionDebut) return;
-              const dCarton = dateDernierCartonActif(pl, d);
-              if (dCarton && m.date > dCarton && m.date < pl.suspensionDebut) {
-                const per = periodeSuspensionDepuis(d.matches, catM, addDays(dCarton, 1), +pl.suspension || 1, null);
-                pl.suspensionDebut = per.debut;
-                pl.suspensionFin = per.fin;
-              }
-            });
-          }
           return d;
         });
         setEdit(null);
@@ -7391,11 +7365,11 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
           const jAvant = jaunesActifsRegle(pl, d);
           pl.suspension = jAvant >= 2 ? 2 : 1;
           pl.discDate = m.date || hoyISO(); // toute suspension ferme révoque les avertissements
-          const auj = hoyISO();
-          const ref = (m.date && m.date > auj) ? m.date : auj;
-          const per = periodeSuspensionDepuis(d.matches, m.cat, ref, pl.suspension, m.id);
+          // Suspension calculée à partir de la DATE DU CARTON (prochain week-end = carton + 7 jours).
+          const per = suspensionDepuisCarton(m.date || hoyISO(), pl.suspension);
           pl.suspensionDebut = per.debut;
           pl.suspensionFin = per.fin;
+          pl.suspensionManuelle = false;
         }
       }
       return d;
