@@ -2818,7 +2818,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v10.0
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v10.1
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -6508,7 +6508,7 @@ function exporterRapportMatchPDF(jsPDF, match, players, db, educateur, avecPhoto
   }
 
   if (y > H - 160) { doc.addPage(); y = 50; }
-  sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text("Feuille de match", M, y); y += 15;
+  sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text("Feuille de match" + (players.length ? ` (${players.length} joueur${players.length > 1 ? "s" : ""})` : ""), M, y); y += 15;
   const xJ = M, xB = 258, xP = 305, xM = 358, xN = 408, xD = 455;
   sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
   doc.text("Joueur", xJ, y); doc.text("Buts", xB, y, { align: "center" }); doc.text("Passes", xP, y, { align: "center" }); doc.text("Min", xM, y, { align: "center" }); doc.text("Note", xN, y, { align: "center" }); doc.text("Discipline", xD, y);
@@ -7291,7 +7291,10 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
     ...Object.keys((cur && cur.notes) || {}),
   ]);
   const surclassesPresents = surclassesRap.filter((p) => idsCompo.has(p.id) && !players.some((q) => q.id === p.id));
-  const joueursRapport = [...players, ...surclassesPresents];
+  // Les joueurs avec un motif de non-retenu (non qualifié, prévu en catégorie supérieure, blessé, suspendu, absent)
+  // ne sont PAS comptés dans la feuille de match : ils sont seulement mentionnés dans la section dédiée.
+  const motifsNonRetenu = new Set(Object.entries((cur && cur.nonRetenus) || {}).filter(([, m]) => (m || "").trim()).map(([id]) => id));
+  const joueursRapport = [...players.filter((p) => !motifsNonRetenu.has(p.id)), ...surclassesPresents];
   // Surclassés : joueurs de CETTE catégorie qui ont joué dans une catégorie au-dessus
   const catsSupRap = categoriesAuDessus(match.cat);
   const surclSup = (cur && cur.surclasses) || {};
@@ -7485,7 +7488,10 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
         </Card>
       )}
 
-      <div style={{ fontWeight: 800, marginBottom: 8 }}>Feuille de match</div>
+      <div style={{ fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+        <span>Feuille de match</span>
+        {joueursRapport.length > 0 && <span style={{ fontSize: 12, fontWeight: 800, color: C.bleu, background: "#EAF0F7", borderRadius: 20, padding: "2px 10px" }}>{joueursRapport.length} joueur{joueursRapport.length > 1 ? "s" : ""}</span>}
+      </div>
       {joueursRapport.length === 0 ? <Empty icon={<Users size={22} color={C.gris} />} text="Aucun joueur" /> :
         <div style={{ display: "grid", gap: 9 }}>{joueursRapport.map(ligne)}</div>}
       {catsSupRap.length > 0 && (
