@@ -1617,10 +1617,11 @@ async function propagerRougeSurclasse(pid, pcat, dateMatch, ajouter) {
       pl.discDate = dateMatch || hoyISO();
       const auj = hoyISO();
       const ref = (dateMatch && dateMatch > auj) ? dateMatch : auj;
-      const prochains = (d.matches || []).filter((x) => x.date && x.date >= ref).sort((a, b) => a.date.localeCompare(b.date));
-      pl.suspensionFin = prochains.length ? prochains[0].date : "";
+      const per = periodeSuspensionDepuis(d.matches, pcat, ref, pl.suspension, null);
+      pl.suspensionDebut = per.debut;
+      pl.suspensionFin = per.fin;
     } else {
-      if ((+pl.suspension || 0) === 1 || (+pl.suspension || 0) === 2) { pl.suspension = 0; pl.suspensionFin = ""; }
+      if ((+pl.suspension || 0) === 1 || (+pl.suspension || 0) === 2) { pl.suspension = 0; pl.suspensionDebut = ""; pl.suspensionFin = ""; }
     }
     await saveCat(pcat, d, userId);
     return { ok: true };
@@ -2847,7 +2848,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v10.4
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v10.7
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3892,6 +3893,28 @@ function estSuspendu(p) {
   // pas de date renseignée : suspendu tant qu'il reste des matchs à purger
   return (+p.suspension || 0) > 0;
 }
+// Calcule la période de suspension (début = 1er match concerné, fin = date « Disponible le » = 1er match de nouveau jouable)
+// à partir d'une date de référence et d'un nombre de matchs à purger. Utilisé pour jaunes et rouges.
+function periodeSuspensionDepuis(matches, cat, refDate, nbMatchs, excludeId) {
+  const N = Math.max(1, +nbMatchs || 1);
+  const prochains = (matches || []).filter((x) => x.cat === cat && x.date && x.date >= refDate && x.id !== excludeId).sort((a, b) => a.date.localeCompare(b.date));
+  if (!prochains.length) return { debut: refDate, fin: addDays(refDate, 1) };
+  const debut = prochains[0].date;
+  const fin = prochains.length > N ? prochains[N].date : addDays(prochains[prochains.length - 1].date, 1);
+  return { debut, fin };
+}
+// Suspension évaluée pour la DATE d'un match précis (préparation d'une compo à venir).
+// « Disponible le » (suspensionFin) = date à partir de laquelle le joueur est de nouveau sélectionnable (incluse).
+function estSuspenduPourDate(p, dateMatch) {
+  if (!p) return false;
+  if (!dateMatch) return estSuspendu(p);
+  if (p.suspensionFin) {
+    if (dateMatch >= p.suspensionFin) return false;                       // match à partir de la date de disponibilité : joueur dispo
+    if (p.suspensionDebut && dateMatch < p.suspensionDebut) return false; // match avant le début de la suspension
+    return true;
+  }
+  return (+p.suspension || 0) > 0;
+}
 /* Risque de suspension a verifier, selon les cartons cumules */
 function risqueSuspension(p, db, cat) {
   if (estSuspendu(p)) return { alerte: false };
@@ -4767,9 +4790,13 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
               pl.suspension = N;
               if (N > 0) {
                 pl.discDate = hoyISO(); // toute suspension ferme révoque les avertissements
-                const prochains = (d.matches || []).filter((m) => m.cat === pl.cat && m.date && m.date >= hoyISO()).sort((a, b) => a.date.localeCompare(b.date));
-                if (prochains.length >= N) pl.suspensionFin = prochains[N - 1].date;
+                // on garde le début déjà fixé (date du carton) si présent, sinon on recalcule à partir d'aujourd'hui
+                const ref = pl.suspensionDebut || hoyISO();
+                const per = periodeSuspensionDepuis(d.matches, pl.cat, ref, N, null);
+                pl.suspensionDebut = per.debut;
+                pl.suspensionFin = per.fin;
               } else {
+                pl.suspensionDebut = "";
                 pl.suspensionFin = "";
               }
               return d;
@@ -4798,6 +4825,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
                   <Field label="Suspension à partir du"><Inp type="date" value={p.suspensionDebut || ""} onChange={(e) => setDateDebut(e.target.value)} /></Field>
                   <Field label="Disponible le (fin)"><Inp type="date" value={p.suspensionFin || ""} onChange={(e) => setDateFin(e.target.value)} /></Field>
                 </div>
+                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 4, lineHeight: 1.5 }}>Le joueur est bloqué en composition pour tout match disputé entre la date de début et la veille de la date « Disponible le ». Il redevient sélectionnable à partir de la date « Disponible le » (le lendemain de son dernier match de suspension).</div>
                 {exclusion2j ? (
                   <div style={{ fontSize: 11.5, color: "#B87A2B", fontWeight: 700, marginTop: 4, lineHeight: 1.5, background: "#FFF7E6", border: "1px solid #F0DBA8", borderRadius: 8, padding: "7px 9px" }}>Exclusion pour deux avertissements : pas de suspension automatique, c'est la commission qui décide. Saisis la date d'effet et la date de disponibilité une fois le procès-verbal reçu.</div>
                 ) : (
@@ -5318,6 +5346,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
   // Encadrement du match (liste commune du club) : coach, coach adjoint, dirigeant, délégué
   const [listeEncCompo] = useEncadrementClub(demo, db, mutate);
   const matchCourant = (db.matches || []).find((m) => m.id === matchSel);
+  const dateMatchCompo = (matchCourant && matchCourant.date) || null;
   const encMatch = (matchCourant && matchCourant.encadrement) || {};
   function majEncMatch(patch) {
     if (!matchSel) return;
@@ -5343,7 +5372,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
         if (annule) return;
         const arr = [];
         // on ne récupère que l'identité du joueur pour la composition, rien d'autre de la catégorie du dessous
-        res.forEach(({ c, d }) => { if (d && Array.isArray(d.players)) d.players.forEach((p) => arr.push({ id: p.id, prenom: p.prenom, nom: p.nom, poste: p.poste, numero: p.numero, licence: p.licence, photo: p.photo, dob: p.dob, suspension: p.suspension, suspensionFin: p.suspensionFin, discDate: p.discDate, cat: c, surclasse: true })); });
+        res.forEach(({ c, d }) => { if (d && Array.isArray(d.players)) d.players.forEach((p) => arr.push({ id: p.id, prenom: p.prenom, nom: p.nom, poste: p.poste, numero: p.numero, licence: p.licence, photo: p.photo, dob: p.dob, suspension: p.suspension, suspensionDebut: p.suspensionDebut, suspensionFin: p.suspensionFin, discDate: p.discDate, cat: c, surclasse: true })); });
         setSurclasses(arr);
       } catch (e) { if (!annule) setSurclasses([]); }
     })();
@@ -5683,8 +5712,8 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
                 const placeAilleurs = used.includes(p.id) && lineup.slots?.[pick] !== p.id;
                 const estRempl = remplacants.includes(p.id);
                 const estSurcl = p.cat !== cat;
-                const susp = estSuspendu(p);
-                const rge = !susp && rougeDirectActif(p, db);
+                const susp = estSuspenduPourDate(p, dateMatchCompo);
+                const rge = false; // les rouges sont gérés via la période de suspension (bloque = susp)
                 const bloque = susp || rge;
                 return (
                   <button key={p.id} onClick={() => { if (bloque) return; assign(pick, p.id); }} disabled={bloque} style={{
@@ -5728,8 +5757,8 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
                 const estSurcl = p.cat !== cat;
                 const mnSurcl = minutesSurclassementJoueur(p, db, saisonCourante());
                 const mn = statsJoueur(p, db, saisonCourante()).minutes + mnSurcl;
-                const susp = estSuspendu(p);
-                const rge = !susp && rougeDirectActif(p, db);
+                const susp = estSuspenduPourDate(p, dateMatchCompo);
+                const rge = false; // les rouges sont gérés via la période de suspension (bloque = susp)
                 const bancPlein = remplacants.length >= maxRempl;
                 const bloque = susp || rge || bancPlein;
                 return (
@@ -7229,19 +7258,20 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
       if (m.rouges[joueurId]) {
         delete m.rouges[joueurId];
         // retire la suspension automatique si elle n'a pas encore été affinée (1 ou 2 matchs)
-        if (pl && ((+pl.suspension || 0) === 1 || (+pl.suspension || 0) === 2)) { pl.suspension = 0; pl.suspensionFin = ""; }
+        if (pl && ((+pl.suspension || 0) === 1 || (+pl.suspension || 0) === 2)) { pl.suspension = 0; pl.suspensionDebut = ""; pl.suspensionFin = ""; }
       } else {
         m.rouges[joueurId] = 1;
-        // suspension automatique du rouge direct : 1 match ferme, + 1 match si le joueur
-        // était déjà sous le coup de 2 avertissements non révoqués (barème FFF)
+        // suspension automatique du rouge direct : 1 match ferme (ajustable ensuite selon la commission),
+        // + 1 match si le joueur était déjà sous le coup de 2 avertissements non révoqués (barème FFF)
         if (pl) {
           const jAvant = jaunesActifsRegle(pl, d);
           pl.suspension = jAvant >= 2 ? 2 : 1;
           pl.discDate = m.date || hoyISO(); // toute suspension ferme révoque les avertissements
           const auj = hoyISO();
           const ref = (m.date && m.date > auj) ? m.date : auj;
-          const prochains = (d.matches || []).filter((x) => x.cat === m.cat && x.date && x.date >= ref && x.id !== m.id).sort((a, b) => a.date.localeCompare(b.date));
-          pl.suspensionFin = prochains.length ? prochains[0].date : "";
+          const per = periodeSuspensionDepuis(d.matches, m.cat, ref, pl.suspension, m.id);
+          pl.suspensionDebut = per.debut;
+          pl.suspensionFin = per.fin;
         }
       }
       return d;
