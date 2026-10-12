@@ -1666,14 +1666,9 @@ function nomPdf(...parts) {
   return (s || "Document") + ".pdf";
 }
 
-// Téléchargement d'un PDF jsPDF : on force un vrai enregistrement de fichier (Blob + lien)
-// au lieu de laisser le navigateur ouvrir le PDF dans sa visionneuse.
-function telechargerDoc(doc, nom) {
-  const nomFichier = (nom && /\.pdf$/i.test(nom)) ? nom : ((nom || "Document") + ".pdf");
-  // Méthode principale : Blob téléchargé via un lien avec attribut download
+// Enregistrement direct d'un fichier à partir d'une URL blob (lien avec attribut download)
+function enregistrerFichier(url, nomFichier) {
   try {
-    const blob = doc.output("blob");
-    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = nomFichier;
@@ -1681,21 +1676,45 @@ function telechargerDoc(doc, nom) {
     a.style.display = "none";
     document.body.appendChild(a);
     a.click();
-    setTimeout(() => { try { a.remove(); URL.revokeObjectURL(url); } catch (e) {} }, 4000);
-    return;
-  } catch (e) {}
-  // Secours 1 : enregistrement natif jsPDF
+    a.remove();
+    return true;
+  } catch (e) { return false; }
+}
+
+// Gestionnaire d'aperçu enregistré par l'application (ouvre la fenêtre d'aperçu PDF)
+let _apercuPDFHandler = null;
+
+// Export d'un PDF jsPDF : on affiche d'abord un aperçu, l'enregistrement se fait depuis l'aperçu.
+function telechargerDoc(doc, nom) {
+  const nomFichier = (nom && /\.pdf$/i.test(nom)) ? nom : ((nom || "Document") + ".pdf");
+  let url = null;
+  try { url = URL.createObjectURL(doc.output("blob")); } catch (e) { url = null; }
+  // Aperçu avant enregistrement (si l'application est prête)
+  if (url && _apercuPDFHandler) {
+    try { _apercuPDFHandler(url, nomFichier); return; } catch (e) {}
+  }
+  // Secours : enregistrement direct
+  if (url && enregistrerFichier(url, nomFichier)) { setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 4000); return; }
   try { doc.save(nomFichier); return; } catch (e) {}
-  // Secours 2 : lien à partir d'une URL blob fournie par jsPDF
-  try {
-    const url = doc.output("bloburl");
-    const a = document.createElement("a");
-    a.href = url; a.download = nomFichier; a.rel = "noopener";
-    document.body.appendChild(a); a.click(); a.remove();
-    return;
-  } catch (e) {}
-  // Secours 3 : ouverture dans un nouvel onglet
   try { doc.output("dataurlnewwindow"); } catch (e) {}
+}
+
+// Fenêtre d'aperçu du PDF avant enregistrement (commune à tous les exports)
+function ApercuPDF({ url, nom, onClose }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(10,20,35,0.78)", zIndex: 10000, display: "flex", flexDirection: "column", padding: "10px 10px calc(10px + env(safe-area-inset-bottom))" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#fff", padding: "6px 2px 10px" }}>
+        <FileDown size={18} />
+        <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 14.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nom}</div>
+        <button onClick={onClose} style={{ background: "rgba(255,255,255,0.16)", border: "none", color: "#fff", borderRadius: 9, width: 36, height: 36, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={20} /></button>
+      </div>
+      <iframe title="Aperçu du PDF" src={url} style={{ flex: 1, width: "100%", border: "none", borderRadius: 12, background: "#fff" }} />
+      <div style={{ display: "flex", gap: 10, paddingTop: 12 }}>
+        <button onClick={onClose} style={{ flex: "0 0 auto", padding: "13px 18px", borderRadius: 12, border: "none", background: "rgba(255,255,255,0.18)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>Fermer</button>
+        <button onClick={() => enregistrerFichier(url, nom)} style={{ flex: 1, padding: "13px 18px", borderRadius: 12, border: "none", background: C.jaune, color: C.bleuNuit, fontWeight: 900, fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><FileDown size={18} /> Enregistrer le PDF</button>
+      </div>
+    </div>
+  );
 }
 
 // Reponses aux demandes de joueur deja vues par le demandeur (par appareil)
@@ -2396,6 +2415,11 @@ export default function App() {
   const [showCalendrier, setShowCalendrier] = useState(false);
   const [groupeSel, setGroupeSel] = useState(null);
   const [demo, setDemo] = useState(false);
+  const [apercuPDF, setApercuPDF] = useState(null);
+  useEffect(() => {
+    _apercuPDFHandler = (url, nom) => setApercuPDF({ url, nom });
+    return () => { _apercuPDFHandler = null; };
+  }, []);
   const cacheRef = useRef({});
   const [encadrementClub, majEncadrementClub] = useEncadrementClub(demo, db, mutate);
   const catsPlanning = demo ? CATEGORIES.map((c) => c.id) : ((profil && profil.cats) || []);
@@ -2818,7 +2842,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v10.1
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v10.2
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2951,6 +2975,7 @@ export default function App() {
       {showTransport && <Transports store={transportClub} maj={majTransportClub} chargement={chargementTransport} peutValider={peutValider} profil={profil} cat={cat} encadrement={encadrementClub} majEncadrement={majEncadrementClub} onValiderDem={validerTransport} onRefuserDem={refuserTransport} onClose={() => setShowTransport(false)} />}
       {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
+      {apercuPDF && <ApercuPDF url={apercuPDF.url} nom={apercuPDF.nom} onClose={() => { try { URL.revokeObjectURL(apercuPDF.url); } catch (e) {} setApercuPDF(null); }} />}
       {showPlanning && <Planning planning={planningClub} majPlanning={majPlanningClub} chargement={chargementPlanning} erreur={erreurPlanning} cats={cats} profil={profil} peutValider={peutValider} cat={cat} onClose={() => setShowPlanning(false)} />}
       {showPlanningHebdo && <PlanningHebdo onClose={() => setShowPlanningHebdo(false)} />}
       {showAcces && <AccesSecteurs db={{ acces: accesSource }} mutate={mutateReu} estAdmin={estAdmin} onClose={() => setShowAcces(false)} />}
