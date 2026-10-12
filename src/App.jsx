@@ -457,6 +457,20 @@ function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose }) {
         mutate((d) => {
           if (m.id) { const i = d.matches.findIndex((x) => x.id === m.id); d.matches[i] = { ...d.matches[i], ...m }; }
           else d.matches.push({ ...m, id: uid(), buteurs: {}, passeurs: {}, tempsJeu: {}, notes: {} });
+          // Si le match créé/modifié tombe entre le carton et la suspension enregistrée d'un joueur,
+          // il devient le vrai « prochain match » : on décale automatiquement la suspension dessus.
+          const catM = m.cat || cat;
+          if (m.date) {
+            (d.players || []).forEach((pl) => {
+              if (pl.cat !== catM || (+pl.suspension || 0) <= 0 || !pl.suspensionDebut) return;
+              const dCarton = dateDernierCartonActif(pl, d);
+              if (dCarton && m.date > dCarton && m.date < pl.suspensionDebut) {
+                const per = periodeSuspensionDepuis(d.matches, catM, addDays(dCarton, 1), +pl.suspension || 1, null);
+                pl.suspensionDebut = per.debut;
+                pl.suspensionFin = per.fin;
+              }
+            });
+          }
           return d;
         });
         setEdit(null);
@@ -2848,7 +2862,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v11.9
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v12.0
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -5971,6 +5985,20 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }
         mutate((d) => {
           if (m.id) { const i = d.matches.findIndex((x) => x.id === m.id); d.matches[i] = { ...d.matches[i], ...m }; }
           else d.matches.push({ ...m, id: uid(), buteurs: {}, passeurs: {}, tempsJeu: {}, notes: {} });
+          // Si le match créé/modifié tombe entre le carton et la suspension enregistrée d'un joueur,
+          // il devient le vrai « prochain match » : on décale automatiquement la suspension dessus.
+          const catM = m.cat || cat;
+          if (m.date) {
+            (d.players || []).forEach((pl) => {
+              if (pl.cat !== catM || (+pl.suspension || 0) <= 0 || !pl.suspensionDebut) return;
+              const dCarton = dateDernierCartonActif(pl, d);
+              if (dCarton && m.date > dCarton && m.date < pl.suspensionDebut) {
+                const per = periodeSuspensionDepuis(d.matches, catM, addDays(dCarton, 1), +pl.suspension || 1, null);
+                pl.suspensionDebut = per.debut;
+                pl.suspensionFin = per.fin;
+              }
+            });
+          }
           return d;
         });
         setEdit(null);
