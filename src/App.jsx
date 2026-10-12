@@ -453,7 +453,7 @@ function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose }) {
         </div>
       )}
 
-      {edit && <EditMatch match={edit} onClose={() => setEdit(null)} onSave={(m) => {
+      {edit && <EditMatch match={edit} db={db} onClose={() => setEdit(null)} onSave={(m) => {
         mutate((d) => {
           if (m.id) { const i = d.matches.findIndex((x) => x.id === m.id); d.matches[i] = { ...d.matches[i], ...m }; }
           else d.matches.push({ ...m, id: uid(), buteurs: {}, passeurs: {}, tempsJeu: {}, notes: {} });
@@ -2848,7 +2848,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v11.0
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v11.2
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -5917,7 +5917,7 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }
         </div>
       )}
 
-      {edit && <EditMatch match={edit} onClose={() => setEdit(null)} onSave={(m) => {
+      {edit && <EditMatch match={edit} db={db} onClose={() => setEdit(null)} onSave={(m) => {
         mutate((d) => {
           if (m.id) { const i = d.matches.findIndex((x) => x.id === m.id); d.matches[i] = { ...d.matches[i], ...m }; }
           else d.matches.push({ ...m, id: uid(), buteurs: {}, passeurs: {}, tempsJeu: {}, notes: {} });
@@ -5940,13 +5940,30 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }
   );
 }
 
-function EditMatch({ match, onClose, onSave }) {
+function EditMatch({ match, db, onClose, onSave }) {
   const [f, setF] = useState({ type: "Championnat", lieu: "Domicile", ...match });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const catMatch = match.cat || f.cat;
+  const suspPourDate = (f.date && db) ? (db.players || []).filter((pp) => pp.cat === catMatch && estSuspenduPourDate(pp, f.date)) : [];
   return (
     <Modal title={match.id ? "Modifier le match" : "Nouveau match"} onClose={onClose}
       footer={<Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>}>
       <Field label="Date"><Inp type="date" value={f.date || ""} onChange={(e) => set("date", e.target.value)} /></Field>
+      {suspPourDate.length > 0 && (
+        <div style={{ background: "#FBE3E3", border: `1.5px solid ${C.rouge}`, borderRadius: 12, padding: 12, marginBottom: 12, marginTop: -4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 900, color: C.rouge, fontSize: 13.5, marginBottom: 6 }}>
+            <ShieldAlert size={17} /> Attention : {suspPourDate.length} joueur{suspPourDate.length > 1 ? "s" : ""} suspendu{suspPourDate.length > 1 ? "s" : ""} à cette date
+          </div>
+          <div style={{ display: "grid", gap: 4 }}>
+            {suspPourDate.map((pp) => (
+              <div key={pp.id} style={{ fontSize: 12.5, color: C.encre }}>
+                <span style={{ fontWeight: 800 }}>{pp.prenom} {pp.nom}</span>
+                <span style={{ color: C.rouge, fontWeight: 700 }}>{pp.suspensionFin ? ` — suspendu jusqu'au ${jjmm(pp.suspensionFin)}, dispo ${jjmm(addDays(pp.suspensionFin, 1))}` : " — suspendu"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <Field label="Adversaire"><Inp value={f.adversaire || ""} onChange={(e) => set("adversaire", e.target.value)} placeholder="Nom de l'équipe" /></Field>
       <Field label="Type de match">
         <Sel value={f.type || "Championnat"} onChange={(e) => set("type", e.target.value)}>
@@ -7426,7 +7443,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
       <Card key={p.id} style={{ padding: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: C.bleu, color: C.jaune, display: "grid", placeItems: "center", fontWeight: 900, fontSize: 12 }}>{initials(p)}</div>
-          <div style={{ flex: 1, fontWeight: 800 }}>{p.prenom} {p.nom}{p.surclasse ? <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 800, color: C.bleu, background: "#EAF0F7", borderRadius: 6, padding: "2px 6px" }}>Surclassé {p.cat}</span> : null}{estSuspenduPourDate(p, match.date) ? <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 800, color: C.rouge, background: "#FBE3E3", borderRadius: 6, padding: "2px 6px" }}>Suspendu</span> : null}</div>
+          <div style={{ flex: 1, fontWeight: 800 }}>{p.prenom} {p.nom}{p.surclasse ? <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 800, color: C.bleu, background: "#EAF0F7", borderRadius: 6, padding: "2px 6px" }}>Surclassé {p.cat}</span> : null}{estSuspenduPourDate(((db.players || []).find((x) => x.id === p.id) || p), match.date) ? <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 800, color: C.rouge, background: "#FBE3E3", borderRadius: 6, padding: "2px 6px" }}>Suspendu</span> : null}</div>
           <button onClick={() => setNoteFor(p)} style={{
             border: "none", cursor: "pointer", borderRadius: 10, padding: "6px 11px", fontWeight: 900,
             background: note ? C.jaune : C.grisClair, color: note ? C.bleuNuit : C.gris, fontSize: 14,
@@ -7576,7 +7593,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
       )}
 
       {(() => {
-        const suspendusRap = (players || []).filter((pp) => estSuspenduPourDate(pp, match.date));
+        const suspendusRap = (db.players || []).filter((pp) => pp.cat === match.cat && estSuspenduPourDate(pp, match.date));
         if (!suspendusRap.length) return null;
         return (
           <div style={{ background: "#FBE3E3", border: `1.5px solid ${C.rouge}`, borderRadius: 12, padding: 12, marginBottom: 14 }}>
@@ -12283,7 +12300,7 @@ function Calendrier({ db, mutate, mutateReunions, peutValider, onClose, majEncad
         )}
       </div>
 
-      {edit && edit.kind === "match" && <EditMatch match={edit.obj} onClose={() => setEdit(null)} onSave={(m) => saveEvt("matches", m)} />}
+      {edit && edit.kind === "match" && <EditMatch match={edit.obj} db={db} onClose={() => setEdit(null)} onSave={(m) => saveEvt("matches", m)} />}
       {edit && edit.kind === "entrainement" && <EditSeance seance={edit.obj} players={(db.players || []).filter((p) => p.cat === edit.obj.cat)} onClose={() => setEdit(null)} onSave={(s) => saveEvt("trainings", s)} />}
       {edit && edit.kind === "reunion" && <EditReunion reunion={edit.obj} educateurs={db.acces || []} encadrement={db.encadrement || []} majEncadrement={majEncadrement} onClose={() => setEdit(null)} onSave={(r) => saveEvt("reunions", r)} onDelete={() => delEvt("reunions", edit.obj.id)} />}
       {edit && edit.kind === "tournoi" && <EditTournoi tournoi={edit.obj} onClose={() => setEdit(null)} onSave={(t) => saveEvt("tournois", t)} onDelete={() => delEvt("tournois", edit.obj.id)} />}
