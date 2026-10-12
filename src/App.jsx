@@ -1689,6 +1689,7 @@ function telechargerDoc(doc, nom) {
   const nomFichier = (nom && /\.pdf$/i.test(nom)) ? nom : ((nom || "Document") + ".pdf");
   let url = null;
   try { url = URL.createObjectURL(doc.output("blob")); } catch (e) { url = null; }
+  if (!url) { try { url = doc.output("bloburl"); } catch (e) { url = null; } }
   // Aperçu avant enregistrement (si l'application est prête)
   if (url && _apercuPDFHandler) {
     try { _apercuPDFHandler(url, nomFichier); return; } catch (e) {}
@@ -1702,14 +1703,18 @@ function telechargerDoc(doc, nom) {
 // Fenêtre d'aperçu du PDF avant enregistrement (commune à tous les exports)
 function ApercuPDF({ url, nom, onClose }) {
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(10,20,35,0.78)", zIndex: 10000, display: "flex", flexDirection: "column", padding: "10px 10px calc(10px + env(safe-area-inset-bottom))" }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(10,20,35,0.82)", zIndex: 2147483000, display: "flex", flexDirection: "column", padding: "10px 10px calc(10px + env(safe-area-inset-bottom))" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#fff", padding: "6px 2px 10px" }}>
         <FileDown size={18} />
-        <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 14.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nom}</div>
+        <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 14.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Aperçu · {nom}</div>
         <button onClick={onClose} style={{ background: "rgba(255,255,255,0.16)", border: "none", color: "#fff", borderRadius: 9, width: 36, height: 36, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={20} /></button>
       </div>
       <iframe title="Aperçu du PDF" src={url} style={{ flex: 1, width: "100%", border: "none", borderRadius: 12, background: "#fff" }} />
-      <div style={{ display: "flex", gap: 10, paddingTop: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(255,255,255,0.85)", fontSize: 11.5, padding: "8px 2px 0" }}>
+        <span style={{ flex: 1 }}>Aperçu non visible ?</span>
+        <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "#fff", fontWeight: 700, textDecoration: "underline" }}>Ouvrir dans un onglet</a>
+      </div>
+      <div style={{ display: "flex", gap: 10, paddingTop: 10 }}>
         <button onClick={onClose} style={{ flex: "0 0 auto", padding: "13px 18px", borderRadius: 12, border: "none", background: "rgba(255,255,255,0.18)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>Fermer</button>
         <button onClick={() => enregistrerFichier(url, nom)} style={{ flex: 1, padding: "13px 18px", borderRadius: 12, border: "none", background: C.jaune, color: C.bleuNuit, fontWeight: 900, fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><FileDown size={18} /> Enregistrer le PDF</button>
       </div>
@@ -2842,7 +2847,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v10.2
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v10.4
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
