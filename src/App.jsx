@@ -457,6 +457,17 @@ function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose }) {
         mutate((d) => {
           if (m.id) { const i = d.matches.findIndex((x) => x.id === m.id); d.matches[i] = { ...d.matches[i], ...m }; }
           else d.matches.push({ ...m, id: uid(), buteurs: {}, passeurs: {}, tempsJeu: {}, notes: {} });
+          // Recalcule les dates de suspension (automatiques) des joueurs encore suspendus de la catégorie,
+          // pour tenir compte d'un match qui vient d'être ajouté (ex. match en semaine avant la date prévue).
+          const catM = m.cat || cat;
+          (d.players || []).forEach((pl) => {
+            if (pl.cat !== catM || (+pl.suspension || 0) <= 0) return;
+            const dCarton = dateDernierCartonActif(pl, d);
+            const ref = dCarton ? addDays(dCarton, 1) : (pl.suspensionDebut || hoyISO());
+            const per = periodeSuspensionDepuis(d.matches, catM, ref, +pl.suspension || 1, null);
+            pl.suspensionDebut = per.debut;
+            pl.suspensionFin = per.fin;
+          });
           return d;
         });
         setEdit(null);
@@ -2848,7 +2859,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v11.4
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v11.5
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3907,6 +3918,20 @@ function periodeSuspensionDepuis(matches, cat, refDate, nbMatchs, excludeId) {
   const debut = prochains[0].date;
   const fin = prochains[Math.min(N, prochains.length) - 1].date; // dernier match de suspension (inclus)
   return { debut, fin };
+}
+// Suspension évaluée pour une date de match EN COURS DE SAISIE (match pas encore enregistré) :
+// tient compte du compteur de matchs à purger, en insérant la date saisie dans le calendrier.
+function estSuspenduPourNouvelleDate(p, dateMatch, db) {
+  if (!p || !dateMatch) return false;
+  if (estSuspenduPourDate(p, dateMatch)) return true;
+  const n = +p.suspension || 0;
+  if (n <= 0) return false;
+  const ref = dateDernierCartonActif(p, db) || p.suspensionDebut || "";
+  if (!ref || dateMatch <= ref) return false;
+  const dates = (db.matches || []).filter((m) => m.cat === p.cat && m.date && m.date > ref).map((m) => m.date);
+  dates.push(dateMatch);
+  const uniq = [...new Set(dates)].sort();
+  return uniq.slice(0, n).includes(dateMatch);
 }
 // Suspension évaluée pour la DATE d'un match précis (préparation d'une compo à venir).
 // suspensionFin = DERNIER jour (ou dernier match) de suspension, INCLUS. Le joueur est de nouveau dispo le lendemain.
@@ -5955,6 +5980,17 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }
         mutate((d) => {
           if (m.id) { const i = d.matches.findIndex((x) => x.id === m.id); d.matches[i] = { ...d.matches[i], ...m }; }
           else d.matches.push({ ...m, id: uid(), buteurs: {}, passeurs: {}, tempsJeu: {}, notes: {} });
+          // Recalcule les dates de suspension (automatiques) des joueurs encore suspendus de la catégorie,
+          // pour tenir compte d'un match qui vient d'être ajouté (ex. match en semaine avant la date prévue).
+          const catM = m.cat || cat;
+          (d.players || []).forEach((pl) => {
+            if (pl.cat !== catM || (+pl.suspension || 0) <= 0) return;
+            const dCarton = dateDernierCartonActif(pl, d);
+            const ref = dCarton ? addDays(dCarton, 1) : (pl.suspensionDebut || hoyISO());
+            const per = periodeSuspensionDepuis(d.matches, catM, ref, +pl.suspension || 1, null);
+            pl.suspensionDebut = per.debut;
+            pl.suspensionFin = per.fin;
+          });
           return d;
         });
         setEdit(null);
@@ -5978,7 +6014,7 @@ function EditMatch({ match, db, onClose, onSave }) {
   const [f, setF] = useState({ type: "Championnat", lieu: "Domicile", ...match });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const catMatch = match.cat || f.cat;
-  const suspPourDate = (f.date && db) ? (db.players || []).filter((pp) => pp.cat === catMatch && estSuspenduPourDate(pp, f.date)) : [];
+  const suspPourDate = (f.date && db) ? (db.players || []).filter((pp) => pp.cat === catMatch && estSuspenduPourNouvelleDate(pp, f.date, db)) : [];
   return (
     <Modal title={match.id ? "Modifier le match" : "Nouveau match"} onClose={onClose}
       footer={<Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>}>
