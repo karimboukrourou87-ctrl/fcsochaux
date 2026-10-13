@@ -2847,7 +2847,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v12.7
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v12.8
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2985,7 +2985,7 @@ export default function App() {
       {showPlanningHebdo && <PlanningHebdo onClose={() => setShowPlanningHebdo(false)} />}
       {showAcces && <AccesSecteurs db={{ acces: accesSource }} mutate={mutateReu} estAdmin={estAdmin} onClose={() => setShowAcces(false)} />}
       {showProgramme && <ProgrammeSemaine db={db} onClose={() => setShowProgramme(false)} />}
-      {showDocs && <DocumentsAdmin players={players} cat={cat} onClose={() => setShowDocs(false)} />}
+      {showDocs && <DocumentsAdmin players={players} cat={cat} db={db} mutate={mutate} lectureSeule={lectureSeuleCat} demo={demo} onClose={() => setShowDocs(false)} />}
       {showSuivi && <SuiviMedical db={db} mutate={mutate} cat={cat} estMedical={estMedical} onSignalerBlessure={signalerBlessure} onClose={() => setShowSuivi(false)} />}
       {showBilan && <BilanEquipe db={db} players={players} cat={cat} onClose={() => setShowBilan(false)} onTournois={() => setShowTournois(true)} />}
       {showTournois && <Tournois db={db} mutate={mutate} cat={cat} onClose={() => setShowTournois(false)} />}
@@ -10636,7 +10636,8 @@ function PlanningHebdo({ onClose }) {
   );
 }
 
-function DocumentsAdmin({ players, cat, onClose }) {
+function DocumentsAdmin({ players, cat, db, mutate, lectureSeule, demo, onClose }) {
+  const [edit, setEdit] = useState(null);
   const lignes = players.map((p) => {
     const sc = statutMedical(p);
     const licProb = p.licenceStatut !== "Valide";
@@ -10648,6 +10649,7 @@ function DocumentsAdmin({ players, cat, onClose }) {
   const limH = limiteHorsPeriode(cat);
   const limT = limiteMutesTotal(cat);
   const depasseHors = mut.hors > limH;
+  const horsPeriode = players.filter((p) => typeMutation(p) === "hors").sort((a, b) => (a.nom || "").localeCompare(b.nom || ""));
 
   return (
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
@@ -10675,6 +10677,22 @@ function DocumentsAdmin({ players, cat, onClose }) {
             {mut.expirees > 0 ? <Pastille bg={C.grisClair} color={C.gris}>{mut.expirees} expirée{mut.expirees > 1 ? "s" : ""}</Pastille> : null}
           </div>
           <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Total {mut.total} muté{mut.total > 1 ? "s" : ""} actif{mut.total > 1 ? "s" : ""}. Limite de base sur la feuille de match : {limT} mutés dont {limH} hors période. Le total peut être relevé selon le nombre d'arbitres du club.</div>
+          {horsPeriode.length > 0 && (
+            <div style={{ marginTop: 10, borderTop: `1px solid ${C.grisClair}`, paddingTop: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#B87A2B", marginBottom: 6 }}>Joueurs mutés hors période ({horsPeriode.length})</div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {horsPeriode.map((p) => (
+                  <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, background: "#FBEAD9", borderRadius: 9, padding: "7px 10px" }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: C.encre, minWidth: 0 }}>{p.prenom} {p.nom}{p.mutationDate ? <span style={{ color: "#B87A2B", fontWeight: 600 }}> · validée le {new Date(p.mutationDate + "T00:00:00").toLocaleDateString("fr-FR")}</span> : ""}</span>
+                    {!lectureSeule && !demo && (
+                      <button onClick={() => setEdit(p)} title="Modifier la fiche du joueur" style={{ display: "inline-flex", alignItems: "center", gap: 4, border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, borderRadius: 8, padding: "4px 9px", fontSize: 12, fontWeight: 800, cursor: "pointer", flex: "0 0 auto" }}><Edit3 size={13} /> Modifier</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: C.gris, marginTop: 7, lineHeight: 1.5 }}>Au maximum {limH} de ces joueur{horsPeriode.length > 1 ? "s" : ""} peu{limH > 1 ? "vent" : "t"} figurer sur une même feuille de match. À toi de choisir lesquels aligner.</div>
+            </div>
+          )}
         </Card>
 
         {players.length === 0 ? (
@@ -10685,20 +10703,36 @@ function DocumentsAdmin({ players, cat, onClose }) {
               const licBg = p.licenceStatut === "Valide" ? "#E2F4E9" : p.licenceStatut ? "#FBEAD9" : C.grisClair;
               const licCol = p.licenceStatut === "Valide" ? C.vert : p.licenceStatut ? "#B87A2B" : C.gris;
               const cerBg = sc.urgence >= 2 ? "#FBE3E3" : sc.urgence === 1 ? "#FBEAD9" : sc.urgence === 0 ? "#E2F4E9" : C.grisClair;
+              const lm = mutationActive(p) ? libelleMutation(p) : null;
               return (
                 <Card key={p.id}>
-                  <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 8 }}>{p.prenom} {p.nom}</div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                    <div style={{ fontWeight: 800, fontSize: 15, minWidth: 0 }}>{p.prenom} {p.nom}</div>
+                    {!lectureSeule && !demo && (
+                      <button onClick={() => setEdit(p)} title="Modifier la fiche du joueur" style={{ display: "inline-flex", alignItems: "center", gap: 4, border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, borderRadius: 8, padding: "4px 9px", fontSize: 12, fontWeight: 800, cursor: "pointer", flex: "0 0 auto" }}><Edit3 size={13} /> Modifier</button>
+                    )}
+                  </div>
                   <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                     <Pastille bg={licBg} color={licCol}>Licence : {p.licenceStatut || "non renseignée"}</Pastille>
                     <Pastille bg={cerBg} color={sc.couleur}>Contrôle médical : {sc.label}</Pastille>
+                    {lm ? <Pastille bg={lm.bg} color={lm.couleur}>{lm.label}</Pastille> : null}
                   </div>
                 </Card>
               );
             })}
           </div>
         )}
-        <div style={{ fontSize: 11.5, color: C.gris, marginTop: 12, lineHeight: 1.5 }}>Le contrôle médical est à refaire chaque saison, questionnaire de santé ou certificat si exigé. Modifie ces informations depuis la fiche du joueur.</div>
+        <div style={{ fontSize: 11.5, color: C.gris, marginTop: 12, lineHeight: 1.5 }}>Le contrôle médical est à refaire chaque saison, questionnaire de santé ou certificat si exigé. Touche « Modifier » sur un joueur pour corriger sa licence, son contrôle médical ou sa mutation.</div>
       </div>
+
+      {edit && (
+        <div style={{ position: "relative", zIndex: 80 }}>
+          <EditJoueur joueur={edit} cat={cat} onClose={() => setEdit(null)} onSave={(j) => {
+            mutate((d) => { if (j.id) { const i = d.players.findIndex((x) => x.id === j.id); if (i >= 0) d.players[i] = j; } return d; });
+            setEdit(null);
+          }} />
+        </div>
+      )}
     </div>
   );
 }
