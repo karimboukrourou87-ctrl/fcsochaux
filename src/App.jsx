@@ -2847,7 +2847,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v12.4
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v12.5
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -4871,9 +4871,9 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
                   </div>
                   <Compteur label="" val={susp} onMinus={() => setSusp(-1)} onPlus={() => setSusp(1)} />
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
-                  <Field label="Suspension à partir du"><Inp type="date" value={p.suspensionDebut || ""} onChange={(e) => setDateDebut(e.target.value)} /></Field>
-                  <Field label="Suspendu jusqu'au (inclus)"><Inp type="date" value={p.suspensionFin || ""} onChange={(e) => setDateFin(e.target.value)} /></Field>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, marginTop: 8 }}>
+                  <Field label="Suspension à partir du"><Inp type="date" value={p.suspensionDebut || ""} onChange={(e) => setDateDebut(e.target.value)} style={{ maxWidth: "100%", boxSizing: "border-box" }} /></Field>
+                  <Field label="Suspendu jusqu'au (inclus)"><Inp type="date" value={p.suspensionFin || ""} onChange={(e) => setDateFin(e.target.value)} style={{ maxWidth: "100%", boxSizing: "border-box" }} /></Field>
                 </div>
                 <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 8 }}>
                   <button type="button" onClick={recalculerDates} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline", display: "inline-flex", alignItems: "center", gap: 5 }}><RefreshCw size={13} /> Recalculer les dates automatiquement</button>
@@ -4883,7 +4883,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
                 </div>
                 <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6, lineHeight: 1.5 }}>Les dates sont calculées à partir de la date du carton : par défaut le prochain week-end (carton + 7 jours), et un week-end de plus par match de suspension. Le joueur est bloqué en composition pour tout match disputé entre la date de début et la date « Suspendu jusqu'au » (incluses), et redevient sélectionnable le lendemain. Si un match est reporté, corrige la date « Suspendu jusqu'au » à la main.</div>
                 {exclusion2j ? (
-                  <div style={{ fontSize: 11.5, color: "#B87A2B", fontWeight: 700, marginTop: 4, lineHeight: 1.5, background: "#FFF7E6", border: "1px solid #F0DBA8", borderRadius: 8, padding: "7px 9px" }}>Exclusion pour deux avertissements : au minimum 1 match de suspension (barème FFF). Règle le nombre de matchs selon la décision de la commission ; les dates se remplissent automatiquement (bouton « Recalculer »).</div>
+                  <div style={{ fontSize: 11.5, color: "#B87A2B", fontWeight: 700, marginTop: 4, lineHeight: 1.5, background: "#FFF7E6", border: "1px solid #F0DBA8", borderRadius: 8, padding: "7px 9px" }}>Exclusion pour deux cartons jaunes dans le même match : un match de suspension est appliqué automatiquement, à partir du lendemain jusqu'au prochain match à purger (barème FFF, a minima 1 match). Ajuste le nombre de matchs selon la décision de la commission ; les dates se recalculent avec le bouton « Recalculer ».</div>
                 ) : (
                   <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.5 }}>Pour un rouge direct, un match de suspension est appliqué automatiquement. Indique le nombre de matchs ou ajuste les dates après la commission. La suspension se lève toute seule une fois la date de disponibilité passée.</div>
                 )}
@@ -7338,13 +7338,44 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
     });
   }
   function cycleJaune(joueurId) {
+    const surcl = surclassesPresents.find((p) => p.id === joueurId);
+    let devientExclu = false, cesseExclu = false;
     mutate((d) => {
       const m = d.matches.find((x) => x.id === match.id);
       m.jaunes = m.jaunes || {};
-      const v = ((+m.jaunes[joueurId] || 0) + 1) % 3;
+      const avant = +m.jaunes[joueurId] || 0;
+      const v = (avant + 1) % 3;
       if (v === 0) delete m.jaunes[joueurId]; else m.jaunes[joueurId] = v;
+      const pl = d.players.find((x) => x.id === joueurId);
+      if (v === 2) {
+        // Double carton jaune dans le même match = exclusion : même règle que le rouge direct.
+        // Suspension automatique à partir du lendemain, jusqu'au prochain match à purger.
+        devientExclu = true;
+        if (pl) {
+          const jAvant = jaunesActifsRegle(pl, d);
+          pl.suspension = jAvant >= 2 ? 2 : 1;
+          pl.discDate = m.date || hoyISO();
+          const per = suspensionDepuisCarton(m.date || hoyISO(), pl.suspension);
+          pl.suspensionDebut = per.debut;
+          pl.suspensionFin = per.fin;
+          pl.suspensionManuelle = false;
+        }
+      } else if (avant === 2) {
+        // On retire le double carton jaune : on lève la suspension automatique si elle n'a pas encore été affinée.
+        cesseExclu = true;
+        if (pl && ((+pl.suspension || 0) === 1 || (+pl.suspension || 0) === 2)) { pl.suspension = 0; pl.suspensionDebut = ""; pl.suspensionFin = ""; }
+      }
       return d;
     });
+    // Joueur surclassé : on écrit aussi la sanction dans sa catégorie d'origine
+    if (surcl && (devientExclu || cesseExclu)) {
+      setMsgSurclasse("Mise à jour de la discipline dans la catégorie " + surcl.cat + "...");
+      propagerRougeSurclasse(surcl.id, surcl.cat, match.date, devientExclu).then((r) => {
+        if (r.ok) setMsgSurclasse("Sanction enregistrée aussi dans la catégorie " + surcl.cat + ".");
+        else if (r.raison === "introuvable") setMsgSurclasse("Joueur introuvable dans la catégorie " + surcl.cat + ".");
+        else setMsgSurclasse("Carton enregistré sur ce match. En revanche la suspension dans la catégorie " + surcl.cat + " n'a pas pu être écrite : tu n'as pas les droits sur cette catégorie. Son coach ou la direction doit la saisir.");
+      });
+    }
   }
   function toggleRouge(joueurId) {
     const surcl = surclassesPresents.find((p) => p.id === joueurId);
