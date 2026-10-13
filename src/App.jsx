@@ -2863,7 +2863,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v13.0
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v13.1
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -8448,17 +8448,19 @@ function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessur
                         );
                       })()}
                       {!complet && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                          <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>Fermeture</span>
-                          {[["s1", "1re semaine"], ["s2", "2e semaine"], ["both", "Les deux"], ["none", "Aucune"]].map(([val, lib]) => {
-                            const on = breakMode(breaks, h.id) === val;
-                            return (
-                              <button key={val} onClick={() => setBreakWeeks(h.id, val)} style={{
-                                border: "none", cursor: "pointer", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 800,
-                                background: on ? C.bleu : C.grisClair, color: on ? "#fff" : C.gris,
-                              }}>{lib}</button>
-                            );
-                          })}
+                        <div>
+                          <div style={{ fontSize: 12, color: C.gris, fontWeight: 700, marginBottom: 7 }}>Fermeture du club</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+                            {[["s1", "1re semaine"], ["s2", "2e semaine"], ["both", "Les deux"], ["none", "Aucune"]].map(([val, lib]) => {
+                              const on = breakMode(breaks, h.id) === val;
+                              return (
+                                <button key={val} onClick={() => setBreakWeeks(h.id, val)} style={{
+                                  border: on ? "none" : `1px solid ${C.grisClair}`, cursor: "pointer", borderRadius: 10, padding: "10px 8px", fontSize: 12.5, fontWeight: 800,
+                                  background: on ? C.bleu : "#fff", color: on ? "#fff" : C.gris, textAlign: "center", width: "100%",
+                                }}>{lib}</button>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </Card>
