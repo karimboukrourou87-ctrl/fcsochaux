@@ -2410,6 +2410,7 @@ export default function App() {
   const [profil, setProfil] = useState(null);
   const [cat, setCat] = useState(null);
   const [tab, setTab] = useState("accueil");
+  const [entSous, setEntSous] = useState(null); // sous-vue initiale de l'onglet Séances (ex : "infirmerie" depuis l'accueil)
   const [db, setDb] = useState(null);
   const [reunionsClub, setReunionsClub] = useState(null);
   const [reunionsErr, setReunionsErr] = useState(null);
@@ -2862,7 +2863,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v12.9
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v13.0
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2936,11 +2937,11 @@ export default function App() {
             Consultation seule sur cette catégorie. Tu peux tout voir, mais la modification est réservée à son responsable.
           </div>
         )}
-        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
+        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} demo={demo} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} />}
-        {tab === "entrainements" && <Entrainements players={players} cat={cat} db={db} mutate={mutate} estMedical={estMedical} onSignalerBlessure={signalerBlessure} />}
+        {tab === "entrainements" && <Entrainements players={players} cat={cat} db={db} mutate={mutate} estMedical={estMedical} onSignalerBlessure={signalerBlessure} initialSous={entSous} onConsumeSous={() => setEntSous(null)} />}
         {tab === "detection" && <Detection cat={cat} db={db} mutate={mutate} />}
         <div style={{ display: "flex", justifyContent: "center", padding: "10px 16px 26px" }}>
           {(dirty || demo)
@@ -3211,7 +3212,7 @@ function ScoresWeekend({ onClose, localDb }) {
 /* ============================================================
    Accueil
    ============================================================ */
-function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onBilan, onPlateaux, onReunions, onCalendrier, demResume, demPlanning, onValiderPlanning, onRefuserPlanning, demNotifs, onConfirmerLecture, demAccuses, onEffacerAccuse, demTransport, onValiderTransport, onRefuserTransport, onRafraichir, estMedical, monEmail }) {
+function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onInfirmerie, onBilan, onPlateaux, onReunions, onCalendrier, demResume, demPlanning, onValiderPlanning, onRefuserPlanning, demNotifs, onConfirmerLecture, demAccuses, onEffacerAccuse, demTransport, onValiderTransport, onRefuserTransport, onRafraichir, estMedical, monEmail }) {
   const lstDemPlanning = demPlanning || [];
   const lstNotifs = demNotifs || [];
   const lstAccuses = demAccuses || [];
@@ -3543,7 +3544,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
             </div>
           )}
           {blesses > 0 && (
-            <div onClick={() => (priseEnChargeMedicale(cat) !== "parents" ? onSuivi() : setTab("entrainements"))} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: (alerteDemRecues > 0 || alerteDemEnvoyees > 0 || alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0 || aRisqueSusp > 0 || alerteSuivi > 0) ? "1px solid #EBD3AE" : "none" }}>
+            <div onClick={() => (estMedical ? (onSuivi && onSuivi()) : (onInfirmerie ? onInfirmerie() : setTab("entrainements")))} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: (alerteDemRecues > 0 || alerteDemEnvoyees > 0 || alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0 || aRisqueSusp > 0 || alerteSuivi > 0) ? "1px solid #EBD3AE" : "none" }}>
               <HeartPulse size={15} color={C.rouge} /> <span style={{ flex: 1 }}>{blesses} joueur{blesses > 1 ? "s" : ""} blessé{blesses > 1 ? "s" : ""} en cours de soin</span>
               <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
             </div>
@@ -7952,12 +7953,14 @@ function NoterJoueur({ match, player, db, mutate, onClose }) {
 /* ============================================================
    Entrainements, presences et blessures
    ============================================================ */
-function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessure }) {
+function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessure, initialSous, onConsumeSous }) {
   const today = new Date();
   // Ne compter que les présences des joueurs réellement dans l'effectif (évite les identifiants fantômes d'anciens joueurs supprimés)
   const idsEffectif = new Set(players.map((p) => p.id));
   const presEff = (t) => Object.entries((t && t.presence) || {}).filter(([id]) => idsEffectif.has(id)).map(([, v]) => v);
-  const [sous, setSous] = useState("planning");
+  const [sous, setSous] = useState(initialSous || "planning");
+  // Si l'accueil demande d'ouvrir directement l'infirmerie, on applique la sous-vue puis on la libère.
+  useEffect(() => { if (initialSous) { setSous(initialSous); onConsumeSous && onConsumeSous(); } }, [initialSous]);
   const [annee, setAnnee] = useState(today.getFullYear());
   const [mois, setMois] = useState(today.getMonth());
   const [edit, setEdit] = useState(null);
