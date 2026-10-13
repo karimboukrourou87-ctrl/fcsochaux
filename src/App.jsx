@@ -1244,13 +1244,28 @@ function addDays(iso, n) {
   d.setDate(d.getDate() + n);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+// Semaine(s) de fermeture choisie(s) pour une période de vacances :
+// "both" (les deux), "s1" (1re semaine), "s2" (2e semaine), "none" (aucune). Défaut : les deux.
+// Compatibilité avec l'ancien format (nombre 1 ou 2).
+function breakMode(breaks, hid) {
+  const v = breaks && breaks[hid];
+  if (v === "s1" || v === 1) return "s1";
+  if (v === "s2") return "s2";
+  if (v === "none") return "none";
+  return "both";
+}
 function holidayOf(s, breaks) {
   for (const h of VACANCES) {
     if (s >= h.debut && s < h.reprise) {
       if (h.full || h.court) return { ...h, arret: true };
-      const w = (breaks && breaks[h.id]) || 2;
-      const fin = minStr(h.reprise, addDays(h.debut, w * 7));
-      return { ...h, arret: s < fin };
+      const mode = breakMode(breaks, h.id);
+      const finSem1 = addDays(h.debut, 7);
+      const finSem2 = minStr(h.reprise, addDays(h.debut, 14));
+      let arret = false;
+      if (mode === "both") arret = s < finSem2;
+      else if (mode === "s1") arret = s >= h.debut && s < finSem1;
+      else if (mode === "s2") arret = s >= finSem1 && s < finSem2;
+      return { ...h, arret, mode };
     }
   }
   return null;
@@ -2847,7 +2862,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v12.8
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v12.9
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -8190,9 +8205,11 @@ function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessur
       const estJour = jours.includes(dow);
       if (!estJour && !existing) continue;
       const h = holidayOf(s, breaks);
-      if (h && h.arret && !existing) {
+      if (h) {
+        // La carte de vacances est affichée une fois par période, même sans arrêt,
+        // pour que le choix des semaines reste accessible.
         if (!seen.has(h.id)) { seen.add(h.id); list.push({ type: "vac", date: s, holiday: h }); }
-        continue;
+        if (h.arret && !existing) continue; // jour fermé : pas de séance
       }
       list.push({ type: "session", date: s, training: existing });
     }
@@ -8418,19 +8435,25 @@ function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessur
                       <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: C.jauneFonce }}>
                         <CalendarDays size={17} /> Vacances {h.nom}
                       </div>
-                      <div style={{ fontSize: 12.5, color: C.gris, margin: "5px 0 9px" }}>
-                        Du {jjmm(h.debut)} au {jjmm(addDays(h.reprise, -1))} · {complet ? "arrêt complet" : "arrêt programmé"}
-                      </div>
+                      {(() => {
+                        const mode = complet ? "complet" : breakMode(breaks, h.id);
+                        const libelle = { complet: "arrêt complet", both: "arrêt les deux semaines", s1: "arrêt la 1re semaine", s2: "arrêt la 2e semaine", none: "aucun arrêt, club ouvert" }[mode];
+                        return (
+                          <div style={{ fontSize: 12.5, color: C.gris, margin: "5px 0 9px" }}>
+                            Du {jjmm(h.debut)} au {jjmm(addDays(h.reprise, -1))} · {libelle}
+                          </div>
+                        );
+                      })()}
                       {!complet && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                          <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>Arrêt</span>
-                          {[1, 2].map((w) => {
-                            const on = (breaks[h.id] || 2) === w;
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>Fermeture</span>
+                          {[["s1", "1re semaine"], ["s2", "2e semaine"], ["both", "Les deux"], ["none", "Aucune"]].map(([val, lib]) => {
+                            const on = breakMode(breaks, h.id) === val;
                             return (
-                              <button key={w} onClick={() => setBreakWeeks(h.id, w)} style={{
+                              <button key={val} onClick={() => setBreakWeeks(h.id, val)} style={{
                                 border: "none", cursor: "pointer", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 800,
                                 background: on ? C.bleu : C.grisClair, color: on ? "#fff" : C.gris,
-                              }}>{w} semaine{w > 1 ? "s" : ""}</button>
+                              }}>{lib}</button>
                             );
                           })}
                         </div>
