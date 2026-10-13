@@ -2847,7 +2847,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v12.5
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v12.6
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -5942,9 +5942,12 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }
             }
             return (
               <Card key={m.id} onClick={() => setOpen(m)}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>{fmtDate(m.date)} · {m.lieu}{m.type ? ` · ${m.type}` : ""}</span>
-                  {res ? <Pastille bg={bg} color={col}>{res}</Pastille> : <Pastille bg={C.jaune} color={C.bleuNuit}>À venir</Pastille>}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 8 }}>
+                  <span style={{ fontSize: 12, color: C.gris, fontWeight: 700, minWidth: 0 }}>{fmtDate(m.date)} · {m.lieu}{m.type ? ` · ${m.type}` : ""}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
+                    {res ? <Pastille bg={bg} color={col}>{res}</Pastille> : <Pastille bg={C.jaune} color={C.bleuNuit}>À venir</Pastille>}
+                    <button onClick={(e) => { e.stopPropagation(); setEdit(m); }} title="Modifier le match (date, adversaire, lieu...)" style={{ display: "inline-flex", alignItems: "center", gap: 4, border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, borderRadius: 8, padding: "4px 8px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}><Edit3 size={13} /> Modifier</button>
+                  </div>
                 </div>
                 <div style={{ display: "grid", gap: 3 }}>
                   <div style={{ display: "flex", alignItems: "center" }}>
