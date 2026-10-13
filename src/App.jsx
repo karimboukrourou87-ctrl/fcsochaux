@@ -2847,7 +2847,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v12.6
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v12.7
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -4558,6 +4558,29 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
   const [grilleEdit, setGrilleEdit] = useState(false);
   const [confirmAnciens, setConfirmAnciens] = useState(false);
   const [listeEnc, majEnc] = useEncadrementClub(demo, db, mutate);
+  // Auto-application de la suspension réglementaire : si un rouge direct ou une exclusion (double jaune)
+  // est actif mais qu'aucune suspension n'a encore été traitée, on applique automatiquement 1 match
+  // (lendemain du carton -> prochain week-end inclus). Cette fenêtre sert à détecter les suspendus à la saisie d'un match.
+  useEffect(() => {
+    if (lectureSeule || demo) return;
+    if (!rougeActif(p, db)) return;
+    if (p.suspensionTraitee) return;
+    if ((+p.suspension || 0) > 0) return;
+    mutate((d) => {
+      const pl = d.players.find((x) => x.id === p.id);
+      if (!pl || pl.suspensionTraitee || (+pl.suspension || 0) > 0) return d;
+      const ref = dateDernierCartonActif(pl, d);
+      const per = suspensionDepuisCarton(ref, 1);
+      pl.suspension = 1;
+      pl.discDate = ref || hoyISO();
+      pl.suspensionDebut = per.debut;
+      pl.suspensionFin = per.fin;
+      pl.suspensionManuelle = false;
+      pl.suspensionTraitee = true;
+      return d;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.id]);
   const saisonsJoueur = (() => {
     const set = new Set();
     db.matches.forEach((m) => {
@@ -4820,6 +4843,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
               const pl = d.players.find((x) => x.id === p.id);
               const N = Math.max(0, (+pl.suspension || 0) + delta);
               pl.suspension = N;
+              pl.suspensionTraitee = true;
               if (N > 0) {
                 pl.discDate = hoyISO(); // toute suspension ferme révoque les avertissements
                 // La suspension se calcule à partir de la DATE DU CARTON (prochain week-end = carton + 7 jours, N week-ends).
@@ -4835,8 +4859,8 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
               return d;
             });
             const marquerVus = () => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); const a = assiduiteJoueur(pl, d, saisonCourante()); pl.discRef = { jaunes: a.jaunes, rouges: a.rouges }; return d; });
-            const setDateFin = (v) => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.suspensionFin = v || ""; pl.suspensionManuelle = true; return d; });
-            const setDateDebut = (v) => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.suspensionDebut = v || ""; pl.suspensionManuelle = true; return d; });
+            const setDateFin = (v) => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.suspensionFin = v || ""; pl.suspensionManuelle = true; pl.suspensionTraitee = true; return d; });
+            const setDateDebut = (v) => mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.suspensionDebut = v || ""; pl.suspensionManuelle = true; pl.suspensionTraitee = true; return d; });
             // Recalcule automatiquement les dates à partir du dernier carton (règle FFF), sans toucher au nombre de matchs
             const recalculerDates = () => mutate((d) => {
               const pl = d.players.find((x) => x.id === p.id);
@@ -4846,12 +4870,13 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
               pl.suspensionDebut = per.debut;
               pl.suspensionFin = per.fin;
               pl.suspensionManuelle = false;
+              pl.suspensionTraitee = true;
               return d;
             });
             // Efface toute la saisie de suspension (en cas d'erreur)
             const effacerSuspension = () => mutate((d) => {
               const pl = d.players.find((x) => x.id === p.id);
-              pl.suspension = 0; pl.suspensionDebut = ""; pl.suspensionFin = ""; pl.suspensionManuelle = false;
+              pl.suspension = 0; pl.suspensionDebut = ""; pl.suspensionFin = ""; pl.suspensionManuelle = false; pl.suspensionTraitee = true;
               return d;
             });
             const exclusion2j = !rougeDirectActif(p, db) && rougeActif(p, db);
@@ -7362,11 +7387,12 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
           pl.suspensionDebut = per.debut;
           pl.suspensionFin = per.fin;
           pl.suspensionManuelle = false;
+          pl.suspensionTraitee = true;
         }
       } else if (avant === 2) {
         // On retire le double carton jaune : on lève la suspension automatique si elle n'a pas encore été affinée.
         cesseExclu = true;
-        if (pl && ((+pl.suspension || 0) === 1 || (+pl.suspension || 0) === 2)) { pl.suspension = 0; pl.suspensionDebut = ""; pl.suspensionFin = ""; }
+        if (pl && ((+pl.suspension || 0) === 1 || (+pl.suspension || 0) === 2)) { pl.suspension = 0; pl.suspensionDebut = ""; pl.suspensionFin = ""; pl.suspensionTraitee = false; }
       }
       return d;
     });
@@ -7390,7 +7416,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
       if (m.rouges[joueurId]) {
         delete m.rouges[joueurId];
         // retire la suspension automatique si elle n'a pas encore été affinée (1 ou 2 matchs)
-        if (pl && ((+pl.suspension || 0) === 1 || (+pl.suspension || 0) === 2)) { pl.suspension = 0; pl.suspensionDebut = ""; pl.suspensionFin = ""; }
+        if (pl && ((+pl.suspension || 0) === 1 || (+pl.suspension || 0) === 2)) { pl.suspension = 0; pl.suspensionDebut = ""; pl.suspensionFin = ""; pl.suspensionTraitee = false; }
       } else {
         m.rouges[joueurId] = 1;
         // suspension automatique du rouge direct : 1 match ferme (ajustable ensuite selon la commission),
@@ -7404,6 +7430,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
           pl.suspensionDebut = per.debut;
           pl.suspensionFin = per.fin;
           pl.suspensionManuelle = false;
+          pl.suspensionTraitee = true;
         }
       }
       return d;
