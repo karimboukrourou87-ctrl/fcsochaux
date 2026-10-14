@@ -2988,7 +2988,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v14.9
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v15.0
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3428,6 +3428,9 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
     });
   }
   const msgAccusesTotal = msgAccusesLus + msgAccusesRep;
+  // Côté éducateur : messages reçus dont la direction a accusé la lecture/réponse (« J'ai vu ») depuis ma dernière consultation.
+  const mesRetoursVus = msgRecus.filter((m) => { const vu = (m.vus || {})[maCle(m)]; if (!vu) return false; const t = Date.parse(tsLecture(vu) || "") || 0; return t > (msgVuLe || 0); });
+  const nbRetoursVus = mesRetoursVus.length;
   const alerteDemReponses = (demResume && demResume.reponses) || 0;
   const alerteSuivi = priseEnChargeMedicale(cat) !== "parents" ? enSuiviMedical : 0;
 
@@ -3494,6 +3497,18 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
           {msgAccusesLus > 0 && <div style={{ fontSize: 14, fontWeight: 700, padding: "3px 0" }}>{msgAccusesLus} nouvelle{msgAccusesLus > 1 ? "s" : ""} lecture{msgAccusesLus > 1 ? "s" : ""} confirmée{msgAccusesLus > 1 ? "s" : ""} par un éducateur</div>}
           {msgAccusesRep > 0 && <div style={{ fontSize: 14, fontWeight: 700, padding: "3px 0", borderTop: msgAccusesLus > 0 ? "1px solid rgba(255,255,255,0.25)" : "none" }}>{msgAccusesRep} nouvelle{msgAccusesRep > 1 ? "s" : ""} réponse{msgAccusesRep > 1 ? "s" : ""} de disponibilité</div>}
           <div style={{ fontSize: 12, fontWeight: 700, opacity: .9, marginTop: 6 }}>Touche pour voir le détail</div>
+        </div>
+      )}
+      {nbRetoursVus > 0 && (
+        <div onClick={onMessagerie} style={{ background: "linear-gradient(145deg, #0A2A6B, #164a9e)", color: "#fff", borderRadius: 16, padding: "16px 18px", marginBottom: 16, cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.14)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 900, fontSize: 16, marginBottom: 6 }}>
+            <Check size={20} /> <span style={{ flex: 1 }}>La direction a pris connaissance de {nbRetoursVus > 1 ? "tes réponses" : "ta réponse"}</span>
+            <ChevronLeft size={18} style={{ transform: "rotate(180deg)" }} />
+          </div>
+          {mesRetoursVus.slice(0, 3).map((m) => (
+            <div key={m.id} style={{ fontSize: 14, fontWeight: 700, padding: "3px 0" }}>« {m.objet} » vu par {((m.vus || {})[maCle(m)] || {}).nom || "la direction"}</div>
+          ))}
+          <div style={{ fontSize: 12, fontWeight: 700, opacity: .9, marginTop: 6 }}>Touche pour ouvrir la messagerie</div>
         </div>
       )}
       {onRafraichir && (
