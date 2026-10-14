@@ -2980,30 +2980,29 @@ export default function App() {
 
   return (
     <div style={{ minHeight: "100vh", background: C.fond, color: C.encre, fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: 78 }}>
-      <style>{"@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}.fcHeadRow{display:flex;align-items:center;gap:13px}.fcTitle{font-weight:800;font-size:15.5px;letter-spacing:1.1px;line-height:1.12;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fcSub{font-size:9.5px;font-weight:700;letter-spacing:1.1px;line-height:1.3;margin-top:6px}.fcLogo{height:40px;width:auto;flex:0 0 auto}.fcBtn{background:rgba(255,255,255,0.12);border:none;color:#fff;border-radius:10px;padding:8px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;flex:0 0 auto}@media(max-width:520px){.fcHeadRow{gap:7px}.fcTitle{font-size:12.5px;letter-spacing:0.2px}.fcSub{font-size:8.6px;letter-spacing:0.3px}.fcLogo{height:30px}.fcBtn{padding:7px 7px;border-radius:9px}}@media(max-width:360px){.fcTitle{font-size:11.5px}.fcLogo{height:26px}.fcBtn{padding:6px 6px}}"}</style>
-      <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(14px + env(safe-area-inset-top)) 16px 12px", borderBottom: `2px solid ${C.jaune}` }}>
+      <style>{"@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}.fcHeadRow{display:flex;align-items:center;gap:13px}.fcBrand{min-width:0;flex:1;display:flex;flex-direction:column;justify-content:center}.fcTitle{font-weight:800;font-size:16px;letter-spacing:0.4px;line-height:1.08;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}.fcSub{font-size:9px;font-weight:600;letter-spacing:1.5px;line-height:1.3;margin-top:7px;margin-left:57px;color:rgba(255,255,255,0.52);text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fcVer{color:rgba(255,255,255,0.32);letter-spacing:0.8px}.fcLogo{height:44px;width:auto;flex:0 0 auto}.fcActions{display:flex;align-items:center;gap:6px;flex:0 0 auto}.fcBtn{background:rgba(255,255,255,0.09);border:none;color:#fff;border-radius:9px;padding:9px;cursor:pointer;display:flex;align-items:center;justify-content:center}.fcBtn:active{background:rgba(255,255,255,0.2)}@media(max-width:520px){.fcHeadRow{gap:10px}.fcTitle{font-size:13px;letter-spacing:0.2px}.fcSub{font-size:7.8px;letter-spacing:0.7px;margin-top:6px;margin-left:44px}.fcLogo{height:34px}.fcActions{gap:4px}.fcBtn{padding:7px}}@media(max-width:360px){.fcTitle{font-size:11.5px}.fcSub{font-size:7px;letter-spacing:0.4px;margin-left:40px}.fcLogo{height:30px}.fcBtn{padding:6px}}"}</style>
+      <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(14px + env(safe-area-inset-top)) 16px 13px", borderBottom: `2px solid ${C.jaune}` }}>
         <div style={{ maxWidth: 760, margin: "0 auto" }}>
           <div className="fcHeadRow">
-            <div style={{ width: 4, height: 28, borderRadius: 2, background: C.jaune, flex: "0 0 auto" }} />
-            <div style={{ minWidth: 0, flex: 1 }}>
+            <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" className="fcLogo" />
+            <div className="fcBrand">
               <div className="fcTitle">{CLUB_LONG}</div>
             </div>
-            <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" className="fcLogo" />
-            <button className="fcBtn" onClick={() => { if (majEnCours) return; setMajEnCours(true); Promise.resolve(rafraichirTout()).finally(() => setTimeout(() => setMajEnCours(false), 700)); }} title="Actualiser les données">
-              <RefreshCw size={16} style={{ animation: majEnCours ? "spin 0.6s linear infinite" : "none" }} />
-            </button>
-            {!demo && (
-              <button className="fcBtn" onClick={() => setShowMotDePasse(true)} title="Modifier mon mot de passe">
-                <Lock size={16} />
+            <div className="fcActions">
+              <button className="fcBtn" onClick={() => { if (majEnCours) return; setMajEnCours(true); Promise.resolve(rafraichirTout()).finally(() => setTimeout(() => setMajEnCours(false), 700)); }} title="Actualiser les données">
+                <RefreshCw size={16} style={{ animation: majEnCours ? "spin 0.6s linear infinite" : "none" }} />
               </button>
-            )}
-            <button className="fcBtn" onClick={deconnexion} title="Se déconnecter">
-              <LogOut size={16} />
-            </button>
+              {!demo && (
+                <button className="fcBtn" onClick={() => setShowMotDePasse(true)} title="Modifier mon mot de passe">
+                  <Lock size={16} />
+                </button>
+              )}
+              <button className="fcBtn" onClick={deconnexion} title="Se déconnecter">
+                <LogOut size={16} />
+              </button>
+            </div>
           </div>
-          <div className="fcSub" style={{ color: C.jaune }}>
-            ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v15.1
-          </div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v15.3</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
