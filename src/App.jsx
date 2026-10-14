@@ -2463,6 +2463,8 @@ export default function App() {
   const [reunionsErr, setReunionsErr] = useState(null);
   const [messagesClub, setMessagesClub] = useState(null);
   const [showMessagerie, setShowMessagerie] = useState(false);
+  const [msgVuLe, setMsgVuLe] = useState(() => { try { return +localStorage.getItem("fcsm-msg-vu") || 0; } catch (e) { return 0; } });
+  const ouvrirMessagerie = () => { setShowMessagerie(true); const t = Date.now(); setMsgVuLe(t); try { localStorage.setItem("fcsm-msg-vu", String(t)); } catch (e) {} };
   const [showMotDePasse, setShowMotDePasse] = useState(false);
   // Verrou administratif : un seul mot de passe à l'entrée, puis accès libre tant qu'il y a de l'activité ;
   // re-demandé après 2 minutes d'inactivité clavier.
@@ -2957,7 +2959,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v14.6
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v14.7
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3036,7 +3038,7 @@ export default function App() {
             Consultation seule sur cette catégorie. Tu peux tout voir, mais la modification est réservée à son responsable.
           </div>
         )}
-        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => demanderDeverrouillageAdmin(() => setShowDocs(true))} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onMessagerie={() => setShowMessagerie(true)} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
+        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => demanderDeverrouillageAdmin(() => setShowDocs(true))} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onMessagerie={ouvrirMessagerie} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} msgVuLe={msgVuLe} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} peutValider={peutValider} demo={demo} adminUnlock={adminUnlock} onDemanderDeverrouillage={demanderDeverrouillageAdmin} auteur={{ nom: monNom, role: monRole }} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} />}
@@ -3318,7 +3320,7 @@ function ScoresWeekend({ onClose, localDb }) {
 /* ============================================================
    Accueil
    ============================================================ */
-function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onInfirmerie, onMessagerie, msgListe, msgMe, peutMsgDir, onBilan, onPlateaux, onReunions, onCalendrier, demResume, demPlanning, onValiderPlanning, onRefuserPlanning, demNotifs, onConfirmerLecture, demAccuses, onEffacerAccuse, demTransport, onValiderTransport, onRefuserTransport, onRafraichir, estMedical, monEmail }) {
+function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onInfirmerie, onMessagerie, msgListe, msgMe, peutMsgDir, msgVuLe, onBilan, onPlateaux, onReunions, onCalendrier, demResume, demPlanning, onValiderPlanning, onRefuserPlanning, demNotifs, onConfirmerLecture, demAccuses, onEffacerAccuse, demTransport, onValiderTransport, onRefuserTransport, onRafraichir, estMedical, monEmail }) {
   const lstDemPlanning = demPlanning || [];
   const lstNotifs = demNotifs || [];
   const lstAccuses = demAccuses || [];
@@ -3379,6 +3381,20 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
     const nonRepondu = m.type === "dispo" && dests.some((d) => !((m.reponses || {})[cleEduc(d)]));
     return nonLu || nonRepondu;
   }).length : 0;
+  // Accusés nouveaux (lectures/réponses) reçus sur mes messages envoyés depuis ma dernière consultation.
+  let msgAccusesLus = 0, msgAccusesRep = 0;
+  if (peutMsg) {
+    msgEnvoyes.forEach((m) => {
+      const cles = new Set([...Object.keys(m.lectures || {}), ...Object.keys(m.reponses || {})]);
+      cles.forEach((k) => {
+        const tl = Date.parse(tsLecture((m.lectures || {})[k]) || "") || 0;
+        const r = (m.reponses || {})[k];
+        const tr = r ? (Date.parse(r.date || "") || 0) : 0;
+        if (Math.max(tl, tr) > (msgVuLe || 0)) { if (r) msgAccusesRep++; else msgAccusesLus++; }
+      });
+    });
+  }
+  const msgAccusesTotal = msgAccusesLus + msgAccusesRep;
   const alerteDemReponses = (demResume && demResume.reponses) || 0;
   const alerteSuivi = priseEnChargeMedicale(cat) !== "parents" ? enSuiviMedical : 0;
 
@@ -3434,6 +3450,17 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
             </div>
           )}
           <div style={{ fontSize: 12, fontWeight: 700, opacity: .9, marginTop: 6 }}>Touche pour ouvrir</div>
+        </div>
+      )}
+      {peutMsg && msgAccusesTotal > 0 && (
+        <div onClick={onMessagerie} style={{ background: "linear-gradient(145deg, #1F7A5A, #2E8B61)", color: "#fff", borderRadius: 16, padding: "16px 18px", marginBottom: 16, cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.14)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 900, fontSize: 16, marginBottom: 6 }}>
+            <Check size={20} /> <span style={{ flex: 1 }}>Accusés de ta messagerie</span>
+            <ChevronLeft size={18} style={{ transform: "rotate(180deg)" }} />
+          </div>
+          {msgAccusesLus > 0 && <div style={{ fontSize: 14, fontWeight: 700, padding: "3px 0" }}>{msgAccusesLus} nouvelle{msgAccusesLus > 1 ? "s" : ""} lecture{msgAccusesLus > 1 ? "s" : ""} confirmée{msgAccusesLus > 1 ? "s" : ""} par un éducateur</div>}
+          {msgAccusesRep > 0 && <div style={{ fontSize: 14, fontWeight: 700, padding: "3px 0", borderTop: msgAccusesLus > 0 ? "1px solid rgba(255,255,255,0.25)" : "none" }}>{msgAccusesRep} nouvelle{msgAccusesRep > 1 ? "s" : ""} réponse{msgAccusesRep > 1 ? "s" : ""} de disponibilité</div>}
+          <div style={{ fontSize: 12, fontWeight: 700, opacity: .9, marginTop: 6 }}>Touche pour voir le détail</div>
         </div>
       )}
       {onRafraichir && (
@@ -10998,6 +11025,7 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onClose
       </header>
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+       <div style={{ maxWidth: 760, margin: "0 auto", width: "100%" }}>
         {peutValider && (
           <>
             <Btn variant="accent" full style={{ marginBottom: 12 }} onClick={() => (compose ? fermerCompose() : ouvrirCompose())}><Plus size={16} /> Nouveau message aux éducateurs</Btn>
@@ -11208,6 +11236,7 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onClose
             </div>
           )
         )}
+       </div>
       </div>
     </div>
   );
