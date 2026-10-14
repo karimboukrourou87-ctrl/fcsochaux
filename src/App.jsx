@@ -2926,7 +2926,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v13.9
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v14.0
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -5383,10 +5383,15 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true }) {
       </>)}
 
       <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13, margin: "8px 0" }}>Parents / responsable</div>
-      <Field label="Nom du responsable"><Inp value={f.parentNom} onChange={(e) => set("parentNom", e.target.value)} /></Field>
+      {!adminModifiable && (
+        <div style={{ fontSize: 12, color: "#B87A2B", fontWeight: 700, background: "#FBEAD9", borderRadius: 9, padding: "8px 11px", marginBottom: 8, lineHeight: 1.45 }}>
+          Coordonnées du responsable en lecture seule. Elles sont gérées par la direction et les responsables.
+        </div>
+      )}
+      <Field label="Nom du responsable"><Inp value={f.parentNom} disabled={!adminModifiable} onChange={(e) => set("parentNom", e.target.value)} /></Field>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <Field label="Téléphone"><Inp value={f.parentTel} onChange={(e) => set("parentTel", e.target.value)} /></Field>
-        <Field label="Email"><Inp type="email" value={f.parentEmail} onChange={(e) => set("parentEmail", e.target.value)} /></Field>
+        <Field label="Téléphone"><Inp value={f.parentTel} disabled={!adminModifiable} onChange={(e) => set("parentTel", e.target.value)} /></Field>
+        <Field label="Email"><Inp type="email" value={f.parentEmail} disabled={!adminModifiable} onChange={(e) => set("parentEmail", e.target.value)} /></Field>
       </div>
     </Modal>
   );
