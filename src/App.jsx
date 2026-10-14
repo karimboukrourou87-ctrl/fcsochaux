@@ -2463,6 +2463,7 @@ export default function App() {
   const [reunionsErr, setReunionsErr] = useState(null);
   const [messagesClub, setMessagesClub] = useState(null);
   const [showMessagerie, setShowMessagerie] = useState(false);
+  const [showMotDePasse, setShowMotDePasse] = useState(false);
   const [demResume, setDemResume] = useState({ recues: 0, envoyees: 0, reponses: 0 });
   const [demTick, setDemTick] = useState(0);
   const [saveStatus, setSaveStatus] = useState(null);
@@ -2899,6 +2900,17 @@ export default function App() {
     notifTransport(dem, "refus", cause || "");
   };
   const rafraichirTout = () => { if (rafraichirPlanning) rafraichirPlanning(); if (rafraichirTransport) rafraichirTransport(); loadMessagesClub().then((m) => setMessagesClub(m)).catch(() => {}); rafraichirDb(); };
+  // Vérifie le mot de passe du compte connecté (sans le stocker) pour déverrouiller la modification des informations administratives.
+  async function verifierMotDePasse(pwd) {
+    if (demo) return true;
+    try {
+      const sb = await getSupabase();
+      const email = session && session.user && session.user.email;
+      if (!email || !pwd) return false;
+      const { error } = await sb.auth.signInWithPassword({ email, password: pwd });
+      return !error;
+    } catch (e) { return false; }
+  }
   const estMedical = !demo && !!(profil && profil.role === "medical");
   const lectureSeuleCat = !demo && !!(profil && Array.isArray(profil.catsModif) && cat && !profil.catsModif.includes(cat));
   const groupesDispo = GROUPES.filter((g) => CATEGORIES.some((c) => c.groupe === g && cats.includes(c.id)));
@@ -2926,10 +2938,15 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v14.2
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v14.4
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
+            {!demo && (
+              <button onClick={() => setShowMotDePasse(true)} title="Modifier mon mot de passe" style={{ background: "rgba(255,255,255,0.12)", border: "none", color: "#fff", borderRadius: 10, padding: "8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700 }}>
+                <Lock size={16} />
+              </button>
+            )}
             <button onClick={deconnexion} title="Se déconnecter" style={{ background: "rgba(255,255,255,0.12)", border: "none", color: "#fff", borderRadius: 10, padding: "8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700 }}>
               <LogOut size={16} />
             </button>
@@ -3001,7 +3018,7 @@ export default function App() {
           </div>
         )}
         {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onMessagerie={() => setShowMessagerie(true)} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
-        {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} peutValider={peutValider} demo={demo} />}
+        {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} peutValider={peutValider} demo={demo} verifierMotDePasse={verifierMotDePasse} auteur={{ nom: monNom, role: monRole }} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} />}
         {tab === "entrainements" && <Entrainements players={players} cat={cat} db={db} mutate={mutate} estMedical={estMedical} onSignalerBlessure={signalerBlessure} initialSous={entSous} onConsumeSous={() => setEntSous(null)} />}
@@ -3064,12 +3081,13 @@ export default function App() {
       {showPlanningHebdo && <PlanningHebdo onClose={() => setShowPlanningHebdo(false)} />}
       {showAcces && <AccesSecteurs db={{ acces: accesSource }} mutate={mutateReu} estAdmin={estAdmin} onClose={() => setShowAcces(false)} />}
       {showProgramme && <ProgrammeSemaine db={db} onClose={() => setShowProgramme(false)} />}
-      {showDocs && <DocumentsAdmin players={players} cat={cat} db={db} mutate={mutate} lectureSeule={lectureSeuleCat} demo={demo} onClose={() => setShowDocs(false)} />}
+      {showDocs && <DocumentsAdmin players={players} cat={cat} db={db} mutate={mutate} lectureSeule={lectureSeuleCat} demo={demo} verifierMotDePasse={verifierMotDePasse} auteur={{ nom: monNom, role: monRole }} onClose={() => setShowDocs(false)} />}
       {showSuivi && <SuiviMedical db={db} mutate={mutate} cat={cat} estMedical={estMedical} onSignalerBlessure={signalerBlessure} onClose={() => setShowSuivi(false)} />}
       {showBilan && <BilanEquipe db={db} players={players} cat={cat} onClose={() => setShowBilan(false)} onTournois={() => setShowTournois(true)} />}
       {showTournois && <Tournois db={db} mutate={mutate} cat={cat} onClose={() => setShowTournois(false)} />}
       {showReunions && <Reunions db={{ reunions: reunionsSource, acces: accesSource, encadrement: encadrementClub }} majEncadrement={majEncadrementClub} mutate={mutateReu} erreur={demo ? null : reunionsErr} onClose={() => setShowReunions(false)} />}
       {showMessagerie && <Messagerie liste={messagesSource} maj={mutateMessages} me={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutValider={peutValider} mesCats={cats} encadrement={encadrementClub} onClose={() => setShowMessagerie(false)} />}
+      {showMotDePasse && <ChangerMotDePasse email={(session && session.user && session.user.email) || ""} onClose={() => setShowMotDePasse(false)} />}
       {showCalendrier && <Calendrier db={{ ...db, reunions: reunionsSource, encadrement: encadrementClub }} majEncadrement={majEncadrementClub} mutate={mutate} mutateReunions={mutateReu} peutValider={peutValider} onClose={() => setShowCalendrier(false)} />}
     </div>
   );
@@ -3692,9 +3710,6 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
           );
         })}
       </div>
-      <div style={{ fontSize: 10.5, color: C.gris, textAlign: "center", marginTop: 18, lineHeight: 1.5, opacity: 0.8 }}>
-        Diagnostic messagerie : {(msgListe || []).length} message(s) chargé(s) · reçus pour moi : {msgRecus.length} · mes catégories : {(mesCatsAcc && mesCatsAcc.length ? mesCatsAcc.join(", ") : "aucune")}
-      </div>
     </div>
   );
 }
@@ -4131,7 +4146,7 @@ function choisirResponsablesMat(players, db, cat, cfg, w) {
   return [tri[0] || null, tri[1] || null];
 }
 
-function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider, demo }) {
+function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider, demo, verifierMotDePasse, auteur }) {
   const [q, setQ] = useState("");
   const [edit, setEdit] = useState(null);
   const [fiche, setFiche] = useState(null);
@@ -4351,7 +4366,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
         <Btn variant="ghost" full style={{ marginTop: 16 }} onClick={() => setCloture(true)}><CalendarDays size={16} /> Clôturer la saison {saisonCourante()}</Btn>
       )}
 
-      {edit && <EditJoueur joueur={edit} cat={cat} adminModifiable={!!(demo || peutValider)} onClose={() => setEdit(null)} onSave={(j) => {
+      {edit && <EditJoueur joueur={edit} cat={cat} adminModifiable={!!(demo || peutValider)} verifierMotDePasse={verifierMotDePasse} auteur={auteur} onClose={() => setEdit(null)} onSave={(j) => {
         mutate((d) => {
           if (j.id) { const i = d.players.findIndex((x) => x.id === j.id); d.players[i] = j; }
           else d.players.push({ ...j, id: uid() });
@@ -4857,6 +4872,11 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
                 <Pastille bg={lm.bg} color={lm.couleur}>{lm.label}</Pastille>
               </div>
             ); })()}
+            {p.adminMajPar && p.adminMajPar.nom && (
+              <div style={{ fontSize: 11.5, color: C.gris, padding: "6px 0 0", borderTop: `1px solid ${C.grisClair}`, marginTop: 4, lineHeight: 1.45 }}>
+                Dernière modification administrative par <strong style={{ color: C.encre }}>{p.adminMajPar.nom}</strong>{p.adminMajPar.role ? ` (${p.adminMajPar.role})` : ""}{p.adminMajPar.date ? ` le ${new Date(p.adminMajPar.date).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}` : ""}
+              </div>
+            )}
           </Card>
         );
       })()}
@@ -5285,7 +5305,7 @@ function EditTest({ joueur, test, educateurs = [], onClose, onSave, onDelete, on
   );
 }
 
-function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true }) {
+function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, verifierMotDePasse, auteur }) {
   const [f, setF] = useState({
     prenom: "", nom: "", dob: "", taille: "", poids: "", poste: "", pied: "Droit",
     numero: "", licence: "", club: "FCSM", photo: "", jonglages: { fort: "", faible: "", tete: "" },
@@ -5294,9 +5314,23 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true }) {
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
   const setJo = (k, v) => setF((o) => ({ ...o, jonglages: { ...(o.jonglages || {}), [k]: v } }));
   const fileRef = useRef(null);
-  // Identité (nom, prénom, date de naissance) figée pour les coachs sur un joueur existant,
-  // mais saisissable à la création d'un nouveau joueur (le nom est obligatoire).
-  const identiteFigee = !adminModifiable && !!joueur.id;
+  // Déverrouillage des informations administratives par mot de passe (direction / responsables).
+  const [adminDeverrouille, setAdminDeverrouille] = useState(false);
+  const [pwd, setPwd] = useState("");
+  const [pwdErr, setPwdErr] = useState("");
+  const [verifEnCours, setVerifEnCours] = useState(false);
+  const peutEditerAdmin = adminModifiable && adminDeverrouille; // droit ET déverrouillé
+  const adminVerrouille = !peutEditerAdmin;                      // champs admin non modifiables
+  async function deverrouiller() {
+    if (!pwd) return;
+    setVerifEnCours(true); setPwdErr("");
+    const ok = verifierMotDePasse ? await verifierMotDePasse(pwd) : false;
+    setVerifEnCours(false);
+    if (ok) { setAdminDeverrouille(true); setPwd(""); } else setPwdErr("Mot de passe incorrect.");
+  }
+  // Détection d'un changement sur une information administrative (pour inscrire l'auteur).
+  const CHAMPS_ADMIN = ["prenom", "nom", "dob", "licence", "licenceStatut", "mutation", "mutationDate", "medicalStatut", "medicalSaison", "club", "parentNom", "parentTel", "parentEmail"];
+  const adminAChange = () => CHAMPS_ADMIN.some((k) => (f[k] || "") !== ((joueur && joueur[k]) || ""));
 
   function choisirPhoto(e) {
     const file = e.target.files && e.target.files[0];
@@ -5306,7 +5340,11 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true }) {
 
   return (
     <Modal title={joueur.id ? "Modifier le joueur" : "Nouveau joueur"} onClose={onClose}
-      footer={<Btn variant="accent" full disabled={!f.prenom || !f.nom} onClick={() => onSave({ ...f, taille: f.taille ? +f.taille : "", poids: f.poids ? +f.poids : "", numero: f.numero !== "" ? +f.numero : "" })}><Save size={16} /> Enregistrer</Btn>}>
+      footer={<Btn variant="accent" full disabled={!f.prenom || !f.nom} onClick={() => {
+        const base = { ...f, taille: f.taille ? +f.taille : "", poids: f.poids ? +f.poids : "", numero: f.numero !== "" ? +f.numero : "" };
+        if (peutEditerAdmin && adminAChange()) base.adminMajPar = { nom: (auteur && auteur.nom) || "", role: (auteur && auteur.role) || "", date: new Date().toISOString() };
+        onSave(base);
+      }}><Save size={16} /> Enregistrer</Btn>}>
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
         <div onClick={() => fileRef.current && fileRef.current.click()} style={{ cursor: "pointer", position: "relative" }}>
           <PhotoFiche p={f} w={70} h={88} />
@@ -5318,16 +5356,30 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true }) {
         <input ref={fileRef} type="file" accept="image/*" onChange={choisirPhoto} style={{ display: "none" }} />
       </div>
 
-      {identiteFigee && (
-        <div style={{ fontSize: 12, color: "#B87A2B", fontWeight: 700, background: "#FBEAD9", borderRadius: 9, padding: "8px 11px", marginBottom: 8, lineHeight: 1.45 }}>
-          Nom, prénom et date de naissance en lecture seule. Ils sont gérés par la direction et les responsables.
+      {!adminModifiable && (
+        <div style={{ fontSize: 12, color: "#B87A2B", fontWeight: 700, background: "#FBEAD9", borderRadius: 9, padding: "8px 11px", marginBottom: 10, lineHeight: 1.45 }}>
+          Les informations administratives (identité, licence, médical, responsable) sont en lecture seule. Elles sont gérées par la direction et les responsables.
         </div>
       )}
+      {adminModifiable && !adminDeverrouille && (
+        <div style={{ background: "#FFF3DA", border: "1px solid #EBD3AE", borderRadius: 10, padding: "11px 12px", marginBottom: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, fontWeight: 800, color: "#B87A2B", fontSize: 13, marginBottom: 6 }}><Lock size={15} /> Informations administratives verrouillées</div>
+          <div style={{ fontSize: 12, color: C.gris, marginBottom: 8, lineHeight: 1.45 }}>Entre ton mot de passe pour modifier l'identité, la licence, le médical et les coordonnées du responsable.</div>
+          <div style={{ display: "flex", gap: 7 }}>
+            <Inp type="password" value={pwd} placeholder="Mot de passe" onChange={(e) => { setPwd(e.target.value); setPwdErr(""); }} onKeyDown={(e) => { if (e.key === "Enter") deverrouiller(); }} style={{ flex: 1 }} />
+            <Btn variant="accent" size="sm" disabled={!pwd || verifEnCours} onClick={deverrouiller}>{verifEnCours ? "..." : "Déverrouiller"}</Btn>
+          </div>
+          {pwdErr && <div style={{ fontSize: 12, color: C.rouge, fontWeight: 700, marginTop: 6 }}>{pwdErr}</div>}
+        </div>
+      )}
+      {adminModifiable && adminDeverrouille && (
+        <div style={{ fontSize: 12, color: C.vert, fontWeight: 700, background: "#E2F4E9", borderRadius: 9, padding: "8px 11px", marginBottom: 10, display: "inline-flex", alignItems: "center", gap: 6 }}><Check size={14} /> Informations administratives déverrouillées</div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <Field label="Prénom"><Inp value={f.prenom} disabled={identiteFigee} onChange={(e) => set("prenom", e.target.value)} /></Field>
-        <Field label="Nom"><Inp value={f.nom} disabled={identiteFigee} onChange={(e) => set("nom", e.target.value)} /></Field>
+        <Field label="Prénom"><Inp value={f.prenom} disabled={adminVerrouille} onChange={(e) => set("prenom", e.target.value)} /></Field>
+        <Field label="Nom"><Inp value={f.nom} disabled={adminVerrouille} onChange={(e) => set("nom", e.target.value)} /></Field>
       </div>
-      <Field label="Date de naissance"><Inp type="date" value={f.dob} disabled={identiteFigee} onChange={(e) => set("dob", e.target.value)} /></Field>
+      <Field label="Date de naissance"><Inp type="date" value={f.dob} disabled={adminVerrouille} onChange={(e) => set("dob", e.target.value)} /></Field>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <Field label="Taille (cm)"><Inp type="number" inputMode="numeric" value={f.taille} onChange={(e) => set("taille", e.target.value)} /></Field>
         <Field label="Poids (kg)"><Inp type="number" inputMode="numeric" value={f.poids} onChange={(e) => set("poids", e.target.value)} /></Field>
@@ -5346,15 +5398,10 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true }) {
         </Field>
         <Field label={`Numéro (1 à ${maxNumero(f.cat)})`}><Inp type="number" inputMode="numeric" min={1} max={maxNumero(f.cat)} value={f.numero} onChange={(e) => set("numero", e.target.value)} /></Field>
       </div>
-      {!adminModifiable && (
-        <div style={{ fontSize: 12, color: "#B87A2B", fontWeight: 700, background: "#FBEAD9", borderRadius: 9, padding: "8px 11px", margin: "4px 0 8px", lineHeight: 1.45 }}>
-          Informations administratives en lecture seule. Elles sont gérées par la direction et les responsables.
-        </div>
-      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <Field label="Numéro de licence"><Inp value={f.licence} disabled={!adminModifiable} onChange={(e) => set("licence", e.target.value)} /></Field>
+        <Field label="Numéro de licence"><Inp value={f.licence} disabled={adminVerrouille} onChange={(e) => set("licence", e.target.value)} /></Field>
         <Field label="Statut de la licence">
-          <Sel value={f.licenceStatut || ""} disabled={!adminModifiable} onChange={(e) => set("licenceStatut", e.target.value)}>
+          <Sel value={f.licenceStatut || ""} disabled={adminVerrouille} onChange={(e) => set("licenceStatut", e.target.value)}>
             <option value="">Non renseignée</option>
             <option>Valide</option>
             <option>En cours</option>
@@ -5362,23 +5409,23 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true }) {
           </Sel>
         </Field>
         <Field label="Type de licence">
-          <Sel value={f.mutation && f.mutation !== "club" ? "mutation" : ""} disabled={!adminModifiable} onChange={(e) => set("mutation", e.target.value)}>
+          <Sel value={f.mutation && f.mutation !== "club" ? "mutation" : ""} disabled={adminVerrouille} onChange={(e) => set("mutation", e.target.value)}>
             <option value="">Licence club (même club)</option>
             <option value="mutation">Mutation (vient d'un autre club)</option>
           </Sel>
         </Field>
         <Field label="Date de validation de la licence">
-          <Inp type="date" value={f.mutationDate || ""} disabled={!adminModifiable} onChange={(e) => set("mutationDate", e.target.value)} />
+          <Inp type="date" value={f.mutationDate || ""} disabled={adminVerrouille} onChange={(e) => set("mutationDate", e.target.value)} />
           {f.mutation && f.mutation !== "club" ? (() => { const lm = libelleMutation(f); return <div style={{ fontSize: 12, color: lm.couleur, fontWeight: 700, marginTop: 5 }}>{f.mutationDate ? `Classé : ${lm.label.toLowerCase()}` : "Renseigne la date pour classer la mutation"}</div>; })() : null}
         </Field>
         <Field label="Contrôle médical de la saison">
-          <Sel value={f.medicalSaison === saisonCourante() ? (f.medicalStatut || "") : ""} disabled={!adminModifiable} onChange={(e) => { const v = e.target.value; set("medicalStatut", v); set("medicalSaison", v ? saisonCourante() : ""); }}>
+          <Sel value={f.medicalSaison === saisonCourante() ? (f.medicalStatut || "") : ""} disabled={adminVerrouille} onChange={(e) => { const v = e.target.value; set("medicalStatut", v); set("medicalSaison", v ? saisonCourante() : ""); }}>
             <option value="">À faire</option>
             <option value="questionnaire">Questionnaire de santé fait (dispensé de certificat)</option>
             <option value="certificat">Certificat médical fourni</option>
           </Sel>
         </Field>
-        <Field label="Club"><Inp value={f.club} disabled={!adminModifiable} onChange={(e) => set("club", e.target.value)} /></Field>
+        <Field label="Club"><Inp value={f.club} disabled={adminVerrouille} onChange={(e) => set("club", e.target.value)} /></Field>
       </div>
 
       {jonglagesActifs(f.cat) && (<>
@@ -5391,15 +5438,10 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true }) {
       </>)}
 
       <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13, margin: "8px 0" }}>Parents / responsable</div>
-      {!adminModifiable && (
-        <div style={{ fontSize: 12, color: "#B87A2B", fontWeight: 700, background: "#FBEAD9", borderRadius: 9, padding: "8px 11px", marginBottom: 8, lineHeight: 1.45 }}>
-          Coordonnées du responsable en lecture seule. Elles sont gérées par la direction et les responsables.
-        </div>
-      )}
-      <Field label="Nom du responsable"><Inp value={f.parentNom} disabled={!adminModifiable} onChange={(e) => set("parentNom", e.target.value)} /></Field>
+      <Field label="Nom du responsable"><Inp value={f.parentNom} disabled={adminVerrouille} onChange={(e) => set("parentNom", e.target.value)} /></Field>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <Field label="Téléphone"><Inp value={f.parentTel} disabled={!adminModifiable} onChange={(e) => set("parentTel", e.target.value)} /></Field>
-        <Field label="Email"><Inp type="email" value={f.parentEmail} disabled={!adminModifiable} onChange={(e) => set("parentEmail", e.target.value)} /></Field>
+        <Field label="Téléphone"><Inp value={f.parentTel} disabled={adminVerrouille} onChange={(e) => set("parentTel", e.target.value)} /></Field>
+        <Field label="Email"><Inp type="email" value={f.parentEmail} disabled={adminVerrouille} onChange={(e) => set("parentEmail", e.target.value)} /></Field>
       </div>
     </Modal>
   );
@@ -10794,6 +10836,49 @@ function PlanningHebdo({ onClose }) {
   );
 }
 
+/* Changement du mot de passe personnel du compte connecté. */
+function ChangerMotDePasse({ email, onClose }) {
+  const [ancien, setAncien] = useState("");
+  const [nouveau, setNouveau] = useState("");
+  const [confirme, setConfirme] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState(false);
+  async function enregistrer() {
+    setErr("");
+    if ((nouveau || "").length < 6) { setErr("Le nouveau mot de passe doit faire au moins 6 caractères."); return; }
+    if (nouveau !== confirme) { setErr("Les deux nouveaux mots de passe ne correspondent pas."); return; }
+    setBusy(true);
+    try {
+      const sb = await getSupabase();
+      const { error: e1 } = await sb.auth.signInWithPassword({ email, password: ancien });
+      if (e1) { setBusy(false); setErr("Mot de passe actuel incorrect."); return; }
+      const { error: e2 } = await sb.auth.updateUser({ password: nouveau });
+      setBusy(false);
+      if (e2) { setErr(e2.message || "Impossible de modifier le mot de passe."); return; }
+      setOk(true);
+    } catch (e) { setBusy(false); setErr("Une erreur est survenue. Réessaie."); }
+  }
+  return (
+    <Modal title="Modifier mon mot de passe" onClose={onClose}
+      footer={ok
+        ? <Btn variant="accent" full onClick={onClose}>Fermer</Btn>
+        : <Btn variant="accent" full disabled={!ancien || !nouveau || !confirme || busy} onClick={enregistrer}><Save size={16} /> {busy ? "..." : "Enregistrer"}</Btn>}>
+      {ok ? (
+        <div style={{ background: "#E2F4E9", color: C.vert, borderRadius: 10, padding: "12px 14px", fontWeight: 700, fontSize: 13.5, lineHeight: 1.5 }}>Mot de passe modifié. Utilise le nouveau mot de passe lors de ta prochaine connexion.</div>
+      ) : (
+        <>
+          <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Compte : <strong style={{ color: C.encre }}>{email}</strong>. Choisis un mot de passe personnel que toi seul connais.</div>
+          <Field label="Mot de passe actuel"><Inp type="password" value={ancien} onChange={(e) => { setAncien(e.target.value); setErr(""); }} /></Field>
+          <Field label="Nouveau mot de passe (6 caractères minimum)"><Inp type="password" value={nouveau} onChange={(e) => { setNouveau(e.target.value); setErr(""); }} /></Field>
+          <Field label="Confirmer le nouveau mot de passe"><Inp type="password" value={confirme} onChange={(e) => { setConfirme(e.target.value); setErr(""); }} /></Field>
+          {err && <div style={{ fontSize: 12.5, color: C.rouge, fontWeight: 700, marginTop: 4 }}>{err}</div>}
+        </>
+      )}
+    </Modal>
+  );
+}
+
 /* Messagerie interne : la direction / les responsables adressent un message (ou une demande de disponibilité)
    aux éducateurs. Chaque éducateur confirme la lecture (« J'ai lu ») et, pour une demande de disponibilité,
    accepte ou refuse en indiquant la raison. La direction suit les accusés de lecture et les réponses. */
@@ -11098,7 +11183,7 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onClose
   );
 }
 
-function DocumentsAdmin({ players, cat, db, mutate, lectureSeule, demo, onClose }) {
+function DocumentsAdmin({ players, cat, db, mutate, lectureSeule, demo, verifierMotDePasse, auteur, onClose }) {
   const [edit, setEdit] = useState(null);
   const lignes = players.map((p) => {
     const sc = statutMedical(p);
@@ -11189,7 +11274,7 @@ function DocumentsAdmin({ players, cat, db, mutate, lectureSeule, demo, onClose 
 
       {edit && (
         <div style={{ position: "relative", zIndex: 80 }}>
-          <EditJoueur joueur={edit} cat={cat} onClose={() => setEdit(null)} onSave={(j) => {
+          <EditJoueur joueur={edit} cat={cat} adminModifiable={!!(demo || !lectureSeule)} verifierMotDePasse={verifierMotDePasse} auteur={auteur} onClose={() => setEdit(null)} onSave={(j) => {
             mutate((d) => { if (j.id) { const i = d.players.findIndex((x) => x.id === j.id); if (i >= 0) d.players[i] = j; } return d; });
             setEdit(null);
           }} />
