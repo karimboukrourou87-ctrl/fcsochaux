@@ -2959,7 +2959,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v14.7
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v14.8
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3387,6 +3387,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
     msgEnvoyes.forEach((m) => {
       const cles = new Set([...Object.keys(m.lectures || {}), ...Object.keys(m.reponses || {})]);
       cles.forEach((k) => {
+        if ((m.vus || {})[k]) return; // déjà clôturé par « J'ai vu »
         const tl = Date.parse(tsLecture((m.lectures || {})[k]) || "") || 0;
         const r = (m.reponses || {})[k];
         const tr = r ? (Date.parse(r.date || "") || 0) : 0;
@@ -11012,6 +11013,10 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onClose
     setRepEnCours(null);
   }
   function supprimer(id) { maj((list) => (list || []).filter((x) => x.id !== id)); }
+  // La direction accuse la réponse/lecture d'un éducateur (« J'ai vu »), pour clôturer l'échange côté éducateur.
+  function marquerVu(m, k) {
+    maj((list) => (list || []).map((x) => x.id === m.id ? { ...x, vus: { ...(x.vus || {}), [k]: { nom: me.nom || "", at: nowISO() } } } : x));
+  }
 
   const Onglet = ({ v, children }) => (
     <button onClick={() => setVue(v)} style={{ flex: 1, padding: "10px 0", borderRadius: 11, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 13.5, background: vue === v ? C.bleu : "#fff", color: vue === v ? "#fff" : C.gris, boxShadow: "0 1px 3px rgba(10,42,107,0.06)" }}>{children}</button>
@@ -11150,6 +11155,7 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onClose
                       </div>
                     )}
                     <div style={{ fontSize: 13, color: C.encre, lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 8 }}>{m.texte}</div>
+                    {(() => { const vus = m.vus || {}; const boutonVu = (k) => { const aLu = lectures[k] || reponses[k]; if (!aLu) return null; return vus[k] ? <span style={{ color: C.bleu, fontWeight: 700, fontSize: 11.5, display: "inline-flex", alignItems: "center", gap: 3, flex: "0 0 auto" }}><Check size={13} /> Vu</span> : <button onClick={() => marquerVu(m, k)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, borderRadius: 7, padding: "3px 8px", fontSize: 11.5, fontWeight: 800, cursor: "pointer", flex: "0 0 auto" }}>J'ai vu</button>; }; return (
                     <div style={{ display: "grid", gap: 5, borderTop: `1px solid ${C.grisClair}`, paddingTop: 8 }}>
                       {dests.map((d) => {
                         const k = cleEduc(d); const lu = lectures[k]; const rep = reponses[k];
@@ -11158,6 +11164,7 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onClose
                             <span style={{ flex: 1, minWidth: 0, color: C.encre, fontWeight: 600 }}>{d.nom}</span>
                             {m.type === "dispo" && rep ? statutRep(k) : null}
                             {lu ? <span style={{ color: C.vert, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 3 }}><Check size={14} /> Lu</span> : <span style={{ color: C.gris }}>Non lu</span>}
+                            {boutonVu(k)}
                           </div>
                         );
                       })}
@@ -11169,6 +11176,7 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onClose
                               <span style={{ flex: 1, minWidth: 0, color: C.encre, fontWeight: 600 }}>{nomDe(k)}</span>
                               {m.type === "dispo" ? statutRep(k) : null}
                               <span style={{ color: C.vert, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 3 }}><Check size={14} /> Lu</span>
+                              {boutonVu(k)}
                             </div>
                           ))}
                         </>
@@ -11180,6 +11188,7 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onClose
                         </div>
                       )}
                     </div>
+                    ); })()}
                   </Card>
                 );
               })}
@@ -11230,6 +11239,11 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onClose
                         <Btn variant="accent" full size="sm" onClick={() => marquerLu(m)}><Check size={15} /> J'ai lu ce message</Btn>
                       )
                     )}
+                    {(() => { const vu = (m.vus || {})[k]; return vu ? (
+                      <div style={{ marginTop: 10, background: "#E7EEF6", color: C.bleu, borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                        <Check size={15} /> La direction a bien pris connaissance de ta {m.type === "dispo" ? "réponse" : "lecture"} le {fmt(tsLecture(vu))}.
+                      </div>
+                    ) : null; })()}
                   </Card>
                 );
               })}
