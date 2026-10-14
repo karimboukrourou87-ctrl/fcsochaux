@@ -2926,7 +2926,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v13.7
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v13.9
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3001,7 +3001,7 @@ export default function App() {
           </div>
         )}
         {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onMessagerie={() => setShowMessagerie(true)} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
-        {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} demo={demo} />}
+        {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} peutValider={peutValider} demo={demo} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} />}
         {tab === "entrainements" && <Entrainements players={players} cat={cat} db={db} mutate={mutate} estMedical={estMedical} onSignalerBlessure={signalerBlessure} initialSous={entSous} onConsumeSous={() => setEntSous(null)} />}
@@ -3319,7 +3319,8 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
   const peutMsg = !!peutMsgDir;
   // Un message me concerne s'il vise une de mes catégories, ou s'il m'a nommé directement (ou par email).
   const mesCatsAcc = (msgMe && msgMe.cats) || [];
-  const destPourMoi = (m) => ((m.categories || []).some((c) => mesCatsAcc.includes(c)) || (m.destinataires || []).some((d) => memeEduc(d, msgMe || {})));
+  // On ne s'alerte pas soi-même pour un message qu'on a envoyé.
+  const destPourMoi = (m) => !memeEduc({ nom: m.de, email: m.deEmail }, msgMe || {}) && ((m.categories || []).some((c) => mesCatsAcc.includes(c)) || (m.destinataires || []).some((d) => memeEduc(d, msgMe || {})));
   const maCle = (m) => { const d = (m.destinataires || []).find((x) => memeEduc(x, msgMe || {})); return d ? cleEduc(d) : cleEduc(msgMe || {}); };
   const msgRecus = (msgListe || []).filter(destPourMoi);
   const msgNonLusList = msgRecus.filter((m) => !((m.lectures || {})[maCle(m)]));
@@ -3346,7 +3347,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
     { titre: "Demande de transport", sous: "Minibus, bus en location ou voitures, à l'avance", icon: Bus, action: onTransport, badge: lstDemTransport.length },
     { titre: "Organisation des matchs", sous: "Terrain, vestiaires, transport et encadrement", icon: MapPin, action: onOrganisation, badge: nbOrga },
     { titre: "Programme de la semaine", sous: "Récapitulatif des matchs à imprimer", icon: ClipboardList, action: onProgramme },
-    { titre: "Documents administratifs", sous: "Licences et contrôle médical à surveiller", icon: ShieldAlert, action: onDocuments, badge: alerteDocs },
+    { titre: "Documents administratifs", sous: "Licences et contrôle médical à surveiller", icon: ShieldAlert, action: peutMsg ? onDocuments : null, badge: peutMsg ? alerteDocs : 0 },
     { titre: "Suivi médical", sous: "Blessés suivis par l'équipe médicale (U17 aux pros)", icon: Activity, action: (estMedical || priseEnChargeMedicale(cat) !== "parents") ? onSuivi : null, badge: (estMedical || priseEnChargeMedicale(cat) !== "parents") ? enSuiviMedical : 0 },
     { titre: "Bilan de saison de l'équipe", sous: "Résultats, buteurs et passeurs de la saison", icon: Trophy, action: onBilan },
     { titre: "Messagerie du club", sous: "Adresser un message important aux éducateurs", icon: Bell, action: peutMsg ? onMessagerie : null, badge: msgASuivre },
@@ -3600,7 +3601,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
         </div>
       )}
 
-      {(alerteDemRecues > 0 || alerteDemEnvoyees > 0 || alerteReunions > 0 || alerteDocs > 0 || alerteMutation > 0 || suspendus > 0 || aRisqueSusp > 0 || alerteSuivi > 0 || blesses > 0) && (
+      {(alerteDemRecues > 0 || alerteDemEnvoyees > 0 || alerteReunions > 0 || (peutMsg && alerteDocs > 0) || (peutMsg && alerteMutation > 0) || suspendus > 0 || aRisqueSusp > 0 || alerteSuivi > 0 || blesses > 0) && (
         <div style={{ background: "#FFF3DA", border: "1px solid #EBD3AE", borderRadius: 14, padding: "12px 14px", marginBottom: 18 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: "#B87A2B", fontSize: 13.5, marginBottom: 6 }}><Bell size={16} /> À ne pas oublier</div>
           {alerteDemRecues > 0 && (
@@ -3621,13 +3622,13 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
               <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
             </div>
           )}
-          {alerteDocs > 0 && (
+          {peutMsg && alerteDocs > 0 && (
             <div onClick={onDocuments} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: alerteReunions > 0 ? "1px solid #EBD3AE" : "none" }}>
               <ShieldAlert size={15} color={C.rouge} /> <span style={{ flex: 1 }}>{alerteDocs} joueur{alerteDocs > 1 ? "s" : ""} à régulariser (licence ou contrôle médical)</span>
               <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
             </div>
           )}
-          {alerteMutation > 0 && (
+          {peutMsg && alerteMutation > 0 && (
             <div onClick={onDocuments} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0", fontSize: 13.5, color: C.encre, borderTop: (alerteReunions > 0 || alerteDocs > 0) ? "1px solid #EBD3AE" : "none" }}>
               <ArrowRightLeft size={15} color={C.rouge} /> <span style={{ flex: 1 }}>{alerteMutation} mutation{alerteMutation > 1 ? "s" : ""} hors période au-delà de la limite ({limMutHors})</span>
               <ChevronLeft size={15} color={C.gris} style={{ transform: "rotate(180deg)" }} />
@@ -4130,7 +4131,7 @@ function choisirResponsablesMat(players, db, cat, cfg, w) {
   return [tri[0] || null, tri[1] || null];
 }
 
-function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, demo }) {
+function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider, demo }) {
   const [q, setQ] = useState("");
   const [edit, setEdit] = useState(null);
   const [fiche, setFiche] = useState(null);
@@ -4350,7 +4351,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, demo }) {
         <Btn variant="ghost" full style={{ marginTop: 16 }} onClick={() => setCloture(true)}><CalendarDays size={16} /> Clôturer la saison {saisonCourante()}</Btn>
       )}
 
-      {edit && <EditJoueur joueur={edit} cat={cat} onClose={() => setEdit(null)} onSave={(j) => {
+      {edit && <EditJoueur joueur={edit} cat={cat} adminModifiable={!!(demo || peutValider)} onClose={() => setEdit(null)} onSave={(j) => {
         mutate((d) => {
           if (j.id) { const i = d.players.findIndex((x) => x.id === j.id); d.players[i] = j; }
           else d.players.push({ ...j, id: uid() });
@@ -5284,7 +5285,7 @@ function EditTest({ joueur, test, educateurs = [], onClose, onSave, onDelete, on
   );
 }
 
-function EditJoueur({ joueur, cat, onClose, onSave }) {
+function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true }) {
   const [f, setF] = useState({
     prenom: "", nom: "", dob: "", taille: "", poids: "", poste: "", pied: "Droit",
     numero: "", licence: "", club: "FCSM", photo: "", jonglages: { fort: "", faible: "", tete: "" },
@@ -5337,10 +5338,15 @@ function EditJoueur({ joueur, cat, onClose, onSave }) {
         </Field>
         <Field label={`Numéro (1 à ${maxNumero(f.cat)})`}><Inp type="number" inputMode="numeric" min={1} max={maxNumero(f.cat)} value={f.numero} onChange={(e) => set("numero", e.target.value)} /></Field>
       </div>
+      {!adminModifiable && (
+        <div style={{ fontSize: 12, color: "#B87A2B", fontWeight: 700, background: "#FBEAD9", borderRadius: 9, padding: "8px 11px", margin: "4px 0 8px", lineHeight: 1.45 }}>
+          Informations administratives en lecture seule. Elles sont gérées par la direction et les responsables.
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <Field label="Numéro de licence"><Inp value={f.licence} onChange={(e) => set("licence", e.target.value)} /></Field>
+        <Field label="Numéro de licence"><Inp value={f.licence} disabled={!adminModifiable} onChange={(e) => set("licence", e.target.value)} /></Field>
         <Field label="Statut de la licence">
-          <Sel value={f.licenceStatut || ""} onChange={(e) => set("licenceStatut", e.target.value)}>
+          <Sel value={f.licenceStatut || ""} disabled={!adminModifiable} onChange={(e) => set("licenceStatut", e.target.value)}>
             <option value="">Non renseignée</option>
             <option>Valide</option>
             <option>En cours</option>
@@ -5348,23 +5354,23 @@ function EditJoueur({ joueur, cat, onClose, onSave }) {
           </Sel>
         </Field>
         <Field label="Type de licence">
-          <Sel value={f.mutation && f.mutation !== "club" ? "mutation" : ""} onChange={(e) => set("mutation", e.target.value)}>
+          <Sel value={f.mutation && f.mutation !== "club" ? "mutation" : ""} disabled={!adminModifiable} onChange={(e) => set("mutation", e.target.value)}>
             <option value="">Licence club (même club)</option>
             <option value="mutation">Mutation (vient d'un autre club)</option>
           </Sel>
         </Field>
         <Field label="Date de validation de la licence">
-          <Inp type="date" value={f.mutationDate || ""} onChange={(e) => set("mutationDate", e.target.value)} />
+          <Inp type="date" value={f.mutationDate || ""} disabled={!adminModifiable} onChange={(e) => set("mutationDate", e.target.value)} />
           {f.mutation && f.mutation !== "club" ? (() => { const lm = libelleMutation(f); return <div style={{ fontSize: 12, color: lm.couleur, fontWeight: 700, marginTop: 5 }}>{f.mutationDate ? `Classé : ${lm.label.toLowerCase()}` : "Renseigne la date pour classer la mutation"}</div>; })() : null}
         </Field>
         <Field label="Contrôle médical de la saison">
-          <Sel value={f.medicalSaison === saisonCourante() ? (f.medicalStatut || "") : ""} onChange={(e) => { const v = e.target.value; set("medicalStatut", v); set("medicalSaison", v ? saisonCourante() : ""); }}>
+          <Sel value={f.medicalSaison === saisonCourante() ? (f.medicalStatut || "") : ""} disabled={!adminModifiable} onChange={(e) => { const v = e.target.value; set("medicalStatut", v); set("medicalSaison", v ? saisonCourante() : ""); }}>
             <option value="">À faire</option>
             <option value="questionnaire">Questionnaire de santé fait (dispensé de certificat)</option>
             <option value="certificat">Certificat médical fourni</option>
           </Sel>
         </Field>
-        <Field label="Club"><Inp value={f.club} onChange={(e) => set("club", e.target.value)} /></Field>
+        <Field label="Club"><Inp value={f.club} disabled={!adminModifiable} onChange={(e) => set("club", e.target.value)} /></Field>
       </div>
 
       {jonglagesActifs(f.cat) && (<>
@@ -10795,7 +10801,8 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onClose
   const fmt = (iso) => { try { return new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
 
   // Un message me concerne s'il vise une de mes catégories, ou s'il m'a nommé directement.
-  const estDest = (m) => ((m.categories || []).some((c) => (me.cats || []).includes(c)) || (m.destinataires || []).some((d) => memeEduc(d, me)));
+  // On exclut les messages que j'ai moi-même envoyés (l'expéditeur n'est pas son propre destinataire).
+  const estDest = (m) => !memeEduc({ nom: m.de, email: m.deEmail }, me) && ((m.categories || []).some((c) => (me.cats || []).includes(c)) || (m.destinataires || []).some((d) => memeEduc(d, me)));
   const monDest = (m) => (m.destinataires || []).find((d) => memeEduc(d, me));
   const maCle = (m) => { const d = monDest(m); return d ? cleEduc(d) : cleEduc(me); };
   const recus = (liste || []).filter(estDest).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
