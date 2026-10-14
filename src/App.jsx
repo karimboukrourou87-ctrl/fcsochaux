@@ -2926,7 +2926,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v14.0
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v14.2
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -4236,7 +4236,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
           <Search size={17} color={C.gris} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un joueur" style={{ ...inputStyle, paddingLeft: 36 }} />
         </div>
-        {!lectureSeule && <Btn variant="accent" onClick={() => setEdit({ cat })}><Plus size={18} /></Btn>}
+        {!lectureSeule && (demo || peutValider) && <Btn variant="accent" onClick={() => setEdit({ cat })}><Plus size={18} /></Btn>}
       </div>
       {!lectureSeule && (
         <>
@@ -5294,6 +5294,9 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true }) {
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
   const setJo = (k, v) => setF((o) => ({ ...o, jonglages: { ...(o.jonglages || {}), [k]: v } }));
   const fileRef = useRef(null);
+  // Identité (nom, prénom, date de naissance) figée pour les coachs sur un joueur existant,
+  // mais saisissable à la création d'un nouveau joueur (le nom est obligatoire).
+  const identiteFigee = !adminModifiable && !!joueur.id;
 
   function choisirPhoto(e) {
     const file = e.target.files && e.target.files[0];
@@ -5315,11 +5318,16 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true }) {
         <input ref={fileRef} type="file" accept="image/*" onChange={choisirPhoto} style={{ display: "none" }} />
       </div>
 
+      {identiteFigee && (
+        <div style={{ fontSize: 12, color: "#B87A2B", fontWeight: 700, background: "#FBEAD9", borderRadius: 9, padding: "8px 11px", marginBottom: 8, lineHeight: 1.45 }}>
+          Nom, prénom et date de naissance en lecture seule. Ils sont gérés par la direction et les responsables.
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <Field label="Prénom"><Inp value={f.prenom} onChange={(e) => set("prenom", e.target.value)} /></Field>
-        <Field label="Nom"><Inp value={f.nom} onChange={(e) => set("nom", e.target.value)} /></Field>
+        <Field label="Prénom"><Inp value={f.prenom} disabled={identiteFigee} onChange={(e) => set("prenom", e.target.value)} /></Field>
+        <Field label="Nom"><Inp value={f.nom} disabled={identiteFigee} onChange={(e) => set("nom", e.target.value)} /></Field>
       </div>
-      <Field label="Date de naissance"><Inp type="date" value={f.dob} onChange={(e) => set("dob", e.target.value)} /></Field>
+      <Field label="Date de naissance"><Inp type="date" value={f.dob} disabled={identiteFigee} onChange={(e) => set("dob", e.target.value)} /></Field>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <Field label="Taille (cm)"><Inp type="number" inputMode="numeric" value={f.taille} onChange={(e) => set("taille", e.target.value)} /></Field>
         <Field label="Poids (kg)"><Inp type="number" inputMode="numeric" value={f.poids} onChange={(e) => set("poids", e.target.value)} /></Field>
