@@ -2464,6 +2464,16 @@ export default function App() {
   const [messagesClub, setMessagesClub] = useState(null);
   const [showMessagerie, setShowMessagerie] = useState(false);
   const [showMotDePasse, setShowMotDePasse] = useState(false);
+  // Verrou administratif : un seul mot de passe à l'entrée, puis accès libre tant qu'il y a de l'activité ;
+  // re-demandé après 2 minutes d'inactivité clavier.
+  const [adminUnlock, setAdminUnlock] = useState(false);
+  const [adminPrompt, setAdminPrompt] = useState(null); // fonction à exécuter après déverrouillage (null = pas de demande)
+  const adminActiviteRef = useRef(Date.now());
+  function demanderDeverrouillageAdmin(apres) {
+    if (demo) { if (apres) apres(); return; }
+    if (adminUnlock) { adminActiviteRef.current = Date.now(); if (apres) apres(); return; }
+    setAdminPrompt(() => (apres || (() => {})));
+  }
   const [demResume, setDemResume] = useState({ recues: 0, envoyees: 0, reponses: 0 });
   const [demTick, setDemTick] = useState(0);
   const [saveStatus, setSaveStatus] = useState(null);
@@ -2900,6 +2910,15 @@ export default function App() {
     notifTransport(dem, "refus", cause || "");
   };
   const rafraichirTout = () => { if (rafraichirPlanning) rafraichirPlanning(); if (rafraichirTransport) rafraichirTransport(); loadMessagesClub().then((m) => setMessagesClub(m)).catch(() => {}); rafraichirDb(); };
+  // Tant que l'administratif est déverrouillé, on suit l'activité clavier/tactile et on reverrouille après 2 min sans activité.
+  useEffect(() => {
+    if (!adminUnlock) return;
+    const maj = () => { adminActiviteRef.current = Date.now(); };
+    window.addEventListener("keydown", maj);
+    window.addEventListener("pointerdown", maj);
+    const id = setInterval(() => { if (Date.now() - adminActiviteRef.current > 120000) setAdminUnlock(false); }, 10000);
+    return () => { window.removeEventListener("keydown", maj); window.removeEventListener("pointerdown", maj); clearInterval(id); };
+  }, [adminUnlock]);
   // Vérifie le mot de passe du compte connecté (sans le stocker) pour déverrouiller la modification des informations administratives.
   async function verifierMotDePasse(pwd) {
     if (demo) return true;
@@ -2938,7 +2957,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v14.4
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v14.5
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3017,8 +3036,8 @@ export default function App() {
             Consultation seule sur cette catégorie. Tu peux tout voir, mais la modification est réservée à son responsable.
           </div>
         )}
-        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onMessagerie={() => setShowMessagerie(true)} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
-        {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} peutValider={peutValider} demo={demo} verifierMotDePasse={verifierMotDePasse} auteur={{ nom: monNom, role: monRole }} />}
+        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => demanderDeverrouillageAdmin(() => setShowDocs(true))} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onMessagerie={() => setShowMessagerie(true)} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
+        {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} peutValider={peutValider} demo={demo} adminUnlock={adminUnlock} onDemanderDeverrouillage={demanderDeverrouillageAdmin} auteur={{ nom: monNom, role: monRole }} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} />}
         {tab === "entrainements" && <Entrainements players={players} cat={cat} db={db} mutate={mutate} estMedical={estMedical} onSignalerBlessure={signalerBlessure} initialSous={entSous} onConsumeSous={() => setEntSous(null)} />}
@@ -3081,7 +3100,12 @@ export default function App() {
       {showPlanningHebdo && <PlanningHebdo onClose={() => setShowPlanningHebdo(false)} />}
       {showAcces && <AccesSecteurs db={{ acces: accesSource }} mutate={mutateReu} estAdmin={estAdmin} onClose={() => setShowAcces(false)} />}
       {showProgramme && <ProgrammeSemaine db={db} onClose={() => setShowProgramme(false)} />}
-      {showDocs && <DocumentsAdmin players={players} cat={cat} db={db} mutate={mutate} lectureSeule={lectureSeuleCat} demo={demo} verifierMotDePasse={verifierMotDePasse} auteur={{ nom: monNom, role: monRole }} onClose={() => setShowDocs(false)} />}
+      {showDocs && <DocumentsAdmin players={players} cat={cat} db={db} mutate={mutate} lectureSeule={lectureSeuleCat} demo={demo} adminUnlock={adminUnlock} onDemanderDeverrouillage={demanderDeverrouillageAdmin} auteur={{ nom: monNom, role: monRole }} onClose={() => setShowDocs(false)} />}
+      {adminPrompt !== null && (
+        <div style={{ position: "relative", zIndex: 9500 }}>
+          <DeverrouillerAdmin verifier={verifierMotDePasse} onClose={() => setAdminPrompt(null)} onOk={() => { setAdminUnlock(true); adminActiviteRef.current = Date.now(); const a = adminPrompt; setAdminPrompt(null); if (typeof a === "function") a(); }} />
+        </div>
+      )}
       {showSuivi && <SuiviMedical db={db} mutate={mutate} cat={cat} estMedical={estMedical} onSignalerBlessure={signalerBlessure} onClose={() => setShowSuivi(false)} />}
       {showBilan && <BilanEquipe db={db} players={players} cat={cat} onClose={() => setShowBilan(false)} onTournois={() => setShowTournois(true)} />}
       {showTournois && <Tournois db={db} mutate={mutate} cat={cat} onClose={() => setShowTournois(false)} />}
@@ -4146,7 +4170,7 @@ function choisirResponsablesMat(players, db, cat, cfg, w) {
   return [tri[0] || null, tri[1] || null];
 }
 
-function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider, demo, verifierMotDePasse, auteur }) {
+function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider, demo, adminUnlock, onDemanderDeverrouillage, auteur }) {
   const [q, setQ] = useState("");
   const [edit, setEdit] = useState(null);
   const [fiche, setFiche] = useState(null);
@@ -4366,7 +4390,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
         <Btn variant="ghost" full style={{ marginTop: 16 }} onClick={() => setCloture(true)}><CalendarDays size={16} /> Clôturer la saison {saisonCourante()}</Btn>
       )}
 
-      {edit && <EditJoueur joueur={edit} cat={cat} adminModifiable={!!(demo || peutValider)} verifierMotDePasse={verifierMotDePasse} auteur={auteur} onClose={() => setEdit(null)} onSave={(j) => {
+      {edit && <EditJoueur joueur={edit} cat={cat} adminModifiable={!!(demo || peutValider)} adminUnlock={!!(demo || adminUnlock)} onDemanderDeverrouillage={onDemanderDeverrouillage} auteur={auteur} onClose={() => setEdit(null)} onSave={(j) => {
         mutate((d) => {
           if (j.id) { const i = d.players.findIndex((x) => x.id === j.id); d.players[i] = j; }
           else d.players.push({ ...j, id: uid() });
@@ -5305,7 +5329,7 @@ function EditTest({ joueur, test, educateurs = [], onClose, onSave, onDelete, on
   );
 }
 
-function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, verifierMotDePasse, auteur }) {
+function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, adminUnlock = false, onDemanderDeverrouillage, auteur }) {
   const [f, setF] = useState({
     prenom: "", nom: "", dob: "", taille: "", poids: "", poste: "", pied: "Droit",
     numero: "", licence: "", club: "FCSM", photo: "", jonglages: { fort: "", faible: "", tete: "" },
@@ -5314,20 +5338,9 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, veri
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
   const setJo = (k, v) => setF((o) => ({ ...o, jonglages: { ...(o.jonglages || {}), [k]: v } }));
   const fileRef = useRef(null);
-  // Déverrouillage des informations administratives par mot de passe (direction / responsables).
-  const [adminDeverrouille, setAdminDeverrouille] = useState(false);
-  const [pwd, setPwd] = useState("");
-  const [pwdErr, setPwdErr] = useState("");
-  const [verifEnCours, setVerifEnCours] = useState(false);
-  const peutEditerAdmin = adminModifiable && adminDeverrouille; // droit ET déverrouillé
-  const adminVerrouille = !peutEditerAdmin;                      // champs admin non modifiables
-  async function deverrouiller() {
-    if (!pwd) return;
-    setVerifEnCours(true); setPwdErr("");
-    const ok = verifierMotDePasse ? await verifierMotDePasse(pwd) : false;
-    setVerifEnCours(false);
-    if (ok) { setAdminDeverrouille(true); setPwd(""); } else setPwdErr("Mot de passe incorrect.");
-  }
+  // Déverrouillage administratif : géré globalement (un seul mot de passe à l'entrée, re-demandé après 2 min d'inactivité).
+  const peutEditerAdmin = adminModifiable && adminUnlock; // droit ET déverrouillé
+  const adminVerrouille = !peutEditerAdmin;               // champs admin non modifiables
   // Détection d'un changement sur une information administrative (pour inscrire l'auteur).
   const CHAMPS_ADMIN = ["prenom", "nom", "dob", "licence", "licenceStatut", "mutation", "mutationDate", "medicalStatut", "medicalSaison", "club", "parentNom", "parentTel", "parentEmail"];
   const adminAChange = () => CHAMPS_ADMIN.some((k) => (f[k] || "") !== ((joueur && joueur[k]) || ""));
@@ -5361,18 +5374,14 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, veri
           Les informations administratives (identité, licence, médical, responsable) sont en lecture seule. Elles sont gérées par la direction et les responsables.
         </div>
       )}
-      {adminModifiable && !adminDeverrouille && (
+      {adminModifiable && !adminUnlock && (
         <div style={{ background: "#FFF3DA", border: "1px solid #EBD3AE", borderRadius: 10, padding: "11px 12px", marginBottom: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, fontWeight: 800, color: "#B87A2B", fontSize: 13, marginBottom: 6 }}><Lock size={15} /> Informations administratives verrouillées</div>
-          <div style={{ fontSize: 12, color: C.gris, marginBottom: 8, lineHeight: 1.45 }}>Entre ton mot de passe pour modifier l'identité, la licence, le médical et les coordonnées du responsable.</div>
-          <div style={{ display: "flex", gap: 7 }}>
-            <Inp type="password" value={pwd} placeholder="Mot de passe" onChange={(e) => { setPwd(e.target.value); setPwdErr(""); }} onKeyDown={(e) => { if (e.key === "Enter") deverrouiller(); }} style={{ flex: 1 }} />
-            <Btn variant="accent" size="sm" disabled={!pwd || verifEnCours} onClick={deverrouiller}>{verifEnCours ? "..." : "Déverrouiller"}</Btn>
-          </div>
-          {pwdErr && <div style={{ fontSize: 12, color: C.rouge, fontWeight: 700, marginTop: 6 }}>{pwdErr}</div>}
+          <div style={{ fontSize: 12, color: C.gris, marginBottom: 8, lineHeight: 1.45 }}>Déverrouille avec ton mot de passe pour modifier l'identité, la licence, le médical et les coordonnées du responsable.</div>
+          <Btn variant="accent" size="sm" onClick={() => onDemanderDeverrouillage && onDemanderDeverrouillage()}><Lock size={14} /> Déverrouiller avec mon mot de passe</Btn>
         </div>
       )}
-      {adminModifiable && adminDeverrouille && (
+      {adminModifiable && adminUnlock && (
         <div style={{ fontSize: 12, color: C.vert, fontWeight: 700, background: "#E2F4E9", borderRadius: 9, padding: "8px 11px", marginBottom: 10, display: "inline-flex", alignItems: "center", gap: 6 }}><Check size={14} /> Informations administratives déverrouillées</div>
       )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -10837,6 +10846,27 @@ function PlanningHebdo({ onClose }) {
 }
 
 /* Changement du mot de passe personnel du compte connecté. */
+function DeverrouillerAdmin({ verifier, onOk, onClose }) {
+  const [pwd, setPwd] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function valider() {
+    if (!pwd) return;
+    setBusy(true); setErr("");
+    const ok = verifier ? await verifier(pwd) : false;
+    setBusy(false);
+    if (ok) onOk(); else setErr("Mot de passe incorrect.");
+  }
+  return (
+    <Modal title="Accès administratif" onClose={onClose}
+      footer={<Btn variant="accent" full disabled={!pwd || busy} onClick={valider}><Lock size={16} /> {busy ? "..." : "Déverrouiller"}</Btn>}>
+      <div style={{ fontSize: 13, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Entre ton mot de passe pour accéder aux informations administratives. L'accès reste ouvert tant que tu es actif, et se verrouille automatiquement après 2 minutes d'inactivité.</div>
+      <Field label="Mot de passe"><Inp type="password" value={pwd} onChange={(e) => { setPwd(e.target.value); setErr(""); }} onKeyDown={(e) => { if (e.key === "Enter") valider(); }} /></Field>
+      {err && <div style={{ fontSize: 12.5, color: C.rouge, fontWeight: 700, marginTop: 4 }}>{err}</div>}
+    </Modal>
+  );
+}
+
 function ChangerMotDePasse({ email, onClose }) {
   const [ancien, setAncien] = useState("");
   const [nouveau, setNouveau] = useState("");
@@ -11183,7 +11213,7 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onClose
   );
 }
 
-function DocumentsAdmin({ players, cat, db, mutate, lectureSeule, demo, verifierMotDePasse, auteur, onClose }) {
+function DocumentsAdmin({ players, cat, db, mutate, lectureSeule, demo, adminUnlock, onDemanderDeverrouillage, auteur, onClose }) {
   const [edit, setEdit] = useState(null);
   const lignes = players.map((p) => {
     const sc = statutMedical(p);
@@ -11274,7 +11304,7 @@ function DocumentsAdmin({ players, cat, db, mutate, lectureSeule, demo, verifier
 
       {edit && (
         <div style={{ position: "relative", zIndex: 80 }}>
-          <EditJoueur joueur={edit} cat={cat} adminModifiable={!!(demo || !lectureSeule)} verifierMotDePasse={verifierMotDePasse} auteur={auteur} onClose={() => setEdit(null)} onSave={(j) => {
+          <EditJoueur joueur={edit} cat={cat} adminModifiable={!!(demo || !lectureSeule)} adminUnlock={!!(demo || adminUnlock)} onDemanderDeverrouillage={onDemanderDeverrouillage} auteur={auteur} onClose={() => setEdit(null)} onSave={(j) => {
             mutate((d) => { if (j.id) { const i = d.players.findIndex((x) => x.id === j.id); if (i >= 0) d.players[i] = j; } return d; });
             setEdit(null);
           }} />
