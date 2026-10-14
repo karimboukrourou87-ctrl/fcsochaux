@@ -1653,6 +1653,38 @@ async function saveReunions(reunions) {
   if (error) throw error;
 }
 
+// Messagerie interne du club (direction / responsables -> éducateurs), stockée dans categorie_data sous une clé réservée.
+const CAT_MESSAGES = "__MESSAGES__";
+async function loadMessagesClub() {
+  try { const d = await loadCat(CAT_MESSAGES); return Array.isArray(d.messages) ? d.messages : []; }
+  catch (e) { return []; }
+}
+async function saveMessagesClub(liste) {
+  const sb = await getSupabase();
+  let userId = null;
+  try { const u = await sb.auth.getUser(); userId = (u && u.data && u.data.user) ? u.data.user.id : null; } catch (e) {}
+  await saveCat(CAT_MESSAGES, { messages: liste }, userId);
+}
+// Identité d'un destinataire : clé stable (email prioritaire, sinon nom) et test d'égalité tolérant.
+function cleEduc(x) { return (((x && x.email) || "").trim().toLowerCase()) || (((x && x.nom) || "").trim().toLowerCase()); }
+function memeEduc(a, b) {
+  if (!a || !b) return false;
+  const ea = (a.email || "").trim().toLowerCase(), eb = (b.email || "").trim().toLowerCase();
+  if (ea && eb) return ea === eb;
+  const na = (a.nom || "").trim().toLowerCase(), nb = (b.nom || "").trim().toLowerCase();
+  return !!na && na === nb;
+}
+// Niveaux d'urgence d'un message de la direction, du plus fort au plus léger, avec leur code couleur.
+const URGENCES = [
+  { id: "tres_urgent", label: "Très urgent", court: "Très urgent", rang: 3, bg: "#C8102E", texte: "#fff", clair: "#F7D2D8", bord: "#C8102E" },
+  { id: "urgent", label: "Urgent", court: "Urgent", rang: 2, bg: "#E23A3A", texte: "#fff", clair: "#FBE0E0", bord: "#E23A3A" },
+  { id: "moyen", label: "Moyennement urgent", court: "Moyen", rang: 1, bg: "#E58A00", texte: "#fff", clair: "#FDEBD0", bord: "#E58A00" },
+  { id: "pas_urgent", label: "Pas urgent", court: "Pas urgent", rang: 0, bg: "#E6B800", texte: "#3A2E00", clair: "#FBF2CC", bord: "#E6B800" },
+];
+function urgenceInfo(u) { return URGENCES.find((x) => x.id === u) || URGENCES[1]; }
+// Un accusé de lecture peut être un simple horodatage (ancien format) ou un objet { nom, at }.
+function tsLecture(v) { return (v && typeof v === "object") ? (v.at || v.date || "") : (v || ""); }
+
 const DEMO_KEY = "fcsm-demo-db";
 async function loadLocal() {
   try {
@@ -2414,6 +2446,8 @@ export default function App() {
   const [db, setDb] = useState(null);
   const [reunionsClub, setReunionsClub] = useState(null);
   const [reunionsErr, setReunionsErr] = useState(null);
+  const [messagesClub, setMessagesClub] = useState(null);
+  const [showMessagerie, setShowMessagerie] = useState(false);
   const [demResume, setDemResume] = useState({ recues: 0, envoyees: 0, reponses: 0 });
   const [demTick, setDemTick] = useState(0);
   const [saveStatus, setSaveStatus] = useState(null);
@@ -2612,6 +2646,7 @@ export default function App() {
     let annule = false;
     loadReunions().then((r) => { if (!annule) { setReunionsClub(r); setReunionsErr(null); } })
       .catch((e) => { if (!annule) { setReunionsClub([]); setReunionsErr(e.message || String(e)); } });
+    loadMessagesClub().then((m) => { if (!annule) setMessagesClub(m); }).catch(() => { if (!annule) setMessagesClub([]); });
     return () => { annule = true; };
   }, [session, demo]);
 
@@ -2706,6 +2741,18 @@ export default function App() {
     try { await saveReunions(next.reunions || []); setReunionsErr(null); setSaveStatus("ok"); }
     catch (e) { setReunionsErr(e.message || String(e)); setSaveStatus("error"); }
   }
+  // Messagerie : on recharge d'abord la liste à jour (écritures concurrentes direction / éducateurs), on applique, puis on enregistre.
+  async function mutateMessages(fn) {
+    if (demo) { mutate((d) => { d.messages = fn(d.messages || []); return d; }); return; }
+    if (!session) return;
+    setSaveStatus("saving");
+    let base;
+    try { base = await loadMessagesClub(); } catch (e) { base = messagesClub || []; }
+    const next = fn(structuredClone(base || []));
+    setMessagesClub(next);
+    try { await saveMessagesClub(next); setSaveStatus("ok"); }
+    catch (e) { setSaveStatus("error"); }
+  }
 
   async function deconnexion() {
     if (demo) { setDemo(false); setDb(null); setCat(null); return; }
@@ -2726,6 +2773,7 @@ export default function App() {
   const players = db.players.filter((p) => p.cat === cat);
   const reunionsSource = demo ? ((db && db.reunions) || []) : (reunionsClub || []);
   const mutateReu = demo ? mutate : mutateReunions;
+  const messagesSource = demo ? ((db && db.messages) || []) : (messagesClub || []);
   const accesSource = (db && db.acces) || [];
   const cats = demo ? CATEGORIES.map((c) => c.id) : profil.cats;
   const sousTitre = demo ? "" : (profil && profil.role === "direction" ? " · DIRECTION" : "");
@@ -2835,7 +2883,7 @@ export default function App() {
     majTransportClub((s) => { const x = (s.demandes || []).find((y) => y.id === dem.id); if (x) { x.statut = "refusee"; x.cause = cause || ""; } return s; });
     notifTransport(dem, "refus", cause || "");
   };
-  const rafraichirTout = () => { if (rafraichirPlanning) rafraichirPlanning(); if (rafraichirTransport) rafraichirTransport(); rafraichirDb(); };
+  const rafraichirTout = () => { if (rafraichirPlanning) rafraichirPlanning(); if (rafraichirTransport) rafraichirTransport(); loadMessagesClub().then((m) => setMessagesClub(m)).catch(() => {}); rafraichirDb(); };
   const estMedical = !demo && !!(profil && profil.role === "medical");
   const lectureSeuleCat = !demo && !!(profil && Array.isArray(profil.catsModif) && cat && !profil.catsModif.includes(cat));
   const groupesDispo = GROUPES.filter((g) => CATEGORIES.some((c) => c.groupe === g && cats.includes(c.id)));
@@ -2863,7 +2911,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v13.1
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v13.5
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -2937,7 +2985,7 @@ export default function App() {
             Consultation seule sur cette catégorie. Tu peux tout voir, mais la modification est réservée à son responsable.
           </div>
         )}
-        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
+        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => setShowSauvegarde(true) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => setShowAcces(true) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => setShowDocs(true)} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onMessagerie={() => setShowMessagerie(true)} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} demo={demo} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} />}
@@ -3006,6 +3054,7 @@ export default function App() {
       {showBilan && <BilanEquipe db={db} players={players} cat={cat} onClose={() => setShowBilan(false)} onTournois={() => setShowTournois(true)} />}
       {showTournois && <Tournois db={db} mutate={mutate} cat={cat} onClose={() => setShowTournois(false)} />}
       {showReunions && <Reunions db={{ reunions: reunionsSource, acces: accesSource, encadrement: encadrementClub }} majEncadrement={majEncadrementClub} mutate={mutateReu} erreur={demo ? null : reunionsErr} onClose={() => setShowReunions(false)} />}
+      {showMessagerie && <Messagerie liste={messagesSource} maj={mutateMessages} me={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutValider={peutValider} mesCats={cats} encadrement={encadrementClub} onClose={() => setShowMessagerie(false)} />}
       {showCalendrier && <Calendrier db={{ ...db, reunions: reunionsSource, encadrement: encadrementClub }} majEncadrement={majEncadrementClub} mutate={mutate} mutateReunions={mutateReu} peutValider={peutValider} onClose={() => setShowCalendrier(false)} />}
     </div>
   );
@@ -3212,7 +3261,7 @@ function ScoresWeekend({ onClose, localDb }) {
 /* ============================================================
    Accueil
    ============================================================ */
-function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onInfirmerie, onBilan, onPlateaux, onReunions, onCalendrier, demResume, demPlanning, onValiderPlanning, onRefuserPlanning, demNotifs, onConfirmerLecture, demAccuses, onEffacerAccuse, demTransport, onValiderTransport, onRefuserTransport, onRafraichir, estMedical, monEmail }) {
+function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onInfirmerie, onMessagerie, msgListe, msgMe, peutMsgDir, onBilan, onPlateaux, onReunions, onCalendrier, demResume, demPlanning, onValiderPlanning, onRefuserPlanning, demNotifs, onConfirmerLecture, demAccuses, onEffacerAccuse, demTransport, onValiderTransport, onRefuserTransport, onRafraichir, estMedical, monEmail }) {
   const lstDemPlanning = demPlanning || [];
   const lstNotifs = demNotifs || [];
   const lstAccuses = demAccuses || [];
@@ -3251,6 +3300,27 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
   const alerteReunions = (db.reunions || []).filter((r) => (r.date || "") >= todayStr && (r.participants || []).some((p) => (p.email || "").toLowerCase() === (monEmail || "").toLowerCase() && p.email)).length;
   const alerteDemRecues = (demResume && demResume.recues) || 0;
   const alerteDemEnvoyees = (demResume && demResume.envoyees) || 0;
+  // Messagerie : messages reçus par l'utilisateur et non encore lus, et demandes de disponibilité en attente de sa réponse.
+  const peutMsg = !!peutMsgDir;
+  // Un message me concerne s'il vise une de mes catégories, ou s'il m'a nommé directement (ou par email).
+  const mesCatsAcc = (msgMe && msgMe.cats) || [];
+  const destPourMoi = (m) => ((m.categories || []).some((c) => mesCatsAcc.includes(c)) || (m.destinataires || []).some((d) => memeEduc(d, msgMe || {})));
+  const maCle = (m) => { const d = (m.destinataires || []).find((x) => memeEduc(x, msgMe || {})); return d ? cleEduc(d) : cleEduc(msgMe || {}); };
+  const msgRecus = (msgListe || []).filter(destPourMoi);
+  const msgNonLusList = msgRecus.filter((m) => !((m.lectures || {})[maCle(m)]));
+  const msgNonLus = msgNonLusList.length;
+  const msgARepondre = msgRecus.filter((m) => m.type === "dispo" && !((m.reponses || {})[maCle(m)])).length;
+  // Couleur de l'alarme des messages : la plus forte urgence parmi les messages à traiter (non lus ou à répondre).
+  const msgATraiter = msgRecus.filter((m) => { const nonLu = !((m.lectures || {})[maCle(m)]); const aRep = m.type === "dispo" && !((m.reponses || {})[maCle(m)]); return nonLu || aRep; });
+  const urgenceMax = msgATraiter.reduce((acc, m) => { const i = urgenceInfo(m.urgence); return i.rang > acc.rang ? i : acc; }, URGENCES[3]);
+  // Côté direction / responsable : messages que j'ai envoyés et encore en attente d'une lecture ou d'une réponse.
+  const msgEnvoyes = (msgListe || []).filter((m) => memeEduc({ nom: m.de, email: m.deEmail }, msgMe || {}));
+  const msgASuivre = peutMsg ? msgEnvoyes.filter((m) => {
+    const dests = m.destinataires || [];
+    const nonLu = dests.some((d) => !((m.lectures || {})[cleEduc(d)]));
+    const nonRepondu = m.type === "dispo" && dests.some((d) => !((m.reponses || {})[cleEduc(d)]));
+    return nonLu || nonRepondu;
+  }).length : 0;
   const alerteDemReponses = (demResume && demResume.reponses) || 0;
   const alerteSuivi = priseEnChargeMedicale(cat) !== "parents" ? enSuiviMedical : 0;
 
@@ -3264,6 +3334,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
     { titre: "Documents administratifs", sous: "Licences et contrôle médical à surveiller", icon: ShieldAlert, action: onDocuments, badge: alerteDocs },
     { titre: "Suivi médical", sous: "Blessés suivis par l'équipe médicale (U17 aux pros)", icon: Activity, action: (estMedical || priseEnChargeMedicale(cat) !== "parents") ? onSuivi : null, badge: (estMedical || priseEnChargeMedicale(cat) !== "parents") ? enSuiviMedical : 0 },
     { titre: "Bilan de saison de l'équipe", sous: "Résultats, buteurs et passeurs de la saison", icon: Trophy, action: onBilan },
+    { titre: "Messagerie du club", sous: "Adresser un message important aux éducateurs", icon: Bell, action: peutMsg ? onMessagerie : null, badge: msgASuivre },
     { titre: "Réunions", sous: "Programmer les réunions et recueillir les présences", icon: Users, action: onReunions, badge: alerteReunions },
     { titre: "Calendrier du club", sous: "Tous les événements, toutes catégories réunies", icon: CalendarDays, action: onCalendrier },
     { titre: "Planning hebdomadaire", sous: "Créneaux d'entraînement de la semaine, par catégorie", icon: CalendarDays, action: onPlanningHebdo },
@@ -3285,6 +3356,28 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
 
   return (
     <div>
+      <style>{"@keyframes msgpulse{0%,100%{box-shadow:0 0 0 0 rgba(0,0,0,0)}50%{box-shadow:0 0 0 6px rgba(255,255,255,0.0),0 8px 26px " + urgenceMax.bg + "88}}@keyframes msgblink{0%,100%{opacity:1}50%{opacity:.78}}"}</style>
+      {(msgNonLus > 0 || msgARepondre > 0) && (
+        <div onClick={onMessagerie} style={{ background: urgenceMax.bg, color: urgenceMax.texte, borderRadius: 16, padding: "18px 18px", marginBottom: 16, cursor: "pointer", border: `3px solid ${urgenceMax.texte === "#fff" ? "rgba(255,255,255,0.65)" : "rgba(0,0,0,0.25)"}`, animation: "msgpulse 1.1s ease-in-out infinite, msgblink 1.1s ease-in-out infinite" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 900, fontSize: 18, marginBottom: 8 }}>
+            <Bell size={22} /> <span style={{ flex: 1 }}>Message de la direction</span>
+            <span style={{ fontSize: 12, fontWeight: 900, background: "rgba(255,255,255,0.25)", borderRadius: 999, padding: "3px 11px", textTransform: "uppercase", letterSpacing: .5 }}>{urgenceMax.court}</span>
+          </div>
+          {msgNonLus > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 15, fontWeight: 800 }}>
+              <span style={{ flex: 1 }}>{msgNonLus} message{msgNonLus > 1 ? "s" : ""} à lire et confirmer</span>
+              <ChevronLeft size={18} style={{ transform: "rotate(180deg)" }} />
+            </div>
+          )}
+          {msgARepondre > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 15, fontWeight: 800, borderTop: msgNonLus > 0 ? "1px solid rgba(255,255,255,0.3)" : "none" }}>
+              <span style={{ flex: 1 }}>{msgARepondre} demande{msgARepondre > 1 ? "s" : ""} de disponibilité à répondre</span>
+              <ChevronLeft size={18} style={{ transform: "rotate(180deg)" }} />
+            </div>
+          )}
+          <div style={{ fontSize: 12, fontWeight: 700, opacity: .9, marginTop: 6 }}>Touche pour ouvrir</div>
+        </div>
+      )}
       {onRafraichir && (
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
           <button onClick={lancerRafraichir} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, borderRadius: 999, padding: "6px 13px", cursor: "pointer", fontSize: 12.5, fontWeight: 800 }}>
@@ -10659,6 +10752,309 @@ function PlanningHebdo({ onClose }) {
             </div>
           );
         })()}
+      </div>
+    </div>
+  );
+}
+
+/* Messagerie interne : la direction / les responsables adressent un message (ou une demande de disponibilité)
+   aux éducateurs. Chaque éducateur confirme la lecture (« J'ai lu ») et, pour une demande de disponibilité,
+   accepte ou refuse en indiquant la raison. La direction suit les accusés de lecture et les réponses. */
+function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onClose }) {
+  const [vue, setVue] = useState(peutValider ? "envoyes" : "recus");
+  const [compose, setCompose] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [objet, setObjet] = useState("");
+  const [texte, setTexte] = useState("");
+  const [type, setType] = useState("info");
+  const [urgence, setUrgence] = useState("urgent");
+  const [selCats, setSelCats] = useState({});   // catégories visées (U7, U9...)
+  const [sel, setSel] = useState({});           // éducateurs nommés (option supplémentaire)
+  const [showNoms, setShowNoms] = useState(false);
+  const [filtre, setFiltre] = useState("");
+  const [repEnCours, setRepEnCours] = useState(null); // { id, raison } pour un refus en cours
+  const nowISO = () => new Date().toISOString();
+  const fmt = (iso) => { try { return new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
+
+  // Un message me concerne s'il vise une de mes catégories, ou s'il m'a nommé directement.
+  const estDest = (m) => ((m.categories || []).some((c) => (me.cats || []).includes(c)) || (m.destinataires || []).some((d) => memeEduc(d, me)));
+  const monDest = (m) => (m.destinataires || []).find((d) => memeEduc(d, me));
+  const maCle = (m) => { const d = monDest(m); return d ? cleEduc(d) : cleEduc(me); };
+  const recus = (liste || []).filter(estDest).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const envoyes = (liste || []).filter((m) => memeEduc({ nom: m.de, email: m.deEmail }, me)).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+  // Catégories que l'expéditeur peut viser (celles qu'il gère).
+  const catsDispo = (mesCats || []).slice();
+  const nbCats = Object.keys(selCats).length;
+  const toutesCats = catsDispo.length > 0 && catsDispo.every((c) => selCats[c]);
+  const toggleToutesCats = () => { const n = {}; if (!toutesCats) catsDispo.forEach((c) => { n[c] = true; }); setSelCats(n); };
+  // Candidats nommés : l'encadrement du club (éducateurs, coachs, préparateurs, dirigeants).
+  const candidats = (encadrement || []).filter((x) => x && x.nom).map((x) => ({ nom: x.nom, email: x.email || "", role: x.role || "" }));
+  const candidatsFiltres = candidats.filter((c) => !filtre || `${c.nom} ${c.role}`.toLowerCase().includes(filtre.toLowerCase()));
+  const tousSel = candidatsFiltres.length > 0 && candidatsFiltres.every((c) => sel[cleEduc(c)]);
+  const toggleTous = () => { const next = { ...sel }; if (tousSel) { candidatsFiltres.forEach((c) => { delete next[cleEduc(c)]; }); } else { candidatsFiltres.forEach((c) => { next[cleEduc(c)] = c; }); } setSel(next); };
+  const nbSel = Object.keys(sel).length;
+  const peutEnvoyer = !!objet.trim() && !!texte.trim() && (nbCats > 0 || nbSel > 0);
+
+  function ouvrirCompose() { setEditId(null); setObjet(""); setTexte(""); setType("info"); setUrgence("urgent"); setSelCats({}); setSel({}); setShowNoms(false); setFiltre(""); setCompose(true); }
+  function modifier(m) {
+    setEditId(m.id); setObjet(m.objet || ""); setTexte(m.texte || ""); setType(m.type || "info"); setUrgence(m.urgence || "urgent");
+    const sc = {}; (m.categories || []).forEach((c) => { sc[c] = true; }); setSelCats(sc);
+    const s = {}; (m.destinataires || []).forEach((d) => { s[cleEduc(d)] = { nom: d.nom, email: d.email || "" }; }); setSel(s);
+    setShowNoms((m.destinataires || []).length > 0); setFiltre(""); setCompose(true); setVue("envoyes");
+  }
+  function fermerCompose() { setCompose(false); setEditId(null); setObjet(""); setTexte(""); setType("info"); setUrgence("urgent"); setSelCats({}); setSel({}); setShowNoms(false); setFiltre(""); }
+  function envoyer() {
+    const dests = Object.values(sel).map((c) => ({ nom: c.nom, email: c.email || "" }));
+    const categories = Object.keys(selCats).filter((c) => selCats[c]);
+    if (!objet.trim() || !texte.trim() || (dests.length === 0 && categories.length === 0)) return;
+    if (editId) {
+      // Modification : on conserve tous les accusés de lecture et réponses déjà reçus.
+      maj((list) => (list || []).map((x) => x.id === editId ? { ...x, objet: objet.trim(), texte: texte.trim(), type, urgence, categories, destinataires: dests, modifieLe: nowISO() } : x));
+    } else {
+      const msg = { id: uid(), de: me.nom || "Direction", deEmail: me.email || "", date: nowISO(), objet: objet.trim(), texte: texte.trim(), type, urgence, categories, destinataires: dests, lectures: {}, reponses: {} };
+      maj((list) => [msg, ...(list || [])]);
+    }
+    fermerCompose();
+    setVue("envoyes");
+  }
+  function marquerLu(m) {
+    const k = maCle(m);
+    maj((list) => (list || []).map((x) => x.id === m.id ? { ...x, lectures: { ...(x.lectures || {}), [k]: (x.lectures && x.lectures[k]) || { nom: me.nom || "", at: nowISO() } } } : x));
+  }
+  function repondre(m, statut, raison) {
+    const k = maCle(m);
+    maj((list) => (list || []).map((x) => x.id === m.id ? {
+      ...x,
+      lectures: { ...(x.lectures || {}), [k]: (x.lectures && x.lectures[k]) || { nom: me.nom || "", at: nowISO() } },
+      reponses: { ...(x.reponses || {}), [k]: { nom: me.nom || "", statut, raison: raison || "", date: nowISO() } },
+    } : x));
+    setRepEnCours(null);
+  }
+  function supprimer(id) { maj((list) => (list || []).filter((x) => x.id !== id)); }
+
+  const Onglet = ({ v, children }) => (
+    <button onClick={() => setVue(v)} style={{ flex: 1, padding: "10px 0", borderRadius: 11, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 13.5, background: vue === v ? C.bleu : "#fff", color: vue === v ? "#fff" : C.gris, boxShadow: "0 1px 3px rgba(10,42,107,0.06)" }}>{children}</button>
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+      <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
+        <div style={{ fontWeight: 800, fontSize: 16 }}>Messagerie du club</div>
+      </header>
+
+      <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+        {peutValider && (
+          <>
+            <Btn variant="accent" full style={{ marginBottom: 12 }} onClick={() => (compose ? fermerCompose() : ouvrirCompose())}><Plus size={16} /> Nouveau message aux éducateurs</Btn>
+            {compose && (
+              <Card style={{ marginBottom: 16 }}>
+                <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10 }}>{editId ? "Modifier le message" : "Nouveau message"}</div>
+                <Field label="Objet"><Inp value={objet} onChange={(e) => setObjet(e.target.value)} placeholder="Ex : Disponibilité tournoi du 25/10" /></Field>
+                <Field label="Niveau d'urgence">
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+                    {URGENCES.map((u) => {
+                      const on = urgence === u.id;
+                      return (
+                        <button key={u.id} onClick={() => setUrgence(u.id)} style={{ border: on ? "none" : `1px solid ${C.grisClair}`, cursor: "pointer", borderRadius: 10, padding: "10px 8px", fontSize: 12.5, fontWeight: 800, background: on ? u.bg : "#fff", color: on ? u.texte : C.gris, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                          <span style={{ width: 10, height: 10, borderRadius: "50%", background: on ? u.texte : u.bg, flex: "0 0 auto" }} />{u.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+                <Field label="Type de message">
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+                    {[["info", "Information"], ["dispo", "Demande de disponibilité"]].map(([v, lib]) => (
+                      <button key={v} onClick={() => setType(v)} style={{ border: type === v ? "none" : `1px solid ${C.grisClair}`, cursor: "pointer", borderRadius: 10, padding: "10px 8px", fontSize: 12.5, fontWeight: 800, background: type === v ? C.bleu : "#fff", color: type === v ? "#fff" : C.gris }}>{lib}</button>
+                    ))}
+                  </div>
+                </Field>
+                <Field label="Message">
+                  <textarea value={texte} onChange={(e) => setTexte(e.target.value)} rows={4} placeholder="Ton message..." style={{ width: "100%", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 11, fontSize: 13.5, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit" }} />
+                </Field>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, margin: "4px 0 7px" }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: C.gris }}>Éducateurs des catégories {nbCats > 0 ? `(${nbCats})` : ""}</span>
+                  {catsDispo.length > 0 && <button type="button" onClick={toggleToutesCats} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 800, fontSize: 12.5, cursor: "pointer", textDecoration: "underline" }}>{toutesCats ? "Tout désélectionner" : "Toutes les catégories"}</button>}
+                </div>
+                {catsDispo.length === 0 ? (
+                  <div style={{ fontSize: 12.5, color: C.gris, padding: "6px 0" }}>Aucune catégorie disponible.</div>
+                ) : (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                    {catsDispo.map((c) => {
+                      const on = !!selCats[c];
+                      return (
+                        <button key={c} onClick={() => setSelCats((s) => { const n = { ...s }; if (n[c]) delete n[c]; else n[c] = true; return n; })} style={{ border: on ? "none" : `1px solid ${C.grisClair}`, cursor: "pointer", borderRadius: 999, padding: "8px 14px", fontSize: 13, fontWeight: 800, background: on ? C.bleu : "#fff", color: on ? "#fff" : C.gris, display: "inline-flex", alignItems: "center", gap: 6 }}>{on && <Check size={13} />}{c}</button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <button type="button" onClick={() => setShowNoms((v) => !v)} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", textDecoration: "underline", padding: 0, marginTop: 12 }}>{showNoms ? "Masquer le choix par éducateur" : "Ou choisir des éducateurs précis (option)"}</button>
+                {showNoms && (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: C.gris }}>Éducateurs nommés {nbSel > 0 ? `(${nbSel})` : ""}</span>
+                      <button type="button" onClick={toggleTous} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 800, fontSize: 12.5, cursor: "pointer", textDecoration: "underline" }}>{tousSel ? "Tout désélectionner" : "Tout sélectionner"}</button>
+                    </div>
+                    <Inp value={filtre} onChange={(e) => setFiltre(e.target.value)} placeholder="Filtrer par nom ou rôle..." style={{ marginBottom: 8 }} />
+                    {candidatsFiltres.length === 0 ? (
+                      <div style={{ fontSize: 12.5, color: C.gris, padding: "6px 0" }}>Aucun éducateur dans la liste d'encadrement. Ajoute-les depuis « Organisation des matchs ».</div>
+                    ) : (
+                      <div style={{ display: "grid", gap: 6, maxHeight: 220, overflow: "auto", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 8 }}>
+                        {candidatsFiltres.map((c) => {
+                          const k = cleEduc(c); const on = !!sel[k];
+                          return (
+                            <div key={k} onClick={() => setSel((s) => { const n = { ...s }; if (n[k]) delete n[k]; else n[k] = c; return n; })} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 9px", borderRadius: 9, cursor: "pointer", background: on ? "#E7EEF6" : "#fff", border: `1px solid ${on ? C.bleu : C.grisClair}` }}>
+                              <div style={{ width: 20, height: 20, borderRadius: 6, border: `2px solid ${on ? C.bleu : C.grisClair}`, background: on ? C.bleu : "#fff", display: "grid", placeItems: "center", flex: "0 0 auto" }}>{on && <Check size={13} color="#fff" />}</div>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: C.encre }}>{c.nom}</div>
+                                <div style={{ fontSize: 11, color: C.gris }}>{c.role}{c.email ? ` · ${c.email}` : ""}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  {editId && <Btn variant="ghost" full onClick={fermerCompose}>Annuler</Btn>}
+                  <Btn variant="accent" full disabled={!peutEnvoyer} onClick={envoyer}><Bell size={16} /> {editId ? "Enregistrer les modifications" : "Envoyer le message"}</Btn>
+                </div>
+              </Card>
+            )}
+            <div style={{ display: "flex", gap: 7, marginBottom: 14 }}>
+              <Onglet v="envoyes">Envoyés ({envoyes.length})</Onglet>
+              <Onglet v="recus">Reçus ({recus.length})</Onglet>
+            </div>
+          </>
+        )}
+
+        {vue === "envoyes" && peutValider && (
+          envoyes.length === 0 ? <Empty icon={<Bell size={24} color={C.gris} />} text="Aucun message envoyé" sub="Touche « Nouveau message » pour en adresser un" /> : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {envoyes.map((m) => {
+                const dests = m.destinataires || [];
+                const cats = m.categories || [];
+                const lectures = m.lectures || {}; const reponses = m.reponses || {};
+                const clesNom = new Set(dests.map((d) => cleEduc(d)));
+                const nomDe = (k) => (lectures[k] && lectures[k].nom) || (reponses[k] && reponses[k].nom) || k;
+                const nbLus = Object.keys(lectures).length;
+                const nbRep = Object.keys(reponses).length;
+                const autres = Object.keys(lectures).filter((k) => !clesNom.has(k)); // lecteurs atteints par catégorie
+                const ui = urgenceInfo(m.urgence);
+                const statutRep = (k) => { const r = reponses[k]; return r ? <Pastille bg={r.statut === "accepte" ? "#E2F4E9" : "#FBE3E3"} color={r.statut === "accepte" ? C.vert : C.rouge}>{r.statut === "accepte" ? "Disponible" : "Indisponible"}</Pastille> : null; };
+                return (
+                  <Card key={m.id} style={{ borderLeft: `4px solid ${ui.bord}` }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+                      <div style={{ fontWeight: 800, fontSize: 14.5, minWidth: 0 }}>{m.objet}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}>
+                        <button onClick={() => modifier(m)} title="Modifier le message" style={{ display: "inline-flex", alignItems: "center", gap: 4, border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, borderRadius: 8, padding: "4px 8px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}><Edit3 size={13} /> Modifier</button>
+                        <BtnSuppr nom={"le message « " + m.objet + " »"} onConfirm={() => supprimer(m.id)} size="sm" />
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 7 }}>
+                      <Pastille bg={ui.bg} color={ui.texte}>{ui.label}</Pastille>
+                      {m.type === "dispo" ? <Pastille bg="#FBEAD9" color="#B87A2B">Demande de disponibilité</Pastille> : <Pastille bg="#E7EEF6" color={C.bleu}>Information</Pastille>}
+                      <Pastille bg={nbLus > 0 ? "#E2F4E9" : C.grisClair} color={nbLus > 0 ? C.vert : C.gris}>{nbLus} lu{nbLus > 1 ? "s" : ""}</Pastille>
+                      {m.type === "dispo" && <Pastille bg={C.grisClair} color={C.gris}>{nbRep} réponse{nbRep > 1 ? "s" : ""}</Pastille>}
+                      <span style={{ fontSize: 11.5, color: C.gris, alignSelf: "center" }}>{fmt(m.date)}</span>
+                    </div>
+                    {cats.length > 0 && (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 7 }}>
+                        <span style={{ fontSize: 11.5, color: C.gris, fontWeight: 700, alignSelf: "center" }}>Catégories :</span>
+                        {cats.map((c) => <Pastille key={c} bg="#EEF2F8" color={C.bleu}>{c}</Pastille>)}
+                      </div>
+                    )}
+                    <div style={{ fontSize: 13, color: C.encre, lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 8 }}>{m.texte}</div>
+                    <div style={{ display: "grid", gap: 5, borderTop: `1px solid ${C.grisClair}`, paddingTop: 8 }}>
+                      {dests.map((d) => {
+                        const k = cleEduc(d); const lu = lectures[k]; const rep = reponses[k];
+                        return (
+                          <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+                            <span style={{ flex: 1, minWidth: 0, color: C.encre, fontWeight: 600 }}>{d.nom}</span>
+                            {m.type === "dispo" && rep ? statutRep(k) : null}
+                            {lu ? <span style={{ color: C.vert, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 3 }}><Check size={14} /> Lu</span> : <span style={{ color: C.gris }}>Non lu</span>}
+                          </div>
+                        );
+                      })}
+                      {autres.length > 0 && (
+                        <>
+                          {dests.length > 0 && <div style={{ fontSize: 11, color: C.gris, fontWeight: 700, marginTop: 4 }}>Autres lecteurs (par catégorie)</div>}
+                          {autres.map((k) => (
+                            <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+                              <span style={{ flex: 1, minWidth: 0, color: C.encre, fontWeight: 600 }}>{nomDe(k)}</span>
+                              {m.type === "dispo" ? statutRep(k) : null}
+                              <span style={{ color: C.vert, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 3 }}><Check size={14} /> Lu</span>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                      {nbLus === 0 && <div style={{ fontSize: 12, color: C.gris }}>Aucune lecture pour l'instant.</div>}
+                      {m.type === "dispo" && Object.keys(reponses).some((k) => reponses[k].statut === "refuse" && reponses[k].raison) && (
+                        <div style={{ marginTop: 4, fontSize: 12, color: C.gris, lineHeight: 1.5 }}>
+                          {Object.keys(reponses).map((k) => { const r = reponses[k]; return (r.statut === "refuse" && r.raison) ? <div key={k}><strong>{nomDe(k)} :</strong> {r.raison}</div> : null; })}
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )
+        )}
+
+        {vue === "recus" && (
+          recus.length === 0 ? <Empty icon={<Bell size={24} color={C.gris} />} text="Aucun message reçu" sub="Les messages de la direction apparaîtront ici" /> : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {recus.map((m) => {
+                const k = maCle(m); const lu = (m.lectures || {})[k]; const rep = (m.reponses || {})[k];
+                const ui = urgenceInfo(m.urgence);
+                return (
+                  <Card key={m.id} style={{ borderLeft: `5px solid ${ui.bord}`, background: lu ? "#fff" : ui.clair }}>
+                    <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 6 }}>
+                      <Pastille bg={ui.bg} color={ui.texte}>{ui.label}</Pastille>
+                      {m.type === "dispo" ? <Pastille bg="#FBEAD9" color="#B87A2B">Demande de disponibilité</Pastille> : <Pastille bg="#E7EEF6" color={C.bleu}>Information</Pastille>}
+                      {!lu && <Pastille bg="#fff" color={ui.bg}>Nouveau</Pastille>}
+                    </div>
+                    <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 3 }}>{m.objet}</div>
+                    <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 8 }}>De {m.de || "la direction"} · {fmt(m.date)}</div>
+                    <div style={{ fontSize: 13.5, color: C.encre, lineHeight: 1.55, whiteSpace: "pre-wrap", marginBottom: 12 }}>{m.texte}</div>
+
+                    {m.type === "dispo" ? (
+                      rep ? (
+                        <div style={{ background: rep.statut === "accepte" ? "#E2F4E9" : "#FBE3E3", color: rep.statut === "accepte" ? C.vert : C.rouge, borderRadius: 10, padding: "9px 12px", fontSize: 13, fontWeight: 700 }}>
+                          Réponse envoyée : {rep.statut === "accepte" ? "Disponible" : "Indisponible"}{rep.raison ? ` · ${rep.raison}` : ""}
+                        </div>
+                      ) : repEnCours && repEnCours.id === m.id ? (
+                        <div>
+                          <Field label="Raison de l'indisponibilité"><Inp value={repEnCours.raison} onChange={(e) => setRepEnCours({ id: m.id, raison: e.target.value })} placeholder="Ex : déjà pris ce jour-là" /></Field>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <Btn variant="ghost" full size="sm" onClick={() => setRepEnCours(null)}>Annuler</Btn>
+                            <Btn variant="danger" full size="sm" disabled={!repEnCours.raison.trim()} onClick={() => repondre(m, "refuse", repEnCours.raison.trim())}>Confirmer l'indisponibilité</Btn>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <Btn variant="accent" full size="sm" onClick={() => repondre(m, "accepte", "")}><Check size={15} /> Disponible</Btn>
+                          <Btn variant="danger" full size="sm" onClick={() => setRepEnCours({ id: m.id, raison: "" })}><X size={15} /> Indisponible</Btn>
+                        </div>
+                      )
+                    ) : (
+                      lu ? (
+                        <div style={{ color: C.vert, fontWeight: 700, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 5 }}><Check size={16} /> Lecture confirmée le {fmt(tsLecture(lu))}</div>
+                      ) : (
+                        <Btn variant="accent" full size="sm" onClick={() => marquerLu(m)}><Check size={15} /> J'ai lu ce message</Btn>
+                      )
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          )
+        )}
       </div>
     </div>
   );
