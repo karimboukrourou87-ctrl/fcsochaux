@@ -2980,29 +2980,29 @@ export default function App() {
 
   return (
     <div style={{ minHeight: "100vh", background: C.fond, color: C.encre, fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: 78 }}>
-      <style>{"@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}"}</style>
+      <style>{"@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}.fcHeadRow{display:flex;align-items:center;gap:13px}.fcTitle{font-weight:800;font-size:15.5px;letter-spacing:1.1px;line-height:1.12;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fcSub{font-size:9.5px;font-weight:700;letter-spacing:1.1px;line-height:1.3;margin-top:6px}.fcLogo{height:40px;width:auto;flex:0 0 auto}.fcBtn{background:rgba(255,255,255,0.12);border:none;color:#fff;border-radius:10px;padding:8px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;flex:0 0 auto}@media(max-width:520px){.fcHeadRow{gap:7px}.fcTitle{font-size:12.5px;letter-spacing:0.2px}.fcSub{font-size:8.6px;letter-spacing:0.3px}.fcLogo{height:30px}.fcBtn{padding:7px 7px;border-radius:9px}}@media(max-width:360px){.fcTitle{font-size:11.5px}.fcLogo{height:26px}.fcBtn{padding:6px 6px}}"}</style>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(14px + env(safe-area-inset-top)) 16px 12px", borderBottom: `2px solid ${C.jaune}` }}>
         <div style={{ maxWidth: 760, margin: "0 auto" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
-            <div style={{ width: 4, height: 38, borderRadius: 2, background: C.jaune, flex: "0 0 auto" }} />
+          <div className="fcHeadRow">
+            <div style={{ width: 4, height: 28, borderRadius: 2, background: C.jaune, flex: "0 0 auto" }} />
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
-              <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v15.0
-              </div>
+              <div className="fcTitle">{CLUB_LONG}</div>
             </div>
-            <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
-            <button onClick={() => { if (majEnCours) return; setMajEnCours(true); Promise.resolve(rafraichirTout()).finally(() => setTimeout(() => setMajEnCours(false), 700)); }} title="Actualiser les données" style={{ background: "rgba(255,255,255,0.12)", border: "none", color: "#fff", borderRadius: 10, padding: "8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700 }}>
+            <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" className="fcLogo" />
+            <button className="fcBtn" onClick={() => { if (majEnCours) return; setMajEnCours(true); Promise.resolve(rafraichirTout()).finally(() => setTimeout(() => setMajEnCours(false), 700)); }} title="Actualiser les données">
               <RefreshCw size={16} style={{ animation: majEnCours ? "spin 0.6s linear infinite" : "none" }} />
             </button>
             {!demo && (
-              <button onClick={() => setShowMotDePasse(true)} title="Modifier mon mot de passe" style={{ background: "rgba(255,255,255,0.12)", border: "none", color: "#fff", borderRadius: 10, padding: "8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700 }}>
+              <button className="fcBtn" onClick={() => setShowMotDePasse(true)} title="Modifier mon mot de passe">
                 <Lock size={16} />
               </button>
             )}
-            <button onClick={deconnexion} title="Se déconnecter" style={{ background: "rgba(255,255,255,0.12)", border: "none", color: "#fff", borderRadius: 10, padding: "8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700 }}>
+            <button className="fcBtn" onClick={deconnexion} title="Se déconnecter">
               <LogOut size={16} />
             </button>
+          </div>
+          <div className="fcSub" style={{ color: C.jaune }}>
+            ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v15.1
           </div>
 
           {groupesDispo.length > 1 && (
