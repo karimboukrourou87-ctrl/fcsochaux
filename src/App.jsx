@@ -2911,7 +2911,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v13.5
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v13.6
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
@@ -3675,6 +3675,9 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
             </div>
           );
         })}
+      </div>
+      <div style={{ fontSize: 10.5, color: C.gris, textAlign: "center", marginTop: 18, lineHeight: 1.5, opacity: 0.8 }}>
+        Diagnostic messagerie : {(msgListe || []).length} message(s) chargé(s) · reçus pour moi : {msgRecus.length} · mes catégories : {(mesCatsAcc && mesCatsAcc.length ? mesCatsAcc.join(", ") : "aucune")}
       </div>
     </div>
   );
