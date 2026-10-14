@@ -1655,15 +1655,30 @@ async function saveReunions(reunions) {
 
 // Messagerie interne du club (direction / responsables -> éducateurs), stockée dans categorie_data sous une clé réservée.
 const CAT_MESSAGES = "__MESSAGES__";
+// La messagerie utilise la même table que les réunions (lisible et modifiable par tous les comptes),
+// sur une ligne dédiée id=2. Cela évite tout réglage d'autorisation supplémentaire côté base de données.
 async function loadMessagesClub() {
-  try { const d = await loadCat(CAT_MESSAGES); return Array.isArray(d.messages) ? d.messages : []; }
-  catch (e) { return []; }
+  try {
+    const sb = await getSupabase();
+    try {
+      const { data, error } = await sb.from("club_reunions").select("data").eq("id", 2).maybeSingle();
+      if (!error && data && data.data && Array.isArray(data.data.messages)) return data.data.messages;
+    } catch (e) {}
+    // Reprise automatique de l'ancienne zone (categorie_data) pour ne pas perdre les messages déjà envoyés.
+    try {
+      const d = await loadCat(CAT_MESSAGES);
+      if (Array.isArray(d.messages) && d.messages.length) {
+        try { await sb.from("club_reunions").upsert({ id: 2, data: { messages: d.messages } }); } catch (e) {}
+        return d.messages;
+      }
+    } catch (e) {}
+  } catch (e) {}
+  return [];
 }
 async function saveMessagesClub(liste) {
   const sb = await getSupabase();
-  let userId = null;
-  try { const u = await sb.auth.getUser(); userId = (u && u.data && u.data.user) ? u.data.user.id : null; } catch (e) {}
-  await saveCat(CAT_MESSAGES, { messages: liste }, userId);
+  const { error } = await sb.from("club_reunions").upsert({ id: 2, data: { messages: liste } });
+  if (error) throw error;
 }
 // Identité d'un destinataire : clé stable (email prioritaire, sinon nom) et test d'égalité tolérant.
 function cleEduc(x) { return (((x && x.email) || "").trim().toLowerCase()) || (((x && x.nom) || "").trim().toLowerCase()); }
@@ -2911,7 +2926,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v13.6
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v13.7
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
