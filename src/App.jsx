@@ -2474,6 +2474,15 @@ export default function App() {
     if (adminUnlock) { adminActiviteRef.current = Date.now(); if (apres) apres(); return; }
     setAdminPrompt(() => (apres || (() => {})));
   }
+  // Tant que l'administratif est déverrouillé, on suit l'activité clavier/tactile et on reverrouille après 2 min sans activité.
+  useEffect(() => {
+    if (!adminUnlock) return;
+    const maj = () => { adminActiviteRef.current = Date.now(); };
+    window.addEventListener("keydown", maj);
+    window.addEventListener("pointerdown", maj);
+    const id = setInterval(() => { if (Date.now() - adminActiviteRef.current > 120000) setAdminUnlock(false); }, 10000);
+    return () => { window.removeEventListener("keydown", maj); window.removeEventListener("pointerdown", maj); clearInterval(id); };
+  }, [adminUnlock]);
   const [demResume, setDemResume] = useState({ recues: 0, envoyees: 0, reponses: 0 });
   const [demTick, setDemTick] = useState(0);
   const [saveStatus, setSaveStatus] = useState(null);
@@ -2910,15 +2919,6 @@ export default function App() {
     notifTransport(dem, "refus", cause || "");
   };
   const rafraichirTout = () => { if (rafraichirPlanning) rafraichirPlanning(); if (rafraichirTransport) rafraichirTransport(); loadMessagesClub().then((m) => setMessagesClub(m)).catch(() => {}); rafraichirDb(); };
-  // Tant que l'administratif est déverrouillé, on suit l'activité clavier/tactile et on reverrouille après 2 min sans activité.
-  useEffect(() => {
-    if (!adminUnlock) return;
-    const maj = () => { adminActiviteRef.current = Date.now(); };
-    window.addEventListener("keydown", maj);
-    window.addEventListener("pointerdown", maj);
-    const id = setInterval(() => { if (Date.now() - adminActiviteRef.current > 120000) setAdminUnlock(false); }, 10000);
-    return () => { window.removeEventListener("keydown", maj); window.removeEventListener("pointerdown", maj); clearInterval(id); };
-  }, [adminUnlock]);
   // Vérifie le mot de passe du compte connecté (sans le stocker) pour déverrouiller la modification des informations administratives.
   async function verifierMotDePasse(pwd) {
     if (demo) return true;
@@ -2957,7 +2957,7 @@ export default function App() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: 1.1 }}>{CLUB_LONG}</div>
               <div style={{ fontSize: 9.5, color: C.jaune, fontWeight: 700, letterSpacing: 1.2, marginTop: 3 }}>
-                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v14.5
+                ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} · v14.6
               </div>
             </div>
             <img src={LOGO_CLUB} alt="Logo FC Sochaux-Montbéliard" style={{ height: 42, width: "auto", flex: "0 0 auto" }} />
