@@ -1908,6 +1908,55 @@ const inputStyle = {
 function Inp(props) { return <input {...props} style={{ ...inputStyle, ...props.style }} />; }
 function Sel({ children, ...props }) { return <select {...props} style={{ ...inputStyle, ...props.style }}>{children}</select>; }
 
+// Sélecteur d'encadrant : liste personnalisée, classée par rôle, nom à gauche et licence alignée à droite (bien aérée).
+function SelEncadrement({ value, onChange, liste, label, options = [] }) {
+  const [open, setOpen] = useState(false);
+  const connus = new Set(ROLES_ENCADREMENT);
+  const tri = (a, b) => (a.nom || "").localeCompare(b.nom || "", "fr");
+  const groupes = ROLES_ENCADREMENT
+    .map((r) => ({ r: r + "s", gens: (liste || []).filter((g) => g.role === r).sort(tri) }))
+    .filter((x) => x.gens.length);
+  const autres = (liste || []).filter((g) => !connus.has(g.role)).sort(tri);
+  if (autres.length) groupes.push({ r: "Autres", gens: autres });
+  const sel = (liste || []).find((g) => g.nom === value);
+  const licSel = sel && sel.licence ? sel.licence : "";
+  const choisir = (v) => { onChange(v); setOpen(false); };
+  const rowBtn = (nom, licence, actif) => (
+    <button type="button" key={nom + "|" + (licence || "")} onClick={() => choisir(nom)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", border: "none", borderBottom: `1px solid ${C.grisClair}`, background: actif ? "#E7EEF6" : "#fff", cursor: "pointer", padding: "13px 10px" }}>
+      <span style={{ flex: 1, minWidth: 0, fontWeight: 700, color: nom ? C.encre : C.gris, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nom || "Non désigné"}</span>
+      {licence ? <span style={{ flex: "0 0 auto", color: C.gris, fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap" }}>Licence {licence}</span> : null}
+    </button>
+  );
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} style={{ ...inputStyle, display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between", textAlign: "left", cursor: "pointer", background: "#fff" }}>
+        <span style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "baseline", gap: 10 }}>
+          <span style={{ flex: 1, minWidth: 0, fontWeight: value ? 700 : 400, color: value ? C.encre : C.gris, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value || "Non désigné"}</span>
+          {licSel ? <span style={{ flex: "0 0 auto", color: C.gris, fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap" }}>Licence {licSel}</span> : null}
+        </span>
+        <span style={{ color: C.gris, flex: "0 0 auto", transform: "rotate(-90deg)", display: "inline-flex" }}><ChevronLeft size={16} /></span>
+      </button>
+      {open && (
+        <Modal title={label ? `Choisir — ${label}` : "Choisir"} onClose={() => setOpen(false)}>
+          <div style={{ margin: "-4px 0" }}>
+            {rowBtn("", "", !value)}
+            {options.filter(Boolean).map((o) => rowBtn(o, "", o === value))}
+            {groupes.map((grp) => (
+              <div key={grp.r}>
+                <div style={{ fontSize: 11.5, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.5, padding: "13px 10px 5px" }}>{grp.r}</div>
+                {grp.gens.map((g) => rowBtn(g.nom, g.licence || "", g.nom === value))}
+              </div>
+            ))}
+            {value && !(liste || []).some((g) => g.nom === value) && !options.includes(value) ? (
+              <div><div style={{ fontSize: 11.5, fontWeight: 800, color: C.gris, textTransform: "uppercase", padding: "13px 10px 5px" }}>Saisi manuellement</div>{rowBtn(value, "", true)}</div>
+            ) : null}
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
 function Modal({ title, onClose, children, footer }) {
   return (
     <div onClick={onClose} style={{
@@ -3041,7 +3090,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.1</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.2</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -6086,11 +6135,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
             { key: "delegue", label: "Délégué" },
           ].map(({ key: kk, label }) => (
             <Field key={kk} label={label}>
-              <Sel value={encMatch[kk] || ""} onChange={(e) => majEncMatch({ [kk]: e.target.value })}>
-                <option value="">Non désigné</option>
-                {optgroupsEncadrement(listeEncCompo)}
-                {encMatch[kk] && !listeEncCompo.some((g) => g.nom === encMatch[kk]) ? <option value={encMatch[kk]}>{encMatch[kk]}</option> : null}
-              </Sel>
+              <SelEncadrement value={encMatch[kk] || ""} onChange={(v) => majEncMatch({ [kk]: v })} liste={listeEncCompo} label={label} />
             </Field>
           ))}
         </div>
@@ -7018,12 +7063,7 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
         const opts = options || [];
         return (
           <Field key={key} label={role}>
-            <Sel value={e[key] || ""} onChange={(ev) => majEncadrement({ [key]: ev.target.value })}>
-              <option value="">Non désigné</option>
-              {opts.map((o) => <option key={o} value={o}>{o}</option>)}
-              {optgroupsEncadrement(liste)}
-              {e[key] && !liste.some((g) => g.nom === e[key]) && !opts.includes(e[key]) ? <option value={e[key]}>{e[key]}</option> : null}
-            </Sel>
+            <SelEncadrement value={e[key] || ""} onChange={(v) => majEncadrement({ [key]: v })} liste={liste} label={role} options={opts} />
           </Field>
         );
       })}
