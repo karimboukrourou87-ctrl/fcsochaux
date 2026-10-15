@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback, useContext, createContext } from "react";
 import {
   Home, Users, ClipboardList, CalendarDays, Dumbbell, Search,
   Plus, X, Trash2, ChevronLeft, Trophy, Award, Bell, Activity, Target,
@@ -6,6 +6,10 @@ import {
   HeartPulse, ShieldAlert, Star, MapPin, ArrowRightLeft, Eye, FileDown, Phone, Camera, LogOut,
   Send, Check, Inbox, ListOrdered, ExternalLink, Bus, Upload, Lock, RefreshCw
 } from "lucide-react";
+
+// Contexte de verrouillage administratif : rôle (direction/responsable) + déverrouillage par mot de passe.
+// Permet de sécuriser les listes d'encadrement (lecture seule pour les éducateurs).
+const AdminCtx = createContext({ peutValider: false, adminUnlock: false, demo: false, demander: () => {} });
 
 /* ============================================================
    Sauvegarde et export des données
@@ -1569,39 +1573,55 @@ function usePlanningClub(demo, db, mutate, cats) {
 // Ecran commun de gestion des dirigeants / encadrants : ajouter, renommer, supprimer (securise).
 // Travaille sur la liste commune du club, via (liste, maj) fournis par l'appelant.
 function GestionDirigeants({ liste, maj, onClose }) {
+  const { peutValider, adminUnlock, demo, demander } = useContext(AdminCtx);
+  const estDirection = demo || peutValider;
+  const editable = demo || (peutValider && adminUnlock);
   const [nom, setNom] = useState("");
   const [role, setRole] = useState("Dirigeant");
+  const [licence, setLicence] = useState("");
   const [edit, setEdit] = useState(null);
   const items = [...(liste || [])].sort((a, b) => (a.nom || "").localeCompare(b.nom || "", "fr"));
   const ajouter = () => {
     const n = nom.trim(); if (!n || !maj) return;
-    maj((l) => (l || []).some((x) => (x.nom || "").trim().toLowerCase() === n.toLowerCase() && (x.role || "") === role) ? (l || []) : [...(l || []), { id: uid(), nom: n, role, licence: "", email: "" }]);
-    setNom("");
+    maj((l) => (l || []).some((x) => (x.nom || "").trim().toLowerCase() === n.toLowerCase() && (x.role || "") === role) ? (l || []) : [...(l || []), { id: uid(), nom: n, role, licence: licence.trim(), email: "" }]);
+    setNom(""); setLicence("");
   };
   const renommer = () => {
     if (!edit || !maj) return; const n = (edit.nom || "").trim(); if (!n) return;
-    maj((l) => (l || []).map((x) => x.id === edit.id ? { ...x, nom: n, role: edit.role } : x));
+    maj((l) => (l || []).map((x) => x.id === edit.id ? { ...x, nom: n, role: edit.role, licence: (edit.licence || "").trim() } : x));
     setEdit(null);
   };
   const supprimer = (id) => { if (maj) maj((l) => (l || []).filter((x) => x.id !== id)); };
   return (
     <Modal title="Gérer les dirigeants" onClose={onClose}>
       <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Ajoute, renomme ou supprime une personne de la liste commune du club. Les changements sont repris partout : réunions, transports, bilans.</div>
+      {!editable && (estDirection ? (
+        <div style={{ background: "#FFF3DA", border: "1px solid #EBD3AE", borderRadius: 10, padding: "11px 12px", marginBottom: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, fontWeight: 800, color: "#B87A2B", fontSize: 13, marginBottom: 6 }}><Lock size={15} /> Liste verrouillée</div>
+          <div style={{ fontSize: 12, color: C.gris, marginBottom: 8, lineHeight: 1.45 }}>Déverrouille avec ton mot de passe pour ajouter, renommer ou supprimer un encadrant.</div>
+          <Btn variant="accent" size="sm" onClick={() => demander && demander()}><Lock size={14} /> Déverrouiller avec mon mot de passe</Btn>
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: "#B87A2B", fontWeight: 700, background: "#FBEAD9", borderRadius: 9, padding: "8px 11px", marginBottom: 10, lineHeight: 1.45 }}>Liste gérée par la direction et les responsables. Tu peux la consulter mais pas la modifier.</div>
+      ))}
+      {editable && (<>
       <Field label="Nom et prénom"><Inp value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nom et prénom" /></Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "end", marginBottom: 4 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         <Field label="Rôle"><Sel value={role} onChange={(e) => setRole(e.target.value)}>{ROLES_ENCADREMENT.map((r) => <option key={r}>{r}</option>)}</Sel></Field>
-        <Btn variant="accent" onClick={ajouter} disabled={!nom.trim()}><Plus size={16} /> Ajouter</Btn>
+        <Field label="N° de licence"><Inp value={licence} onChange={(e) => setLicence(e.target.value)} placeholder="Optionnel" /></Field>
       </div>
+      <Btn variant="accent" full onClick={ajouter} disabled={!nom.trim()} style={{ marginBottom: 4 }}><Plus size={16} /> Ajouter</Btn>
+      </>)}
       <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
         {items.length === 0 ? <Empty icon={<Users size={22} color={C.gris} />} text="Aucun nom enregistré" /> :
           items.map((x) => (
             <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 11px", background: "#fff", borderRadius: 11, border: `1px solid ${C.grisClair}` }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700 }}>{x.nom}</div>
-                <div style={{ fontSize: 12, color: C.gris }}>{x.role || "Dirigeant"}</div>
+                <div style={{ fontSize: 12, color: C.gris }}>{x.role || "Dirigeant"}{x.licence ? ` · Lic. ${x.licence}` : ""}</div>
               </div>
-              <Edit3 size={16} color={C.bleu} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setEdit({ id: x.id, nom: x.nom, role: ROLES_ENCADREMENT.includes(x.role) ? x.role : "Dirigeant" })} />
-              <BtnSuppr nom={x.nom} onConfirm={() => supprimer(x.id)} size="sm" />
+              {editable && <Edit3 size={16} color={C.bleu} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setEdit({ id: x.id, nom: x.nom, role: ROLES_ENCADREMENT.includes(x.role) ? x.role : "Dirigeant", licence: x.licence || "" })} />}
+              {editable && <BtnSuppr nom={x.nom} onConfirm={() => supprimer(x.id)} size="sm" />}
             </div>
           ))}
       </div>
@@ -1609,7 +1629,10 @@ function GestionDirigeants({ liste, maj, onClose }) {
         <Modal title="Modifier la personne" onClose={() => setEdit(null)}
           footer={<Btn variant="accent" full disabled={!(edit.nom || "").trim()} onClick={renommer}><Save size={16} /> Enregistrer</Btn>}>
           <Field label="Nom et prénom"><Inp value={edit.nom} onChange={(e) => setEdit({ ...edit, nom: e.target.value })} placeholder="Nom et prénom" /></Field>
-          <Field label="Rôle"><Sel value={edit.role} onChange={(e) => setEdit({ ...edit, role: e.target.value })}>{ROLES_ENCADREMENT.map((r) => <option key={r}>{r}</option>)}</Sel></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <Field label="Rôle"><Sel value={edit.role} onChange={(e) => setEdit({ ...edit, role: e.target.value })}>{ROLES_ENCADREMENT.map((r) => <option key={r}>{r}</option>)}</Sel></Field>
+            <Field label="N° de licence"><Inp value={edit.licence || ""} onChange={(e) => setEdit({ ...edit, licence: e.target.value })} placeholder="Optionnel" /></Field>
+          </div>
         </Modal>
       )}
     </Modal>
@@ -2979,6 +3002,7 @@ export default function App() {
   ];
 
   return (
+    <AdminCtx.Provider value={{ peutValider, adminUnlock, demo, demander: demanderDeverrouillageAdmin }}>
     <div style={{ minHeight: "100vh", background: C.fond, color: C.encre, fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: 78 }}>
       <style>{"@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}.fcHeadRow{display:flex;align-items:center;gap:13px}.fcBrand{min-width:0;flex:1;display:flex;flex-direction:column;justify-content:center}.fcTitle{font-weight:800;font-size:16px;letter-spacing:0.4px;line-height:1.08;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}.fcSub{font-size:9px;font-weight:700;letter-spacing:1.5px;line-height:1.3;margin-top:7px;margin-left:57px;color:#C6A24C;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fcVer{color:rgba(198,162,76,0.6);letter-spacing:0.8px}.fcLogo{height:44px;width:auto;flex:0 0 auto}.fcActions{display:flex;align-items:center;gap:6px;flex:0 0 auto}.fcBtn{background:rgba(255,255,255,0.09);border:none;color:#fff;border-radius:9px;padding:9px;cursor:pointer;display:flex;align-items:center;justify-content:center}.fcBtn:active{background:rgba(255,255,255,0.2)}@media(max-width:520px){.fcHeadRow{gap:10px}.fcTitle{font-size:13px;letter-spacing:0.2px}.fcSub{font-size:7.8px;letter-spacing:0.7px;margin-top:6px;margin-left:44px}.fcLogo{height:34px}.fcActions{gap:4px}.fcBtn{padding:7px}}@media(max-width:360px){.fcTitle{font-size:11.5px}.fcSub{font-size:7px;letter-spacing:0.4px;margin-left:40px}.fcLogo{height:30px}.fcBtn{padding:6px}}"}</style>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(14px + env(safe-area-inset-top)) 16px 13px", borderBottom: `2px solid ${C.jaune}` }}>
@@ -3002,7 +3026,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v15.7</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v15.9</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -3147,6 +3171,7 @@ export default function App() {
       {showMotDePasse && <ChangerMotDePasse email={(session && session.user && session.user.email) || ""} onClose={() => setShowMotDePasse(false)} />}
       {showCalendrier && <Calendrier db={{ ...db, reunions: reunionsSource, encadrement: encadrementClub }} majEncadrement={majEncadrementClub} mutate={mutate} mutateReunions={mutateReu} peutValider={peutValider} onClose={() => setShowCalendrier(false)} />}
     </div>
+    </AdminCtx.Provider>
   );
 }
 
@@ -6048,7 +6073,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
             <Field key={kk} label={label}>
               <Sel value={encMatch[kk] || ""} onChange={(e) => majEncMatch({ [kk]: e.target.value })}>
                 <option value="">Non désigné</option>
-                {listeEncCompo.map((g) => <option key={g.id} value={g.nom}>{g.nom}{g.role ? ` (${g.role})` : ""}</option>)}
+                {listeEncCompo.map((g) => <option key={g.id} value={g.nom}>{g.nom}{g.licence ? ` · Lic. ${g.licence}` : ""}{g.role ? ` (${g.role})` : ""}</option>)}
                 {encMatch[kk] && !listeEncCompo.some((g) => g.nom === encMatch[kk]) ? <option value={encMatch[kk]}>{encMatch[kk]}</option> : null}
               </Sel>
             </Field>
@@ -6478,6 +6503,9 @@ function EditMatch({ match, db, onClose, onSave }) {
 }
 
 function RosterEncadrement({ demo, db, mutate, onClose }) {
+  const { peutValider, adminUnlock, demander } = useContext(AdminCtx);
+  const estDirection = demo || peutValider;
+  const editable = demo || (peutValider && adminUnlock);
   const [liste, majEnc, chargementEnc] = useEncadrementClub(demo, db, mutate);
   const [nom, setNom] = useState("");
   const [role, setRole] = useState(ROLES_ENCADREMENT[0]);
@@ -6540,6 +6568,16 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
     <Modal title="Encadrement : éducateurs, dirigeants, délégués, arbitres" onClose={onClose}>
       <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>Liste commune à tout le club : les noms ajoutés ici sont disponibles dans toutes les catégories. Saisis une fois les noms et numéros de licence, ils seront proposés pour chaque match.</div>
       {chargementEnc && <div style={{ fontSize: 12.5, color: C.bleu, fontWeight: 700, marginBottom: 10 }}>Chargement de la liste du club...</div>}
+      {!editable && (estDirection ? (
+        <div style={{ background: "#FFF3DA", border: "1px solid #EBD3AE", borderRadius: 10, padding: "11px 12px", marginBottom: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, fontWeight: 800, color: "#B87A2B", fontSize: 13, marginBottom: 6 }}><Lock size={15} /> Liste verrouillée</div>
+          <div style={{ fontSize: 12, color: C.gris, marginBottom: 8, lineHeight: 1.45 }}>Déverrouille avec ton mot de passe pour ajouter, modifier ou supprimer un encadrant.</div>
+          <Btn variant="accent" size="sm" onClick={() => demander && demander()}><Lock size={14} /> Déverrouiller avec mon mot de passe</Btn>
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: "#B87A2B", fontWeight: 700, background: "#FBEAD9", borderRadius: 9, padding: "8px 11px", marginBottom: 10, lineHeight: 1.45 }}>Liste gérée par la direction et les responsables. Tu peux la consulter mais pas la modifier.</div>
+      ))}
+      {editable && (<>
       <Field label="Nom et prénom"><Inp value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nom et prénom" /></Field>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         <Field label="Rôle">
@@ -6566,6 +6604,7 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
           <textarea value={texteColle} onChange={(e) => setTexteColle(e.target.value)} rows={10} placeholder='{ "encadrement": [ { "nom": "...", "role": "Éducateur", "licence": "...", "email": "..." } ] }' style={{ width: "100%", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 11, fontSize: 12.5, fontFamily: "monospace", resize: "vertical", boxSizing: "border-box" }} />
         </Modal>
       )}
+      </>)}
       {liste.length > 0 && (
         <div style={{ marginTop: 14 }}>
           <Field label="Afficher par rôle">
@@ -6595,8 +6634,8 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
                       {x.licence ? <div style={{ fontSize: 12, color: C.gris }}>Licence {x.licence}</div> : null}
                       {x.email ? <div style={{ fontSize: 12, color: C.gris }}>{x.email}</div> : null}
                     </div>
-                    <Edit3 size={16} color={C.bleu} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setEdit({ id: x.id, nom: x.nom, role: ROLES_ENCADREMENT.includes(x.role) ? x.role : "Éducateur", licence: x.licence || "", email: x.email || "" })} />
-                    <BtnSuppr nom={x.nom} onConfirm={() => retirer(x.id)} size="sm" />
+                    {editable && <Edit3 size={16} color={C.bleu} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setEdit({ id: x.id, nom: x.nom, role: ROLES_ENCADREMENT.includes(x.role) ? x.role : "Éducateur", licence: x.licence || "", email: x.email || "" })} />}
+                    {editable && <BtnSuppr nom={x.nom} onConfirm={() => retirer(x.id)} size="sm" />}
                   </div>
                 ))}
               </div>
@@ -6967,9 +7006,9 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
             <Sel value={e[key] || ""} onChange={(ev) => majEncadrement({ [key]: ev.target.value })}>
               <option value="">Non désigné</option>
               {opts.map((o) => <option key={o} value={o}>{o}</option>)}
-              {gens.map((g) => <option key={g.id}>{g.nom}</option>)}
+              {gens.map((g) => <option key={g.id} value={g.nom}>{g.nom}{g.licence ? ` · Lic. ${g.licence}` : ""}</option>)}
               {autres.length ? <option disabled>— Autres personnes —</option> : null}
-              {autres.map((g) => <option key={g.id} value={g.nom}>{g.nom}{g.role ? ` (${g.role})` : ""}</option>)}
+              {autres.map((g) => <option key={g.id} value={g.nom}>{g.nom}{g.licence ? ` · Lic. ${g.licence}` : ""}{g.role ? ` (${g.role})` : ""}</option>)}
               {e[key] && !liste.some((g) => g.nom === e[key]) && !opts.includes(e[key]) ? <option value={e[key]}>{e[key]}</option> : null}
             </Sel>
           </Field>
