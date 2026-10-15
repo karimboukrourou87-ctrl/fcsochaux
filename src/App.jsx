@@ -1188,6 +1188,21 @@ const MINIBUS = ["T2", "T3", "T4", "T5"];
 const MODES_TRANSPORT = ["Minibus club", "Bus en location", "Bus de voyage des pros", "Voitures des parents"];
 const LOUEURS = ["ADJ", "Hertz"];
 const ROLES_ENCADREMENT = ["Éducateur", "Coach des gardiens", "Préparateur physique", "Dirigeant", "Délégué", "Arbitre"];
+// Options d'un menu d'encadrement classées par rôle (sections) : Éducateurs, Dirigeants, etc.
+function optgroupsEncadrement(liste) {
+  const connus = new Set(ROLES_ENCADREMENT);
+  const tri = (a, b) => (a.nom || "").localeCompare(b.nom || "", "fr");
+  const groupes = ROLES_ENCADREMENT
+    .map((r) => ({ r, gens: (liste || []).filter((g) => g.role === r).sort(tri) }))
+    .filter((x) => x.gens.length);
+  const autres = (liste || []).filter((g) => !connus.has(g.role)).sort(tri);
+  if (autres.length) groupes.push({ r: "Autres", gens: autres });
+  return groupes.map(({ r, gens }) => (
+    <optgroup key={r} label={r === "Autres" ? "Autres" : r + "s"}>
+      {gens.map((g) => <option key={g.id} value={g.nom}>{g.nom}{g.licence ? ` · Licence ${g.licence}` : ""}</option>)}
+    </optgroup>
+  ));
+}
 
 const TERRAINS = ["Synthétique centre", "Synthétique dôme", "Herbe centre (nouveau synthétique)", "Herbe villa", "Pouges"];
 const VESTIAIRES = ["1", "2", "3", "4", "5", "Villa 1", "Villa 2"];
@@ -1618,7 +1633,7 @@ function GestionDirigeants({ liste, maj, onClose }) {
             <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 11px", background: "#fff", borderRadius: 11, border: `1px solid ${C.grisClair}` }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700 }}>{x.nom}</div>
-                <div style={{ fontSize: 12, color: C.gris }}>{x.role || "Dirigeant"}{x.licence ? ` · Lic. ${x.licence}` : ""}</div>
+                <div style={{ fontSize: 12, color: C.gris }}>{x.role || "Dirigeant"}{x.licence ? ` · Licence ${x.licence}` : ""}</div>
               </div>
               {editable && <Edit3 size={16} color={C.bleu} style={{ cursor: "pointer", flex: "0 0 auto" }} onClick={() => setEdit({ id: x.id, nom: x.nom, role: ROLES_ENCADREMENT.includes(x.role) ? x.role : "Dirigeant", licence: x.licence || "" })} />}
               {editable && <BtnSuppr nom={x.nom} onConfirm={() => supprimer(x.id)} size="sm" />}
@@ -3026,7 +3041,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v15.9</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.1</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -6073,7 +6088,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
             <Field key={kk} label={label}>
               <Sel value={encMatch[kk] || ""} onChange={(e) => majEncMatch({ [kk]: e.target.value })}>
                 <option value="">Non désigné</option>
-                {listeEncCompo.map((g) => <option key={g.id} value={g.nom}>{g.nom}{g.licence ? ` · Lic. ${g.licence}` : ""}{g.role ? ` (${g.role})` : ""}</option>)}
+                {optgroupsEncadrement(listeEncCompo)}
                 {encMatch[kk] && !listeEncCompo.some((g) => g.nom === encMatch[kk]) ? <option value={encMatch[kk]}>{encMatch[kk]}</option> : null}
               </Sel>
             </Field>
@@ -7006,9 +7021,7 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
             <Sel value={e[key] || ""} onChange={(ev) => majEncadrement({ [key]: ev.target.value })}>
               <option value="">Non désigné</option>
               {opts.map((o) => <option key={o} value={o}>{o}</option>)}
-              {gens.map((g) => <option key={g.id} value={g.nom}>{g.nom}{g.licence ? ` · Lic. ${g.licence}` : ""}</option>)}
-              {autres.length ? <option disabled>— Autres personnes —</option> : null}
-              {autres.map((g) => <option key={g.id} value={g.nom}>{g.nom}{g.licence ? ` · Lic. ${g.licence}` : ""}{g.role ? ` (${g.role})` : ""}</option>)}
+              {optgroupsEncadrement(liste)}
               {e[key] && !liste.some((g) => g.nom === e[key]) && !opts.includes(e[key]) ? <option value={e[key]}>{e[key]}</option> : null}
             </Sel>
           </Field>
