@@ -3002,7 +3002,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v15.4</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v15.5</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -3943,21 +3943,24 @@ function limiteMutesTotal(cat) {
 }
 /* Comptage des mutations actives d'un effectif */
 function compteMutations(players) {
-  let normale = 0, hors = 0, expirees = 0, sansdate = 0;
+  let normale = 0, hors = 0, expirees = 0, sansdate = 0, contrat = 0;
   (players || []).forEach((p) => {
     const t = typeMutation(p);
     if (t === "club") return;
+    if (t === "contrat") { contrat++; return; }
     if (t === "expiree") { expirees++; return; }
     if (t === "hors") hors++;
     else if (t === "normale") normale++;
     else if (t === "sansdate") sansdate++;
   });
-  return { normale, hors, expirees, sansdate, total: normale + hors + sansdate };
+  return { normale, hors, expirees, sansdate, contrat, total: normale + hors + sansdate };
 }
 /* Type reel d'une mutation, calcule selon la date de validation.
    Periode normale : du 1er juin au 15 juillet. Sinon hors periode. */
 function typeMutation(p) {
-  if (!p || !p.mutation || p.mutation === "club") return "club";
+  if (!p) return "club";
+  if (p.sousContrat) return "contrat"; // joueur professionnel sous contrat : pas de casquette mutation
+  if (!p.mutation || p.mutation === "club") return "club";
   if (!mutationActive(p)) return "expiree";
   if (!p.mutationDate) return "sansdate";
   const d = new Date(p.mutationDate + "T00:00:00");
@@ -3970,6 +3973,7 @@ function typeMutation(p) {
 function libelleMutation(p) {
   const t = typeMutation(p);
   if (t === "club") return { label: "Licence club", couleur: C.gris, bg: C.grisClair };
+  if (t === "contrat") return { label: "Joueur sous contrat", couleur: C.bleu, bg: "#E7EEF6" };
   if (t === "expiree") return { label: "Mutation expirée", couleur: C.gris, bg: C.grisClair };
   if (t === "sansdate") return { label: "Mutation, date à renseigner", couleur: "#B87A2B", bg: "#FBEAD9" };
   if (t === "hors") return { label: "Mutation hors période", couleur: "#B87A2B", bg: "#FBEAD9" };
@@ -4351,6 +4355,28 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
         </div>
         {!lectureSeule && (demo || peutValider) && <Btn variant="accent" onClick={() => setEdit({ cat })}><Plus size={18} /></Btn>}
       </div>
+      {(() => {
+        const mc = compteMutations(players);
+        const limH = limiteHorsPeriode(cat);
+        const simples = mc.normale + mc.sansdate;
+        const depasse = mc.hors > limH;
+        const chip = (txt, bg, col, bord) => <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: bg, color: col, border: `1px solid ${bord || bg}`, borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 800 }}>{txt}</span>;
+        return (
+          <div style={{ background: "#fff", border: `1px solid ${depasse ? C.rouge : C.grisClair}`, borderRadius: 12, padding: "11px 12px", marginBottom: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 9 }}>Mutations de la catégorie {cat}</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {chip(`Mutations simples : ${simples}`, "#E7EEF6", C.bleu)}
+              {chip(`Hors période : ${mc.hors} / ${limH}`, depasse ? "#FBE3E3" : "#FBEAD9", depasse ? C.rouge : "#B87A2B", depasse ? C.rouge : "#F0DBA8")}
+              {mc.contrat > 0 && chip(`Sous contrat : ${mc.contrat}`, "#EAF3EC", C.vert)}
+            </div>
+            <div style={{ fontSize: 11.5, color: depasse ? C.rouge : C.gris, marginTop: 8, lineHeight: 1.45, fontWeight: depasse ? 700 : 400 }}>
+              {depasse
+                ? `Attention : ${mc.hors} mutations hors période pour ${limH} autorisée${limH > 1 ? "s" : ""} sur la feuille de match.`
+                : `${limH} mutation${limH > 1 ? "s" : ""} hors période autorisée${limH > 1 ? "s" : ""} sur la feuille de match pour cette catégorie.`}
+            </div>
+          </div>
+        );
+      })()}
       {!lectureSeule && (
         <>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
@@ -5407,7 +5433,7 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
   const [f, setF] = useState({
     prenom: "", nom: "", dob: "", taille: "", poids: "", poste: "", pied: "Droit",
     numero: "", licence: "", club: "FCSM", photo: "", jonglages: { fort: "", faible: "", tete: "" },
-    parentNom: "", parentTel: "", parentEmail: "", mutation: "", mutationDate: "", ...joueur,
+    parentNom: "", parentTel: "", parentEmail: "", mutation: "", mutationDate: "", sousContrat: false, ...joueur,
   });
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
   const setJo = (k, v) => setF((o) => ({ ...o, jonglages: { ...(o.jonglages || {}), [k]: v } }));
@@ -5416,7 +5442,7 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
   const peutEditerAdmin = adminModifiable && adminUnlock; // droit ET déverrouillé
   const adminVerrouille = !peutEditerAdmin;               // champs admin non modifiables
   // Détection d'un changement sur une information administrative (pour inscrire l'auteur).
-  const CHAMPS_ADMIN = ["prenom", "nom", "dob", "licence", "licenceStatut", "mutation", "mutationDate", "medicalStatut", "medicalSaison", "club", "parentNom", "parentTel", "parentEmail"];
+  const CHAMPS_ADMIN = ["prenom", "nom", "dob", "licence", "licenceStatut", "mutation", "mutationDate", "sousContrat", "medicalStatut", "medicalSaison", "club", "parentNom", "parentTel", "parentEmail"];
   const adminAChange = () => CHAMPS_ADMIN.some((k) => (f[k] || "") !== ((joueur && joueur[k]) || ""));
 
   function choisirPhoto(e) {
@@ -5499,7 +5525,14 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
         </Field>
         <Field label="Date de validation de la licence">
           <Inp type="date" value={f.mutationDate || ""} disabled={adminVerrouille} onChange={(e) => set("mutationDate", e.target.value)} />
-          {f.mutation && f.mutation !== "club" ? (() => { const lm = libelleMutation(f); return <div style={{ fontSize: 12, color: lm.couleur, fontWeight: 700, marginTop: 5 }}>{f.mutationDate ? `Classé : ${lm.label.toLowerCase()}` : "Renseigne la date pour classer la mutation"}</div>; })() : null}
+          {!f.sousContrat && f.mutation && f.mutation !== "club" ? (() => { const lm = libelleMutation(f); return <div style={{ fontSize: 12, color: lm.couleur, fontWeight: 700, marginTop: 5 }}>{f.mutationDate ? `Classé : ${lm.label.toLowerCase()}` : "Renseigne la date pour classer la mutation"}</div>; })() : null}
+        </Field>
+        <Field label="Statut professionnel">
+          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: adminVerrouille ? "not-allowed" : "pointer", opacity: adminVerrouille ? 0.6 : 1, border: `1px solid ${f.sousContrat ? C.bleu : C.grisClair}`, background: f.sousContrat ? "#E7EEF6" : "#fff", borderRadius: 11, padding: "10px 12px" }}>
+            <input type="checkbox" checked={!!f.sousContrat} disabled={adminVerrouille} onChange={(e) => set("sousContrat", e.target.checked)} style={{ width: 18, height: 18, flex: "0 0 auto" }} />
+            <span style={{ fontSize: 13.5, color: C.encre, fontWeight: 700 }}>Joueur sous contrat</span>
+          </label>
+          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 5, lineHeight: 1.45 }}>Un joueur professionnel sous contrat ne compte pas comme mutation ni mutation hors période sur la feuille de match (retire la casquette).</div>
         </Field>
         <Field label="Contrôle médical de la saison">
           <Sel value={f.medicalSaison === saisonCourante() ? (f.medicalStatut || "") : ""} disabled={adminVerrouille} onChange={(e) => { const v = e.target.value; set("medicalStatut", v); set("medicalSaison", v ? saisonCourante() : ""); }}>
@@ -5724,7 +5757,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
         if (annule) return;
         const arr = [];
         // on ne récupère que l'identité du joueur pour la composition, rien d'autre de la catégorie du dessous
-        res.forEach(({ c, d }) => { if (d && Array.isArray(d.players)) d.players.forEach((p) => arr.push({ id: p.id, prenom: p.prenom, nom: p.nom, poste: p.poste, numero: p.numero, licence: p.licence, photo: p.photo, dob: p.dob, suspension: p.suspension, suspensionDebut: p.suspensionDebut, suspensionFin: p.suspensionFin, discDate: p.discDate, cat: c, surclasse: true })); });
+        res.forEach(({ c, d }) => { if (d && Array.isArray(d.players)) d.players.forEach((p) => arr.push({ id: p.id, prenom: p.prenom, nom: p.nom, poste: p.poste, numero: p.numero, licence: p.licence, photo: p.photo, dob: p.dob, suspension: p.suspension, suspensionDebut: p.suspensionDebut, suspensionFin: p.suspensionFin, discDate: p.discDate, mutation: p.mutation, mutationDate: p.mutationDate, sousContrat: p.sousContrat, cat: c, surclasse: true })); });
         setSurclasses(arr);
       } catch (e) { if (!annule) setSurclasses([]); }
     })();
@@ -5862,6 +5895,18 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
   // Temps de jeu moyen (surclassement inclus), pour aider à équilibrer
   const minutesTotalesCompo = (p) => statsJoueur(p, db, saisonCourante()).minutes + minutesSurclassementJoueur(p, db, saisonCourante());
   const moyMinutesCompo = players.length ? players.reduce((s, p) => s + minutesTotalesCompo(p), 0) / players.length : 0;
+  // Quota de mutations hors période autorisées sur la feuille de match (sauf joueurs sous contrat).
+  const limHorsCompo = limiteHorsPeriode(cat);
+  const idsConvoques = [...used, ...remplacants];
+  const dejaConvoqueId = (id) => used.includes(id) || remplacants.includes(id);
+  const nbHorsConvoques = idsConvoques.map(trouve).filter(Boolean).filter((p) => typeMutation(p) === "hors").length;
+  const badgeMut = (p) => {
+    const t = typeMutation(p);
+    if (t === "hors") return { label: "Hors période", bg: "#FBEAD9", col: "#B87A2B" };
+    if (t === "contrat") return { label: "Sous contrat", bg: "#EAF3EC", col: C.vert };
+    if (t === "normale" || t === "sansdate") return { label: "Mutation", bg: "#E7EEF6", col: C.bleu };
+    return null;
+  };
 
   return (
     <div>
@@ -5912,6 +5957,24 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
           <Btn variant="accent" full onClick={reprendreCompo}>Reprendre la dernière composition</Btn>
         </div>
       )}
+
+      {(() => {
+        const simplesConv = idsConvoques.map(trouve).filter(Boolean).filter((p) => { const t = typeMutation(p); return t === "normale" || t === "sansdate"; }).length;
+        const atteint = nbHorsConvoques >= limHorsCompo;
+        return (
+          <div style={{ background: "#fff", border: `1px solid ${atteint ? "#F0DBA8" : C.grisClair}`, borderRadius: 12, padding: "10px 12px", marginBottom: 12 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: atteint ? "#FBEAD9" : "#FBEAD9", color: "#B87A2B", border: "1px solid #F0DBA8", borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 800 }}>Hors période sur la feuille : {nbHorsConvoques} / {limHorsCompo}</span>
+              {simplesConv > 0 && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#E7EEF6", color: C.bleu, borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 800 }}>Mutations simples : {simplesConv}</span>}
+            </div>
+            <div style={{ fontSize: 11.5, color: atteint ? "#B87A2B" : C.gris, marginTop: 7, lineHeight: 1.45, fontWeight: atteint ? 700 : 400 }}>
+              {atteint
+                ? `Quota atteint : ${limHorsCompo} mutation${limHorsCompo > 1 ? "s" : ""} hors période maximum. Les autres joueurs hors période seront bloqués (sauf joueur sous contrat).`
+                : `${limHorsCompo} mutation${limHorsCompo > 1 ? "s" : ""} hors période autorisée${limHorsCompo > 1 ? "s" : ""} sur la feuille. Les joueurs sous contrat ne comptent pas.`}
+            </div>
+          </div>
+        );
+      })()}
 
       {matchSel && (
         <div style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
@@ -6089,7 +6152,9 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
                 const estSurcl = p.cat !== cat;
                 const susp = estSuspenduPourDate(p, dateMatchCompo);
                 const rge = false; // les rouges sont gérés via la période de suspension (bloque = susp)
-                const bloque = susp || rge;
+                const bm = badgeMut(p);
+                const bloqueHors = typeMutation(p) === "hors" && !dejaConvoqueId(p.id) && nbHorsConvoques >= limHorsCompo;
+                const bloque = susp || rge || bloqueHors;
                 return (
                   <button key={p.id} onClick={() => { if (bloque) return; assign(pick, p.id); }} disabled={bloque} style={{
                     display: "flex", alignItems: "center", gap: 11, padding: 11, borderRadius: 12,
@@ -6098,7 +6163,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
                     <Avatar p={p} size={38} radius={10} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 800 }}>{p.prenom} {p.nom}</div>
-                      <div style={{ fontSize: 12, color: bloque ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(addDays(p.suspensionFin, 1))}` : "")) : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
+                      <div style={{ fontSize: 12, color: bloque ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(addDays(p.suspensionFin, 1))}` : "")) : bloqueHors ? `Quota hors période atteint (${limHorsCompo} max)` : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
                       {p.licence ? <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 700, marginTop: 1 }}>Licence {p.licence}</div> : null}
                       {(() => {
                         const mnS = minutesSurclassementJoueur(p, db, saisonCourante());
@@ -6106,8 +6171,11 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
                         return <div style={{ fontSize: 11, fontWeight: 700, marginTop: 2, display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", color: (moyMinutesCompo > 0 && mnT < moyMinutesCompo) ? "#E67E22" : C.gris }}><Timer size={11} /> {mnT} min{mnS > 0 && <span style={{ color: C.bleu, fontWeight: 700 }}>· {surclassementTexte(p, db, saisonCourante())}</span>}</div>;
                       })()}
                     </div>
-                    {estSurcl ? <Pastille bg="#E7EEF6" color={C.bleu}>{p.cat}</Pastille> : null}
-                    {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : rge ? <Pastille bg="#FBE3E3" color={C.rouge}>Rouge</Pastille> : placeAilleurs ? <Pastille bg={C.grisClair} color={C.gris}>déjà placé</Pastille> : estRempl ? <Pastille bg="#FFF3DA" color={C.jauneFonce}>banc</Pastille> : null}
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flex: "0 0 auto" }}>
+                      {bm ? <Pastille bg={bm.bg} color={bm.col}>{bm.label}</Pastille> : null}
+                      {estSurcl ? <Pastille bg="#E7EEF6" color={C.bleu}>{p.cat}</Pastille> : null}
+                      {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : rge ? <Pastille bg="#FBE3E3" color={C.rouge}>Rouge</Pastille> : placeAilleurs ? <Pastille bg={C.grisClair} color={C.gris}>déjà placé</Pastille> : estRempl ? <Pastille bg="#FFF3DA" color={C.jauneFonce}>banc</Pastille> : null}
+                    </div>
                   </button>
                 );
               })}
@@ -6135,23 +6203,28 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
                 const susp = estSuspenduPourDate(p, dateMatchCompo);
                 const rge = false; // les rouges sont gérés via la période de suspension (bloque = susp)
                 const bancPlein = remplacants.length >= maxRempl;
-                const bloque = susp || rge || bancPlein;
+                const bm = badgeMut(p);
+                const bloqueHors = typeMutation(p) === "hors" && !dejaConvoqueId(p.id) && nbHorsConvoques >= limHorsCompo;
+                const bloque = susp || rge || bancPlein || bloqueHors;
                 return (
                 <button key={p.id} onClick={() => { if (bloque) return; ajouterRemplacant(p.id); }} disabled={bloque} style={{
                   display: "flex", alignItems: "center", gap: 11, padding: 11, borderRadius: 12,
-                  border: `1px solid ${(susp || rge) ? "#F3C9C9" : C.grisClair}`, background: (susp || rge) ? "#FDF2F2" : "#fff", cursor: bloque ? "default" : "pointer", textAlign: "left", opacity: (susp || rge) ? 0.75 : 1,
+                  border: `1px solid ${(susp || rge || bloqueHors) ? "#F3C9C9" : C.grisClair}`, background: (susp || rge || bloqueHors) ? "#FDF2F2" : "#fff", cursor: bloque ? "default" : "pointer", textAlign: "left", opacity: (susp || rge || bloqueHors) ? 0.75 : 1,
                 }}>
                   <Avatar p={p} size={38} radius={10} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 800 }}>{p.prenom} {p.nom}</div>
-                    <div style={{ fontSize: 12, color: (susp || rge) ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(addDays(p.suspensionFin, 1))}` : "")) : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
+                    <div style={{ fontSize: 12, color: (susp || rge || bloqueHors) ? C.rouge : C.gris }}>{susp ? ("Suspendu" + (p.suspensionFin && p.suspensionFin > hoyISO() ? `, dispo ${jjmm(addDays(p.suspensionFin, 1))}` : "")) : bloqueHors ? `Quota hors période atteint (${limHorsCompo} max)` : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
                     {p.licence ? <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 700, marginTop: 1 }}>Licence {p.licence}</div> : null}
                     <div style={{ fontSize: 11, fontWeight: 700, marginTop: 3, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", color: (moyMinutesCompo > 0 && mn < moyMinutesCompo) ? "#E67E22" : C.gris }}>
                       <Timer size={11} /> {mn} min{mnSurcl > 0 && <span style={{ color: C.bleu, fontWeight: 700 }}>· {surclassementTexte(p, db, saisonCourante())}</span>}
                     </div>
                   </div>
-                  {estSurcl ? <Pastille bg="#E7EEF6" color={C.bleu}>{p.cat}</Pastille> : null}
-                  {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : rge ? <Pastille bg="#FBE3E3" color={C.rouge}>Rouge</Pastille> : null}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flex: "0 0 auto" }}>
+                    {bm ? <Pastille bg={bm.bg} color={bm.col}>{bm.label}</Pastille> : null}
+                    {estSurcl ? <Pastille bg="#E7EEF6" color={C.bleu}>{p.cat}</Pastille> : null}
+                    {susp ? <Pastille bg="#FBE3E3" color={C.rouge}>Suspendu</Pastille> : rge ? <Pastille bg="#FBE3E3" color={C.rouge}>Rouge</Pastille> : null}
+                  </div>
                 </button>
                 );
               })}
