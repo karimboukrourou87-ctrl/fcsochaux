@@ -3002,7 +3002,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v15.5</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v15.6</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -3957,23 +3957,38 @@ function compteMutations(players) {
 }
 /* Type reel d'une mutation, calcule selon la date de validation.
    Periode normale : du 1er juin au 15 juillet. Sinon hors periode. */
-function typeMutation(p) {
-  if (!p) return "club";
-  if (p.sousContrat) return "contrat"; // joueur professionnel sous contrat : pas de casquette mutation
-  if (!p.mutation || p.mutation === "club") return "club";
-  if (!mutationActive(p)) return "expiree";
-  if (!p.mutationDate) return "sansdate";
-  const d = new Date(p.mutationDate + "T00:00:00");
+const CONTRATS = [
+  { id: "pro", label: "Contrat pro", court: "Contrat pro" },
+  { id: "aspirant", label: "Contrat aspirant", court: "Aspirant" },
+  { id: "stagiaire", label: "Contrat stagiaire pro", court: "Stagiaire pro" },
+];
+function estSousContrat(p) { return !!(p && (p.contratType || p.sousContrat)); }
+function libelleContratType(p) { const t = (p && p.contratType) || ""; const c = CONTRATS.find((x) => x.id === t); return c ? c.label : "Joueur sous contrat"; }
+/* Classement automatique d'une mutation selon la date de validation de la licence.
+   Periode normale : du 15 juin au 15 juillet inclus. Au-dela du 15/07 : hors periode. */
+function classementMutationAuto(dateStr) {
+  if (!dateStr) return "sansdate";
+  const d = new Date(dateStr + "T00:00:00");
   if (isNaN(d)) return "sansdate";
   const mois = d.getMonth() + 1, jour = d.getDate();
-  const periodeNormale = (mois === 6) || (mois === 7 && jour <= 15);
+  const periodeNormale = (mois === 6 && jour >= 15) || (mois === 7 && jour <= 15);
   return periodeNormale ? "normale" : "hors";
+}
+function typeMutation(p) {
+  if (!p) return "club";
+  if (estSousContrat(p)) return "contrat"; // joueur sous contrat : pas de casquette mutation
+  if (!p.mutation || p.mutation === "club") return "club";
+  if (!mutationActive(p)) return "expiree";
+  if (p.mutationForce === "normale") return "normale"; // forçage manuel (exception)
+  if (p.mutationForce === "hors") return "hors";
+  if (!p.mutationDate) return "sansdate";
+  return classementMutationAuto(p.mutationDate);
 }
 /* Libelle d'affichage du statut de mutation d'un joueur */
 function libelleMutation(p) {
   const t = typeMutation(p);
   if (t === "club") return { label: "Licence club", couleur: C.gris, bg: C.grisClair };
-  if (t === "contrat") return { label: "Joueur sous contrat", couleur: C.bleu, bg: "#E7EEF6" };
+  if (t === "contrat") return { label: libelleContratType(p), couleur: C.bleu, bg: "#E7EEF6" };
   if (t === "expiree") return { label: "Mutation expirée", couleur: C.gris, bg: C.grisClair };
   if (t === "sansdate") return { label: "Mutation, date à renseigner", couleur: "#B87A2B", bg: "#FBEAD9" };
   if (t === "hors") return { label: "Mutation hors période", couleur: "#B87A2B", bg: "#FBEAD9" };
@@ -5433,7 +5448,7 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
   const [f, setF] = useState({
     prenom: "", nom: "", dob: "", taille: "", poids: "", poste: "", pied: "Droit",
     numero: "", licence: "", club: "FCSM", photo: "", jonglages: { fort: "", faible: "", tete: "" },
-    parentNom: "", parentTel: "", parentEmail: "", mutation: "", mutationDate: "", sousContrat: false, ...joueur,
+    parentNom: "", parentTel: "", parentEmail: "", mutation: "", mutationDate: "", mutationForce: "", contratType: "", contratDebut: "", contratFin: "", ...joueur,
   });
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
   const setJo = (k, v) => setF((o) => ({ ...o, jonglages: { ...(o.jonglages || {}), [k]: v } }));
@@ -5442,7 +5457,7 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
   const peutEditerAdmin = adminModifiable && adminUnlock; // droit ET déverrouillé
   const adminVerrouille = !peutEditerAdmin;               // champs admin non modifiables
   // Détection d'un changement sur une information administrative (pour inscrire l'auteur).
-  const CHAMPS_ADMIN = ["prenom", "nom", "dob", "licence", "licenceStatut", "mutation", "mutationDate", "sousContrat", "medicalStatut", "medicalSaison", "club", "parentNom", "parentTel", "parentEmail"];
+  const CHAMPS_ADMIN = ["prenom", "nom", "dob", "licence", "licenceStatut", "mutation", "mutationDate", "mutationForce", "contratType", "contratDebut", "contratFin", "medicalStatut", "medicalSaison", "club", "parentNom", "parentTel", "parentEmail"];
   const adminAChange = () => CHAMPS_ADMIN.some((k) => (f[k] || "") !== ((joueur && joueur[k]) || ""));
 
   function choisirPhoto(e) {
@@ -5523,17 +5538,47 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
             <option value="mutation">Mutation (vient d'un autre club)</option>
           </Sel>
         </Field>
-        <Field label="Date de validation de la licence">
-          <Inp type="date" value={f.mutationDate || ""} disabled={adminVerrouille} onChange={(e) => set("mutationDate", e.target.value)} />
-          {!f.sousContrat && f.mutation && f.mutation !== "club" ? (() => { const lm = libelleMutation(f); return <div style={{ fontSize: 12, color: lm.couleur, fontWeight: 700, marginTop: 5 }}>{f.mutationDate ? `Classé : ${lm.label.toLowerCase()}` : "Renseigne la date pour classer la mutation"}</div>; })() : null}
-        </Field>
-        <Field label="Statut professionnel">
-          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: adminVerrouille ? "not-allowed" : "pointer", opacity: adminVerrouille ? 0.6 : 1, border: `1px solid ${f.sousContrat ? C.bleu : C.grisClair}`, background: f.sousContrat ? "#E7EEF6" : "#fff", borderRadius: 11, padding: "10px 12px" }}>
-            <input type="checkbox" checked={!!f.sousContrat} disabled={adminVerrouille} onChange={(e) => set("sousContrat", e.target.checked)} style={{ width: 18, height: 18, flex: "0 0 auto" }} />
-            <span style={{ fontSize: 13.5, color: C.encre, fontWeight: 700 }}>Joueur sous contrat</span>
-          </label>
-          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 5, lineHeight: 1.45 }}>Un joueur professionnel sous contrat ne compte pas comme mutation ni mutation hors période sur la feuille de match (retire la casquette).</div>
-        </Field>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Date de validation de la licence">
+            <Inp type="date" value={f.mutationDate || ""} disabled={adminVerrouille} onChange={(e) => set("mutationDate", e.target.value)} />
+            {!estSousContrat(f) && f.mutation && f.mutation !== "club" ? (() => {
+              const lm = libelleMutation(f);
+              return (
+                <div style={{ marginTop: 7 }}>
+                  <div style={{ fontSize: 12, color: lm.couleur, fontWeight: 700 }}>
+                    {f.mutationDate || f.mutationForce ? `Classé : ${lm.label.toLowerCase()}${f.mutationForce ? " (forcé manuellement)" : " (automatique d'après la date)"}` : "Renseigne la date pour classer la mutation"}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.gris, marginTop: 3, lineHeight: 1.45 }}>Période normale : licence validée du 15/06 au 15/07 inclus. Au-delà du 15/07, mutation hors période.</div>
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 4 }}>Classement de la mutation</div>
+                    <Sel value={f.mutationForce || ""} disabled={adminVerrouille} onChange={(e) => set("mutationForce", e.target.value)}>
+                      <option value="">Automatique (d'après la date)</option>
+                      <option value="normale">Forcer : période normale</option>
+                      <option value="hors">Forcer : hors période</option>
+                    </Sel>
+                  </div>
+                </div>
+              );
+            })() : null}
+          </Field>
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Statut contrat (joueur sous contrat)">
+            <Sel value={f.contratType || ""} disabled={adminVerrouille} onChange={(e) => set("contratType", e.target.value)}>
+              <option value="">Aucun contrat</option>
+              {CONTRATS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </Sel>
+            {estSousContrat(f) && (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+                  <Field label="Début de contrat"><Inp type="date" value={f.contratDebut || ""} disabled={adminVerrouille} onChange={(e) => set("contratDebut", e.target.value)} /></Field>
+                  <Field label="Fin de contrat"><Inp type="date" value={f.contratFin || ""} disabled={adminVerrouille} onChange={(e) => set("contratFin", e.target.value)} /></Field>
+                </div>
+                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6, lineHeight: 1.45 }}>Un joueur sous contrat ne compte pas comme mutation ni mutation hors période sur la feuille de match (retire la casquette).</div>
+              </>
+            )}
+          </Field>
+        </div>
         <Field label="Contrôle médical de la saison">
           <Sel value={f.medicalSaison === saisonCourante() ? (f.medicalStatut || "") : ""} disabled={adminVerrouille} onChange={(e) => { const v = e.target.value; set("medicalStatut", v); set("medicalSaison", v ? saisonCourante() : ""); }}>
             <option value="">À faire</option>
@@ -7055,7 +7100,12 @@ function exporterRapportMatchPDF(jsPDF, match, players, db, educateur, avecPhoto
     const blcStr = cbl ? `blanc${cm.blanc ? ` (${cm.blanc}')` : ""}` : "";
     const rStr = crg ? `rouge${cm.rouge ? ` (${cm.rouge}')` : ""}` : "";
     const disc = [jStr, blcStr, rStr, bl ? "blessé" : ""].filter(Boolean).join(", ") || "-";
-    sc(encre); doc.setFont("helvetica", "normal"); doc.text((`${p.prenom} ${p.nom}` + (p.surclasse ? ` (surclasse ${p.cat})` : "")).slice(0, 38), xJ, y);
+    const pr = (db.players || []).find((x) => x.id === p.id) || p;
+    const tm = typeMutation(pr);
+    const mutLabel = tm === "hors" ? "Mut. hors période" : (tm === "normale" || tm === "sansdate") ? "Mutation" : tm === "contrat" ? "Sous contrat" : "";
+    const nameStr = (`${p.prenom} ${p.nom}` + (p.surclasse ? ` (surclasse ${p.cat})` : "")).slice(0, mutLabel ? 28 : 38);
+    sc(encre); doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text(nameStr, xJ, y);
+    if (mutLabel) { const nw = doc.getTextWidth(nameStr); doc.setFontSize(6.5); sc(tm === "hors" ? [184, 122, 43] : bleu); doc.text(mutLabel, xJ + nw + 5, y); doc.setFontSize(9); sc(encre); }
     doc.text(String(b), xB, y, { align: "center" }); doc.text(String(a), xP, y, { align: "center" });
     doc.text(t != null && t !== "" ? String(t) : "-", xM, y, { align: "center" }); doc.text(note ? `${note}/7` : "-", xN, y, { align: "center" });
     sc(crg || bl ? rouge : gris); doc.text(disc.slice(0, 22), xD, y);
@@ -7902,7 +7952,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
       <Card key={p.id} style={{ padding: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: C.bleu, color: C.jaune, display: "grid", placeItems: "center", fontWeight: 900, fontSize: 12 }}>{initials(p)}</div>
-          <div style={{ flex: 1, fontWeight: 800 }}>{p.prenom} {p.nom}{p.surclasse ? <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 800, color: C.bleu, background: "#EAF0F7", borderRadius: 6, padding: "2px 6px" }}>Surclassé {p.cat}</span> : null}{estSuspenduPourDate(((db.players || []).find((x) => x.id === p.id) || p), match.date) ? <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 800, color: C.rouge, background: "#FBE3E3", borderRadius: 6, padding: "2px 6px" }}>Suspendu</span> : null}</div>
+          <div style={{ flex: 1, fontWeight: 800 }}>{p.prenom} {p.nom}{p.surclasse ? <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 800, color: C.bleu, background: "#EAF0F7", borderRadius: 6, padding: "2px 6px" }}>Surclassé {p.cat}</span> : null}{estSuspenduPourDate(((db.players || []).find((x) => x.id === p.id) || p), match.date) ? <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 800, color: C.rouge, background: "#FBE3E3", borderRadius: 6, padding: "2px 6px" }}>Suspendu</span> : null}{(() => { const pr = (db.players || []).find((x) => x.id === p.id) || p; const tm = typeMutation(pr); if (tm === "hors") return <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 800, color: "#B87A2B", background: "#FBEAD9", borderRadius: 6, padding: "2px 6px" }}>Mutation hors période</span>; if (tm === "normale" || tm === "sansdate") return <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 800, color: C.bleu, background: "#E7EEF6", borderRadius: 6, padding: "2px 6px" }}>Mutation</span>; if (tm === "contrat") return <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 800, color: C.bleu, background: "#E7EEF6", borderRadius: 6, padding: "2px 6px" }}>{libelleContratType(pr)}</span>; return null; })()}</div>
           <button onClick={() => setNoteFor(p)} style={{
             border: "none", cursor: "pointer", borderRadius: 10, padding: "6px 11px", fontWeight: 900,
             background: note ? C.jaune : C.grisClair, color: note ? C.bleuNuit : C.gris, fontSize: 14,
