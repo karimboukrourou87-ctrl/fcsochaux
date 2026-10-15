@@ -3002,7 +3002,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v15.6</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v15.7</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -5011,6 +5011,12 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
                 <Pastille bg={lm.bg} color={lm.couleur}>{lm.label}</Pastille>
               </div>
             ); })()}
+            {p.mutation && p.mutation !== "club" && p.clubProvenance ? (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "4px 0", borderTop: `1px solid ${C.grisClair}` }}>
+                <span style={{ fontSize: 13.5, color: C.gris }}>Club d'origine</span>
+                <span style={{ fontSize: 13.5, fontWeight: 700, color: C.encre, textAlign: "right" }}>{p.clubProvenance}</span>
+              </div>
+            ) : null}
             {p.adminMajPar && p.adminMajPar.nom && (
               <div style={{ fontSize: 11.5, color: C.gris, padding: "6px 0 0", borderTop: `1px solid ${C.grisClair}`, marginTop: 4, lineHeight: 1.45 }}>
                 Dernière modification administrative par <strong style={{ color: C.encre }}>{p.adminMajPar.nom}</strong>{p.adminMajPar.role ? ` (${p.adminMajPar.role})` : ""}{p.adminMajPar.date ? ` le ${new Date(p.adminMajPar.date).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}` : ""}
@@ -5448,7 +5454,7 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
   const [f, setF] = useState({
     prenom: "", nom: "", dob: "", taille: "", poids: "", poste: "", pied: "Droit",
     numero: "", licence: "", club: "FCSM", photo: "", jonglages: { fort: "", faible: "", tete: "" },
-    parentNom: "", parentTel: "", parentEmail: "", mutation: "", mutationDate: "", mutationForce: "", contratType: "", contratDebut: "", contratFin: "", ...joueur,
+    parentNom: "", parentTel: "", parentEmail: "", mutation: "", mutationDate: "", mutationForce: "", clubProvenance: "", contratType: "", contratDebut: "", contratFin: "", ...joueur,
   });
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
   const setJo = (k, v) => setF((o) => ({ ...o, jonglages: { ...(o.jonglages || {}), [k]: v } }));
@@ -5457,7 +5463,7 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
   const peutEditerAdmin = adminModifiable && adminUnlock; // droit ET déverrouillé
   const adminVerrouille = !peutEditerAdmin;               // champs admin non modifiables
   // Détection d'un changement sur une information administrative (pour inscrire l'auteur).
-  const CHAMPS_ADMIN = ["prenom", "nom", "dob", "licence", "licenceStatut", "mutation", "mutationDate", "mutationForce", "contratType", "contratDebut", "contratFin", "medicalStatut", "medicalSaison", "club", "parentNom", "parentTel", "parentEmail"];
+  const CHAMPS_ADMIN = ["prenom", "nom", "dob", "licence", "licenceStatut", "mutation", "mutationDate", "mutationForce", "clubProvenance", "contratType", "contratDebut", "contratFin", "medicalStatut", "medicalSaison", "club", "parentNom", "parentTel", "parentEmail"];
   const adminAChange = () => CHAMPS_ADMIN.some((k) => (f[k] || "") !== ((joueur && joueur[k]) || ""));
 
   function choisirPhoto(e) {
@@ -5473,6 +5479,7 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
         if (peutEditerAdmin && adminAChange()) base.adminMajPar = { nom: (auteur && auteur.nom) || "", role: (auteur && auteur.role) || "", date: new Date().toISOString() };
         onSave(base);
       }}><Save size={16} /> Enregistrer</Btn>}>
+      <style>{".fjg2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.fjg3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}@media(max-width:560px){.fjg2,.fjg3{grid-template-columns:1fr}}"}</style>
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
         <div onClick={() => fileRef.current && fileRef.current.click()} style={{ cursor: "pointer", position: "relative" }}>
           <PhotoFiche p={f} w={70} h={88} />
@@ -5499,12 +5506,12 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
       {adminModifiable && adminUnlock && (
         <div style={{ fontSize: 12, color: C.vert, fontWeight: 700, background: "#E2F4E9", borderRadius: 9, padding: "8px 11px", marginBottom: 10, display: "inline-flex", alignItems: "center", gap: 6 }}><Check size={14} /> Informations administratives déverrouillées</div>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div className="fjg2">
         <Field label="Prénom"><Inp value={f.prenom} disabled={adminVerrouille} onChange={(e) => set("prenom", e.target.value)} /></Field>
         <Field label="Nom"><Inp value={f.nom} disabled={adminVerrouille} onChange={(e) => set("nom", e.target.value)} /></Field>
       </div>
       <Field label="Date de naissance"><Inp type="date" value={f.dob} disabled={adminVerrouille} onChange={(e) => set("dob", e.target.value)} /></Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div className="fjg2">
         <Field label="Taille (cm)"><Inp type="number" inputMode="numeric" value={f.taille} onChange={(e) => set("taille", e.target.value)} /></Field>
         <Field label="Poids (kg)"><Inp type="number" inputMode="numeric" value={f.poids} onChange={(e) => set("poids", e.target.value)} /></Field>
       </div>
@@ -5522,7 +5529,7 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
         </Field>
         <Field label={`Numéro (1 à ${maxNumero(f.cat)})`}><Inp type="number" inputMode="numeric" min={1} max={maxNumero(f.cat)} value={f.numero} onChange={(e) => set("numero", e.target.value)} /></Field>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div className="fjg2">
         <Field label="Numéro de licence"><Inp value={f.licence} disabled={adminVerrouille} onChange={(e) => set("licence", e.target.value)} /></Field>
         <Field label="Statut de la licence">
           <Sel value={f.licenceStatut || ""} disabled={adminVerrouille} onChange={(e) => set("licenceStatut", e.target.value)}>
@@ -5538,6 +5545,13 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
             <option value="mutation">Mutation (vient d'un autre club)</option>
           </Sel>
         </Field>
+        {f.mutation && f.mutation !== "club" && (
+          <div style={{ gridColumn: "1 / -1" }}>
+            <Field label="Club d'origine (club quitté)">
+              <Inp value={f.clubProvenance || ""} disabled={adminVerrouille} onChange={(e) => set("clubProvenance", e.target.value)} placeholder="Nom du club d'où vient le joueur" />
+            </Field>
+          </div>
+        )}
         <div style={{ gridColumn: "1 / -1" }}>
           <Field label="Date de validation de la licence">
             <Inp type="date" value={f.mutationDate || ""} disabled={adminVerrouille} onChange={(e) => set("mutationDate", e.target.value)} />
@@ -5570,7 +5584,7 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
             </Sel>
             {estSousContrat(f) && (
               <>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+                <div className="fjg2" style={{ marginTop: 10 }}>
                   <Field label="Début de contrat"><Inp type="date" value={f.contratDebut || ""} disabled={adminVerrouille} onChange={(e) => set("contratDebut", e.target.value)} /></Field>
                   <Field label="Fin de contrat"><Inp type="date" value={f.contratFin || ""} disabled={adminVerrouille} onChange={(e) => set("contratFin", e.target.value)} /></Field>
                 </div>
@@ -5591,7 +5605,7 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
 
       {jonglagesActifs(f.cat) && (<>
       <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13, margin: "8px 0" }}>Jonglages (max 50)</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+      <div className="fjg3">
         <Field label="Pied fort"><Inp type="number" inputMode="numeric" value={(f.jonglages || {}).fort} onChange={(e) => setJo("fort", e.target.value)} /></Field>
         <Field label="Pied faible"><Inp type="number" inputMode="numeric" value={(f.jonglages || {}).faible} onChange={(e) => setJo("faible", e.target.value)} /></Field>
         <Field label="Jonglage alterné"><Inp type="number" inputMode="numeric" value={(f.jonglages || {}).tete} onChange={(e) => setJo("tete", e.target.value)} /></Field>
@@ -5600,7 +5614,7 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
 
       <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13, margin: "8px 0" }}>Parents / responsable</div>
       <Field label="Nom du responsable"><Inp value={f.parentNom} disabled={adminVerrouille} onChange={(e) => set("parentNom", e.target.value)} /></Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div className="fjg2">
         <Field label="Téléphone"><Inp value={f.parentTel} disabled={adminVerrouille} onChange={(e) => set("parentTel", e.target.value)} /></Field>
         <Field label="Email"><Inp type="email" value={f.parentEmail} disabled={adminVerrouille} onChange={(e) => set("parentEmail", e.target.value)} /></Field>
       </div>
