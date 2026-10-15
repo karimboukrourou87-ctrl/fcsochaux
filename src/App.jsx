@@ -1188,17 +1188,19 @@ const MINIBUS = ["T2", "T3", "T4", "T5"];
 const MODES_TRANSPORT = ["Minibus club", "Bus en location", "Bus de voyage des pros", "Voitures des parents"];
 const LOUEURS = ["ADJ", "Hertz"];
 const ROLES_ENCADREMENT = ["Éducateur", "Coach des gardiens", "Préparateur physique", "Dirigeant", "Délégué", "Arbitre"];
+const PLURIEL_ROLE = { "Éducateur": "Éducateurs", "Coach des gardiens": "Coachs des gardiens", "Préparateur physique": "Préparateurs physiques", "Dirigeant": "Dirigeants", "Délégué": "Délégués", "Arbitre": "Arbitres" };
+function roleAuPluriel(r) { return PLURIEL_ROLE[r] || r; }
 // Options d'un menu d'encadrement classées par rôle (sections) : Éducateurs, Dirigeants, etc.
 function optgroupsEncadrement(liste) {
   const connus = new Set(ROLES_ENCADREMENT);
   const tri = (a, b) => (a.nom || "").localeCompare(b.nom || "", "fr");
   const groupes = ROLES_ENCADREMENT
-    .map((r) => ({ r, gens: (liste || []).filter((g) => g.role === r).sort(tri) }))
+    .map((r) => ({ r: roleAuPluriel(r), gens: (liste || []).filter((g) => g.role === r).sort(tri) }))
     .filter((x) => x.gens.length);
   const autres = (liste || []).filter((g) => !connus.has(g.role)).sort(tri);
   if (autres.length) groupes.push({ r: "Autres", gens: autres });
   return groupes.map(({ r, gens }) => (
-    <optgroup key={r} label={r === "Autres" ? "Autres" : r + "s"}>
+    <optgroup key={r} label={r}>
       {gens.map((g) => <option key={g.id} value={g.nom}>{g.nom}{g.licence ? ` · Licence ${g.licence}` : ""}</option>)}
     </optgroup>
   ));
@@ -1911,16 +1913,19 @@ function Sel({ children, ...props }) { return <select {...props} style={{ ...inp
 // Sélecteur d'encadrant : liste personnalisée, classée par rôle, nom à gauche et licence alignée à droite (bien aérée).
 function SelEncadrement({ value, onChange, liste, label, options = [] }) {
   const [open, setOpen] = useState(false);
+  const lockRef = useRef(0);
+  const fermer = () => { setOpen(false); lockRef.current = Date.now(); };
+  const ouvrir = () => { if (Date.now() - lockRef.current < 400) return; setOpen(true); };
   const connus = new Set(ROLES_ENCADREMENT);
   const tri = (a, b) => (a.nom || "").localeCompare(b.nom || "", "fr");
   const groupes = ROLES_ENCADREMENT
-    .map((r) => ({ r: r + "s", gens: (liste || []).filter((g) => g.role === r).sort(tri) }))
+    .map((r) => ({ r: roleAuPluriel(r), gens: (liste || []).filter((g) => g.role === r).sort(tri) }))
     .filter((x) => x.gens.length);
   const autres = (liste || []).filter((g) => !connus.has(g.role)).sort(tri);
   if (autres.length) groupes.push({ r: "Autres", gens: autres });
   const sel = (liste || []).find((g) => g.nom === value);
   const licSel = sel && sel.licence ? sel.licence : "";
-  const choisir = (v) => { onChange(v); setOpen(false); };
+  const choisir = (v) => { fermer(); try { onChange(v); } catch (e) {} };
   const rowBtn = (nom, licence, actif) => (
     <button type="button" key={nom + "|" + (licence || "")} onClick={() => choisir(nom)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", border: "none", borderBottom: `1px solid ${C.grisClair}`, background: actif ? "#E7EEF6" : "#fff", cursor: "pointer", padding: "13px 10px" }}>
       <span style={{ flex: 1, minWidth: 0, fontWeight: 700, color: nom ? C.encre : C.gris, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nom || "Non désigné"}</span>
@@ -1929,7 +1934,7 @@ function SelEncadrement({ value, onChange, liste, label, options = [] }) {
   );
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} style={{ ...inputStyle, display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between", textAlign: "left", cursor: "pointer", background: "#fff" }}>
+      <button type="button" onClick={ouvrir} style={{ ...inputStyle, display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between", textAlign: "left", cursor: "pointer", background: "#fff" }}>
         <span style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "baseline", gap: 10 }}>
           <span style={{ flex: 1, minWidth: 0, fontWeight: value ? 700 : 400, color: value ? C.encre : C.gris, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value || "Non désigné"}</span>
           {licSel ? <span style={{ flex: "0 0 auto", color: C.gris, fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap" }}>Licence {licSel}</span> : null}
@@ -1937,7 +1942,7 @@ function SelEncadrement({ value, onChange, liste, label, options = [] }) {
         <span style={{ color: C.gris, flex: "0 0 auto", transform: "rotate(-90deg)", display: "inline-flex" }}><ChevronLeft size={16} /></span>
       </button>
       {open && (
-        <Modal title={label ? `Choisir — ${label}` : "Choisir"} onClose={() => setOpen(false)}>
+        <Modal title="Choisir" onClose={fermer}>
           <div style={{ margin: "-4px 0" }}>
             {rowBtn("", "", !value)}
             {options.filter(Boolean).map((o) => rowBtn(o, "", o === value))}
@@ -3090,7 +3095,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.2</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.4</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
