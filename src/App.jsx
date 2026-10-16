@@ -3095,7 +3095,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.4</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.5</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -4057,6 +4057,14 @@ const CONTRATS = [
   { id: "stagiaire", label: "Contrat stagiaire pro", court: "Stagiaire pro" },
 ];
 function estSousContrat(p) { return !!(p && (p.contratType || p.sousContrat)); }
+// Le contrat n'existe qu'à partir des U17 Nationaux jusqu'aux pros. École de foot jusqu'aux U15 : pas de contrat.
+function contratPossible(cat) {
+  const ci = CATEGORIES.find((c) => c.id === cat);
+  if (!ci) return false;
+  const national = /NAT/.test(cat || "");
+  const pro = ci.groupe === "PRO" || cat === "N2" || cat === "Ligue 2";
+  return national || pro;
+}
 function libelleContratType(p) { const t = (p && p.contratType) || ""; const c = CONTRATS.find((x) => x.id === t); return c ? c.label : "Joueur sous contrat"; }
 /* Classement automatique d'une mutation selon la date de validation de la licence.
    Periode normale : du 15 juin au 15 juillet inclus. Au-dela du 15/07 : hors periode. */
@@ -5670,6 +5678,7 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
             })() : null}
           </Field>
         </div>
+        {contratPossible(f.cat) && (
         <div style={{ gridColumn: "1 / -1" }}>
           <Field label="Statut contrat (joueur sous contrat)">
             <Sel value={f.contratType || ""} disabled={adminVerrouille} onChange={(e) => set("contratType", e.target.value)}>
@@ -5686,7 +5695,9 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
               </>
             )}
           </Field>
+          <div style={{ fontSize: 11, color: C.gris, marginTop: 2, lineHeight: 1.45 }}>Le contrat concerne les catégories U17 Nationaux jusqu'aux professionnels.</div>
         </div>
+        )}
         <Field label="Contrôle médical de la saison">
           <Sel value={f.medicalSaison === saisonCourante() ? (f.medicalStatut || "") : ""} disabled={adminVerrouille} onChange={(e) => { const v = e.target.value; set("medicalStatut", v); set("medicalSaison", v ? saisonCourante() : ""); }}>
             <option value="">À faire</option>
@@ -6122,8 +6133,8 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
             </div>
             <div style={{ fontSize: 11.5, color: atteint ? "#B87A2B" : C.gris, marginTop: 7, lineHeight: 1.45, fontWeight: atteint ? 700 : 400 }}>
               {atteint
-                ? `Quota atteint : ${limHorsCompo} mutation${limHorsCompo > 1 ? "s" : ""} hors période maximum. Les autres joueurs hors période seront bloqués (sauf joueur sous contrat).`
-                : `${limHorsCompo} mutation${limHorsCompo > 1 ? "s" : ""} hors période autorisée${limHorsCompo > 1 ? "s" : ""} sur la feuille. Les joueurs sous contrat ne comptent pas.`}
+                ? `Quota atteint : ${limHorsCompo} mutation${limHorsCompo > 1 ? "s" : ""} hors période maximum. Les autres joueurs hors période seront bloqués.`
+                : `${limHorsCompo} mutation${limHorsCompo > 1 ? "s" : ""} hors période autorisée${limHorsCompo > 1 ? "s" : ""} sur la feuille.${contratPossible(cat) ? " Les joueurs sous contrat ne comptent pas." : ""}`}
             </div>
           </div>
         );
