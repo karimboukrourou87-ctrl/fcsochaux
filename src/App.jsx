@@ -2561,6 +2561,17 @@ export default function App() {
   const [tab, setTab] = useState("accueil");
   const [entSous, setEntSous] = useState(null); // sous-vue initiale de l'onglet Séances (ex : "infirmerie" depuis l'accueil)
   const [db, setDb] = useState(null);
+  // Toujours servir la derniere version : on neutralise tout cache / service worker a l'ouverture de l'appli.
+  useEffect(() => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+        navigator.serviceWorker.getRegistrations().then((rs) => { (rs || []).forEach((r) => { try { r.unregister(); } catch (e) {} }); }).catch(() => {});
+      }
+      if (typeof caches !== "undefined" && caches.keys) {
+        caches.keys().then((ks) => { (ks || []).forEach((k) => { try { caches.delete(k); } catch (e) {} }); }).catch(() => {});
+      }
+    } catch (e) {}
+  }, []);
   const [reunionsClub, setReunionsClub] = useState(null);
   const [reunionsErr, setReunionsErr] = useState(null);
   const [messagesClub, setMessagesClub] = useState(null);
@@ -3105,7 +3116,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.5.1</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.5.2</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
