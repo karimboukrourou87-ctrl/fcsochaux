@@ -2552,9 +2552,15 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
 
   if (grilleRemplie(p.grilleEval)) {
     section("Bilan et entretien");
+    // date du bilan precedent (juste la date, pour situer la progression)
+    const _datesBil = (Array.isArray(p.grillesHist) ? p.grillesHist : []).filter((h) => grilleRemplie(h) && h.date).map((h) => h.date);
+    if (p.grilleEval.date) _datesBil.push(p.grilleEval.date);
+    const _uniqBil = [...new Set(_datesBil)].sort();
+    const _curBil = p.grilleEval.date || (_uniqBil.length ? _uniqBil[_uniqBil.length - 1] : "");
+    const _prevBil = _uniqBil.filter((d) => d < _curBil).pop() || null;
     if (p.grilleEval.date || p.grilleEval.educateur) {
       sc(GRIS); doc.setFont("helvetica", "italic"); doc.setFontSize(8.5);
-      doc.text(`${p.grilleEval.date ? new Date(p.grilleEval.date + "T00:00:00").toLocaleDateString("fr-FR") : ""}${p.grilleEval.date && p.grilleEval.educateur ? "   ·   " : ""}${p.grilleEval.educateur || ""}`, M, y);
+      doc.text(`${p.grilleEval.date ? new Date(p.grilleEval.date + "T00:00:00").toLocaleDateString("fr-FR") : ""}${p.grilleEval.date && p.grilleEval.educateur ? "   ·   " : ""}${p.grilleEval.educateur || ""}${_prevBil ? "      (bilan precedent : " + new Date(_prevBil + "T00:00:00").toLocaleDateString("fr-FR") + ")" : ""}`, M, y);
       doc.setFont("helvetica", "normal"); y += 13;
     }
     sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
@@ -3218,7 +3224,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.5.7</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.5.8</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -5276,12 +5282,47 @@ function exporterComparaisonPDF(jsPDF, p, A, B) {
     });
     y += 6;
   });
-  if (A.axes && A.axes.trim()) {
-    saut(50); y += 4;
-    doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); sc(BLEU);
-    doc.text(`Axes demandes au bilan du ${fmtD(A.date)}`, M, y); y += 15;
-    doc.setFont("helvetica", "normal"); doc.setFontSize(10); sc([45, 45, 45]);
-    doc.splitTextToSize(String(A.axes), W - 2 * M).forEach((l) => { saut(16); doc.text(l, M, y); y += 13; });
+  // Synthese automatique (points forts / a travailler a partir du bilan d'arrivee)
+  const _forts = [], _faibles = [];
+  GRILLE_ASPECTS.forEach((cat) => cat.sous.forEach((s) => {
+    const nb = niveauSousGrille(B, cat.k, s);
+    if (nb === "tb") _forts.push(s); else if (nb === "dif") _faibles.push(s);
+  }));
+  const _verdict = nUp === 0 && nDown === 0 ? "Pas encore d'evolution mesurable entre ces deux bilans."
+    : nUp > nDown ? "Progression globale sur la periode."
+    : nDown > nUp ? "Vigilance : plusieurs criteres en recul." : "Niveau globalement stable.";
+  saut(80); y += 8;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(11.5); sc(BLEU);
+  doc.text("Synthese", M, y); y += 15;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(10); sc([45, 45, 45]);
+  doc.splitTextToSize(_verdict, W - 2 * M).forEach((l) => { saut(16); doc.text(l, M, y); y += 13; });
+  y += 6;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); sc(col.tb);
+  saut(16); doc.text("Points forts", M, y); y += 12;
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10); sc([45, 45, 45]);
+  doc.splitTextToSize(_forts.length ? _forts.join(", ") : "Aucun critere note Tres bien.", W - 2 * M).forEach((l) => { saut(15); doc.text(l, M, y); y += 12.5; });
+  y += 6;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); sc(col.dif);
+  saut(16); doc.text("A travailler", M, y); y += 12;
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10); sc([45, 45, 45]);
+  doc.splitTextToSize(_faibles.length ? _faibles.join(", ") : "Aucun critere en difficulte.", W - 2 * M).forEach((l) => { saut(15); doc.text(l, M, y); y += 12.5; });
+  if ((A.axes && A.axes.trim()) || (B.axes && B.axes.trim())) {
+    saut(50); y += 10;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(11.5); sc(BLEU);
+    doc.text("Suivi des objectifs", M, y); y += 15;
+    if (A.axes && A.axes.trim()) {
+      doc.setFont("helvetica", "bold"); doc.setFontSize(10); sc([45, 45, 45]);
+      saut(16); doc.text(`Axes demandes au bilan du ${fmtD(A.date)}`, M, y); y += 13;
+      doc.setFont("helvetica", "normal"); doc.setFontSize(10); sc([45, 45, 45]);
+      doc.splitTextToSize(String(A.axes), W - 2 * M).forEach((l) => { saut(16); doc.text(l, M, y); y += 13; });
+      y += 6;
+    }
+    if (B.axes && B.axes.trim()) {
+      doc.setFont("helvetica", "bold"); doc.setFontSize(10); sc(BLEU);
+      saut(16); doc.text(`Nouveaux axes fixes au bilan du ${fmtD(B.date)}`, M, y); y += 13;
+      doc.setFont("helvetica", "normal"); doc.setFontSize(10); sc([45, 45, 45]);
+      doc.splitTextToSize(String(B.axes), W - 2 * M).forEach((l) => { saut(16); doc.text(l, M, y); y += 13; });
+    }
   }
   telechargerDoc(doc, `Comparaison_${(p.prenom || "")}_${(p.nom || "")}`.trim().replace(/\s+/g, "_"));
 }
@@ -5302,12 +5343,20 @@ function ComparerBilans({ p, onClose }) {
   const B = liste[Math.min(iB, liste.length - 1)] || liste[liste.length - 1];
   const fmtD = (d) => d ? new Date(d + "T00:00:00").toLocaleDateString("fr-FR") : "—";
   let nUp = 0, nEq = 0, nDown = 0;
+  const forts = [], aTravailler = [], progresMarquants = [];
   GRILLE_ASPECTS.forEach((cat) => cat.sous.forEach((s) => {
-    const sa = scoreNiveauGrille(niveauSousGrille(A, cat.k, s));
-    const sb = scoreNiveauGrille(niveauSousGrille(B, cat.k, s));
-    if (sa == null || sb == null) return;
-    if (sb > sa) nUp++; else if (sb < sa) nDown++; else nEq++;
+    const na = niveauSousGrille(A, cat.k, s), nb = niveauSousGrille(B, cat.k, s);
+    const sa = scoreNiveauGrille(na), sb = scoreNiveauGrille(nb);
+    if (nb === "tb") forts.push(s);
+    else if (nb === "dif") aTravailler.push(s);
+    if (sa != null && sb != null) {
+      if (sb > sa) { nUp++; progresMarquants.push(s); } else if (sb < sa) nDown++; else nEq++;
+    }
   }));
+  const verdict = nUp === 0 && nDown === 0 ? "Pas encore d'évolution mesurable entre ces deux bilans."
+    : nUp > nDown ? "Progression globale sur la période."
+    : nDown > nUp ? "Vigilance : plusieurs critères en recul."
+    : "Niveau globalement stable.";
   const badge = (trend) => {
     if (trend === "up") return <span style={{ color: "#2FA36B", fontWeight: 800, fontSize: 11.5, display: "inline-flex", alignItems: "center", gap: 3 }}><TrendingUp size={14} /> Progrès</span>;
     if (trend === "down") return <span style={{ color: "#B5483F", fontWeight: 800, fontSize: 11.5, display: "inline-flex", alignItems: "center", gap: 3 }}><TrendingDown size={14} /> Régression</span>;
@@ -5366,11 +5415,42 @@ function ComparerBilans({ p, onClose }) {
           })}
         </div>
       ))}
-      {A.axes && A.axes.trim() && (
-        <div style={{ marginTop: 16, background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 12, padding: 12 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 5 }}>Axes demandés au bilan du {fmtD(A.date)}</div>
-          <div style={{ fontSize: 13, color: C.encre, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{A.axes}</div>
-          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6 }}>À comparer avec les progrès ci-dessus pour voir s'ils ont été travaillés.</div>
+      <div style={{ marginTop: 18, background: "#F6F8FB", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: 14 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 }}>Synthèse</div>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: C.encre, marginBottom: 10 }}>{verdict}</div>
+        <div style={{ display: "grid", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 11.5, fontWeight: 800, color: "#2FA36B", marginBottom: 3 }}>Points forts (bilan du {fmtD(B.date)})</div>
+            <div style={{ fontSize: 12.5, color: C.encre, lineHeight: 1.45 }}>{forts.length ? forts.join(", ") : "Aucun critère noté Très bien pour l'instant."}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11.5, fontWeight: 800, color: "#B5483F", marginBottom: 3 }}>À travailler (bilan du {fmtD(B.date)})</div>
+            <div style={{ fontSize: 12.5, color: C.encre, lineHeight: 1.45 }}>{aTravailler.length ? aTravailler.join(", ") : "Aucun critère en difficulté. Beau travail."}</div>
+          </div>
+          {progresMarquants.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11.5, fontWeight: 800, color: C.bleu, marginBottom: 3 }}>Progrès depuis le {fmtD(A.date)}</div>
+              <div style={{ fontSize: 12.5, color: C.encre, lineHeight: 1.45 }}>{progresMarquants.join(", ")}</div>
+            </div>
+          )}
+        </div>
+      </div>
+      {((A.axes && A.axes.trim()) || (B.axes && B.axes.trim())) && (
+        <div style={{ marginTop: 14, background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 12, padding: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8 }}>Suivi des objectifs</div>
+          {A.axes && A.axes.trim() && (
+            <div style={{ marginBottom: B.axes && B.axes.trim() ? 12 : 0 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 800, color: C.encre, marginBottom: 3 }}>Axes demandés au bilan du {fmtD(A.date)}</div>
+              <div style={{ fontSize: 13, color: C.encre, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{A.axes}</div>
+              <div style={{ fontSize: 11.5, color: C.gris, marginTop: 4 }}>À comparer avec les progrès ci-dessus pour voir s'ils ont été travaillés.</div>
+            </div>
+          )}
+          {B.axes && B.axes.trim() && (
+            <div>
+              <div style={{ fontSize: 11.5, fontWeight: 800, color: C.bleu, marginBottom: 3 }}>Nouveaux axes fixés au bilan du {fmtD(B.date)}</div>
+              <div style={{ fontSize: 13, color: C.encre, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{B.axes}</div>
+            </div>
+          )}
         </div>
       )}
     </Modal>
