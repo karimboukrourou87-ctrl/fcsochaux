@@ -3218,7 +3218,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.5.4</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.5.5</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -5152,7 +5152,7 @@ function GrilleEvalTable({ data, editable, onCell, onRemarque }) {
   );
 }
 
-function EditGrilleEval({ grille, educateurs, onClose, onSave, onDelete, onAjouterEncadrant, encadrementListe, encadrementMaj }) {
+function EditGrilleEval({ grille, joueurNom, educateurs, onClose, onSave, onDelete, onAjouterEncadrant, encadrementListe, encadrementMaj }) {
   const [f, setF] = useState({ date: hoyISO(), educateur: "", aspects: {}, ...grille });
   const [autre, setAutre] = useState(!!(grille && grille.educateur) && educateurs.length > 0 && !educateurs.includes(grille.educateur));
   const [gererDir, setGererDir] = useState(false);
@@ -5165,6 +5165,7 @@ function EditGrilleEval({ grille, educateurs, onClose, onSave, onDelete, onAjout
   return (
     <Modal title="Bilan et entretien" onClose={onClose}
       footer={<><Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{onDelete && <BtnSuppr nom="ce bilan" onConfirm={onDelete} />}</>}>
+      {joueurNom ? <div style={{ textAlign: "center", fontSize: 17, fontWeight: 900, color: C.bleu, marginBottom: 14, paddingBottom: 12, borderBottom: `2px solid ${C.grisClair}` }}>{joueurNom}</div> : null}
       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14, marginBottom: 10 }}>
         <Field label="Date du bilan"><Inp type="date" value={f.date || ""} onChange={(e) => setF((o) => ({ ...o, date: e.target.value }))} />{f.date ? <button type="button" onClick={() => setF((o) => ({ ...o, date: "" }))} style={{ marginTop: 7, background: "none", border: "none", padding: 0, color: C.bleu, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Effacer la date</button> : null}</Field>
         <Field label="Dirigeant / coach qui fait le bilan">
@@ -5869,7 +5870,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
       )}
 
 
-      {grilleEdit && <EditGrilleEval grille={grilleEdit === "new" ? {} : (p.grilleEval || {})} educateurs={educateurs} onAjouterEncadrant={ajouterEncadrant} encadrementListe={listeEnc} encadrementMaj={majEnc}
+      {grilleEdit && <EditGrilleEval grille={grilleEdit === "new" ? {} : (p.grilleEval || {})} joueurNom={`${p.prenom || ""} ${p.nom || ""}`.trim()} educateurs={educateurs} onAjouterEncadrant={ajouterEncadrant} encadrementListe={listeEnc} encadrementMaj={majEnc}
         onClose={() => setGrilleEdit(null)}
         onSave={(g) => {
           mutate((d) => {
