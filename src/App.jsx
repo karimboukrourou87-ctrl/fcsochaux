@@ -3105,7 +3105,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v17.1</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v17.2</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -4381,6 +4381,8 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
   const [fiche, setFiche] = useState(null);
   const [tri, setTri] = useState("nom");
   const [cloture, setCloture] = useState(false);
+  const [supprTout, setSupprTout] = useState(false);
+  const [confSuppr, setConfSuppr] = useState("");
   const [importMsg, setImportMsg] = useState(null);
 
   // Import JSON : cree une fiche si le joueur n'existe pas, sinon MET A JOUR les champs fournis
@@ -4682,6 +4684,13 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
         <Btn variant="ghost" full style={{ marginTop: 16 }} onClick={() => setCloture(true)}><CalendarDays size={16} /> Clôturer la saison {saisonCourante()}</Btn>
       )}
 
+      {players.length > 0 && !lectureSeule && (demo || peutValider) && (
+        <Btn variant="danger" full style={{ marginTop: 10 }} onClick={() => {
+          const ouvrir = () => { setConfSuppr(""); setSupprTout(true); };
+          if (onDemanderDeverrouillage) onDemanderDeverrouillage(ouvrir); else ouvrir();
+        }}><Lock size={14} /> Supprimer tout l'effectif {cat}</Btn>
+      )}
+
       {edit && <EditJoueur joueur={edit} cat={cat} adminModifiable={!!(demo || peutValider)} adminUnlock={!!(demo || adminUnlock)} onDemanderDeverrouillage={onDemanderDeverrouillage} auteur={auteur} onClose={() => setEdit(null)} onSave={(j) => {
         mutate((d) => {
           if (j.id) { const i = d.players.findIndex((x) => x.id === j.id); d.players[i] = j; }
@@ -4702,6 +4711,25 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
           <div style={{ fontSize: 13.5, color: C.encre, lineHeight: 1.55 }}>
             Cette action range la saison {saisonCourante()} dans le parcours de chaque joueur du groupe {cat} : catégorie, statistiques, taille, poids, tests et blessures.
             <div style={{ marginTop: 8 }}>Les joueurs et leurs données restent en place. Tu retrouveras l'historique dans chaque fiche, rubrique Parcours.</div>
+          </div>
+        </Modal>
+      )}
+
+      {supprTout && (
+        <Modal title={`Supprimer tout l'effectif ${cat}`} onClose={() => setSupprTout(false)}
+          footer={<><Btn variant="ghost" full onClick={() => setSupprTout(false)}>Annuler</Btn><Btn variant="danger" full disabled={confSuppr.trim().toUpperCase() !== String(cat).toUpperCase()} onClick={() => {
+            mutate((d) => { d.players = (d.players || []).filter((x) => x.cat !== cat); return d; });
+            setSupprTout(false); setConfSuppr("");
+          }}><Trash2 size={16} /> Supprimer définitivement</Btn></>}>
+          <div style={{ fontSize: 13.5, color: C.encre, lineHeight: 1.55 }}>
+            <div style={{ background: "#FBE3E3", border: `1px solid ${C.rouge}`, borderRadius: 11, padding: 12, color: "#8A1F1F", fontWeight: 600 }}>
+              Attention : cette action supprime <strong>les {players.length} fiche{players.length > 1 ? "s" : ""}</strong> de l'effectif {cat}. Elle est irréversible.
+            </div>
+            <div style={{ marginTop: 10, fontSize: 12.5, color: C.gris, lineHeight: 1.5 }}>
+              Les matchs, présences et stats déjà enregistrés ne sont pas effacés : ils resteront récupérables via « Récupérer des données supprimées » si tu recrées des joueurs. Mais les fiches, elles, seront bien supprimées.
+            </div>
+            <div style={{ marginTop: 12, fontSize: 12.5, fontWeight: 700, color: C.encre, marginBottom: 6 }}>Pour confirmer, écris le nom de la catégorie : <span style={{ color: C.rouge }}>{cat}</span></div>
+            <Inp value={confSuppr} onChange={(e) => setConfSuppr(e.target.value)} placeholder={`Écris ${cat} pour confirmer`} />
           </div>
         </Modal>
       )}
