@@ -3105,7 +3105,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.7</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.8</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -4944,16 +4944,86 @@ function EditGrilleEval({ grille, educateurs, onClose, onSave, onDelete, onAjout
   );
 }
 
+const GRID_COMP = "minmax(0,1fr) 50px 14px 50px 104px";
+
 function ChipNiveauGrille({ v }) {
   const nv = GRILLE_NIVEAUX.find((n) => n.k === v);
-  if (!nv) return <span style={{ color: C.gris, fontSize: 12, fontWeight: 700 }}>—</span>;
-  return <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 6, fontSize: 11.5, fontWeight: 800, color: nv.color, background: nv.bg, border: `1px solid ${nv.color}` }}>{nv.label}</span>;
+  const base = { display: "block", width: "100%", textAlign: "center", padding: "4px 0", borderRadius: 7, fontSize: 11.5, fontWeight: 800, boxSizing: "border-box" };
+  if (!nv) return <span style={{ ...base, color: C.gris, background: "#F2F4F7", border: "1px solid #DCE1E8" }}>—</span>;
+  return <span style={{ ...base, color: nv.color, background: nv.bg, border: `1px solid ${nv.color}` }}>{nv.label}</span>;
+}
+
+function exporterComparaisonPDF(jsPDF, p, A, B) {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const W = 595, H = 842, M = 44;
+  const BLEU = [26, 53, 83], GRIS = [120, 130, 142], TRAIT = [228, 232, 238];
+  const col = { tb: [47, 163, 107], b: [184, 122, 43], dif: [181, 72, 63] };
+  const fmtD = (d) => d ? new Date(d + "T00:00:00").toLocaleDateString("fr-FR") : "—";
+  const niv = (v) => v === "tb" ? "T.B" : v === "b" ? "B" : v === "dif" ? "DIF" : "—";
+  const scoreOf = (v) => v === "tb" ? 3 : v === "b" ? 2 : v === "dif" ? 1 : null;
+  const sc = (c) => doc.setTextColor(c[0], c[1], c[2]);
+  const sd = (c) => doc.setDrawColor(c[0], c[1], c[2]);
+  const xA = 322, xMid = 356, xB = 390, xEv = 440;
+  let y = M;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(16); sc(BLEU);
+  doc.text("Comparaison des bilans", M, y); y += 20;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(12); sc([35, 35, 35]);
+  doc.text(`${p.prenom || ""} ${p.nom || ""}`.trim(), M, y); y += 15;
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10); sc(GRIS);
+  doc.text(`Bilan du ${fmtD(A.date)}  vers  bilan du ${fmtD(B.date)}`, M, y); y += 20;
+  let nUp = 0, nEq = 0, nDown = 0;
+  GRILLE_ASPECTS.forEach((cat) => cat.sous.forEach((s) => {
+    const sa = scoreOf(niveauSousGrille(A, cat.k, s)), sb = scoreOf(niveauSousGrille(B, cat.k, s));
+    if (sa == null || sb == null) return; if (sb > sa) nUp++; else if (sb < sa) nDown++; else nEq++;
+  }));
+  doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+  sc(col.tb); doc.text(`${nUp} en progres`, M, y);
+  sc(GRIS); doc.text(`${nEq} stables`, M + 120, y);
+  sc(col.dif); doc.text(`${nDown} en regression`, M + 215, y);
+  y += 12; sd(TRAIT); doc.setLineWidth(1); doc.line(M, y, W - M, y); y += 16;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(8); sc(GRIS);
+  doc.text("CRITERE", M, y);
+  doc.text(fmtD(A.date), xA, y, { align: "center" });
+  doc.text(fmtD(B.date), xB, y, { align: "center" });
+  doc.text("EVOLUTION", xEv, y); y += 8;
+  sd(TRAIT); doc.line(M, y, W - M, y); y += 15;
+  const saut = (h) => { if (y > H - M - (h || 24)) { doc.addPage(); y = M; } };
+  GRILLE_ASPECTS.forEach((cat) => {
+    saut(40);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(11.5); sc(BLEU);
+    doc.text(cat.label, M, y); y += 15;
+    cat.sous.forEach((s) => {
+      saut(22);
+      const a = niveauSousGrille(A, cat.k, s), b = niveauSousGrille(B, cat.k, s);
+      const sa = scoreOf(a), sb = scoreOf(b);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(10); sc([45, 45, 45]);
+      doc.text(String(s), M, y);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+      sc(a ? col[a] : GRIS); doc.text(niv(a), xA, y, { align: "center" });
+      sc([170, 175, 182]); doc.setFont("helvetica", "normal"); doc.text(">", xMid, y, { align: "center" });
+      doc.setFont("helvetica", "bold"); sc(b ? col[b] : GRIS); doc.text(niv(b), xB, y, { align: "center" });
+      let txt = "—", rgb = GRIS;
+      if (sa != null && sb != null) { if (sb > sa) { txt = "Progres"; rgb = col.tb; } else if (sb < sa) { txt = "Regression"; rgb = col.dif; } else { txt = "Stable"; rgb = GRIS; } }
+      sc(rgb); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.text(txt, xEv, y);
+      y += 6; sd([238, 240, 243]); doc.setLineWidth(0.6); doc.line(M, y, W - M, y); y += 13;
+    });
+    y += 6;
+  });
+  if (A.axes && A.axes.trim()) {
+    saut(50); y += 4;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); sc(BLEU);
+    doc.text(`Axes demandes au bilan du ${fmtD(A.date)}`, M, y); y += 15;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10); sc([45, 45, 45]);
+    doc.splitTextToSize(String(A.axes), W - 2 * M).forEach((l) => { saut(16); doc.text(l, M, y); y += 13; });
+  }
+  telechargerDoc(doc, `Comparaison_${(p.prenom || "")}_${(p.nom || "")}`.trim().replace(/\s+/g, "_"));
 }
 
 function ComparerBilans({ p, onClose }) {
   const liste = bilansComparables(p);
   const [iA, setIA] = useState(Math.max(0, liste.length - 2));
   const [iB, setIB] = useState(Math.max(0, liste.length - 1));
+  const [pdfMsg, setPdfMsg] = useState(null);
   if (liste.length < 2) {
     return (
       <Modal title="Comparer les bilans" onClose={onClose} footer={<Btn full onClick={onClose}>Fermer</Btn>}>
@@ -4972,14 +5042,20 @@ function ComparerBilans({ p, onClose }) {
     if (sb > sa) nUp++; else if (sb < sa) nDown++; else nEq++;
   }));
   const badge = (trend) => {
-    if (trend === "up") return <span style={{ color: "#2FA36B", fontWeight: 800, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 3 }}><TrendingUp size={15} /> Progrès</span>;
-    if (trend === "down") return <span style={{ color: "#B5483F", fontWeight: 800, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 3 }}><TrendingDown size={15} /> Régression</span>;
-    if (trend === "eq") return <span style={{ color: C.gris, fontWeight: 800, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 3 }}><Minus size={15} /> Stable</span>;
-    return <span style={{ color: C.gris, fontSize: 12 }}>—</span>;
+    if (trend === "up") return <span style={{ color: "#2FA36B", fontWeight: 800, fontSize: 11.5, display: "inline-flex", alignItems: "center", gap: 3 }}><TrendingUp size={14} /> Progrès</span>;
+    if (trend === "down") return <span style={{ color: "#B5483F", fontWeight: 800, fontSize: 11.5, display: "inline-flex", alignItems: "center", gap: 3 }}><TrendingDown size={14} /> Régression</span>;
+    if (trend === "eq") return <span style={{ color: C.gris, fontWeight: 800, fontSize: 11.5, display: "inline-flex", alignItems: "center", gap: 3 }}><Minus size={14} /> Stable</span>;
+    return <span style={{ color: C.gris, fontSize: 11.5 }}>—</span>;
+  };
+  const fairePDF = async () => {
+    setPdfMsg("Préparation du PDF...");
+    try { const jsPDF = await chargerJsPDF(); exporterComparaisonPDF(jsPDF, p, A, B); setPdfMsg(null); }
+    catch (e) { setPdfMsg("Téléchargement du module PDF impossible (vérifie la connexion). Réessaie."); }
   };
   return (
-    <Modal title="Comparer les bilans" onClose={onClose} footer={<Btn full onClick={onClose}>Fermer</Btn>}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12, marginBottom: 12 }}>
+    <Modal title="Comparer les bilans" onClose={onClose}
+      footer={<><Btn variant="accent" full onClick={fairePDF}><FileDown size={15} /> Exporter en PDF</Btn><Btn variant="ghost" full onClick={onClose}>Fermer</Btn></>}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
         <Field label="Bilan de départ">
           <Sel value={String(iA)} onChange={(e) => setIA(+e.target.value)}>
             {liste.map((g, i) => <option key={"a" + i} value={i}>{fmtD(g.date)}{g.educateur ? " · " + g.educateur : ""}</option>)}
@@ -4991,37 +5067,43 @@ function ComparerBilans({ p, onClose }) {
           </Sel>
         </Field>
       </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-        <span style={{ background: "#E2F4E9", color: "#2FA36B", border: "1px solid #2FA36B", borderRadius: 8, padding: "4px 9px", fontSize: 12, fontWeight: 800 }}>{nUp} en progrès</span>
-        <span style={{ background: "#EEF1F5", color: C.gris, border: `1px solid ${C.gris}`, borderRadius: 8, padding: "4px 9px", fontSize: 12, fontWeight: 800 }}>{nEq} stables</span>
-        <span style={{ background: "#FBE3E3", color: "#B5483F", border: "1px solid #B5483F", borderRadius: 8, padding: "4px 9px", fontSize: 12, fontWeight: 800 }}>{nDown} en régression</span>
+      {pdfMsg && <div style={{ fontSize: 12.5, color: C.bleu, background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 10, padding: "8px 12px", marginBottom: 12 }}>{pdfMsg}</div>}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+        <div style={{ textAlign: "center", background: "#E2F4E9", color: "#2FA36B", border: "1px solid #2FA36B", borderRadius: 10, padding: "8px 4px" }}><div style={{ fontSize: 18, fontWeight: 800, lineHeight: 1 }}>{nUp}</div><div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3 }}>en progrès</div></div>
+        <div style={{ textAlign: "center", background: "#F2F4F7", color: C.gris, border: "1px solid #CED4DC", borderRadius: 10, padding: "8px 4px" }}><div style={{ fontSize: 18, fontWeight: 800, lineHeight: 1 }}>{nEq}</div><div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3 }}>stables</div></div>
+        <div style={{ textAlign: "center", background: "#FBE3E3", color: "#B5483F", border: "1px solid #B5483F", borderRadius: 10, padding: "8px 4px" }}><div style={{ fontSize: 18, fontWeight: 800, lineHeight: 1 }}>{nDown}</div><div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3 }}>en régression</div></div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: GRID_COMP, alignItems: "center", columnGap: 8, padding: "0 0 7px", borderBottom: `1.5px solid ${C.bleu}` }}>
+        <div style={{ fontSize: 10, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.4 }}>Critère</div>
+        <div style={{ fontSize: 9.5, fontWeight: 700, color: C.gris, textAlign: "center" }}>Départ</div>
+        <div />
+        <div style={{ fontSize: 9.5, fontWeight: 700, color: C.gris, textAlign: "center" }}>Arrivée</div>
+        <div style={{ fontSize: 10, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.4 }}>Évolution</div>
       </div>
       {GRILLE_ASPECTS.map((cat) => (
-        <div key={cat.k} style={{ marginBottom: 14 }}>
-          <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13.5, marginBottom: 6 }}>{cat.label}</div>
+        <div key={cat.k} style={{ marginTop: 12 }}>
+          <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13, marginBottom: 2, paddingBottom: 4 }}>{cat.label}</div>
           {cat.sous.map((s) => {
             const a = niveauSousGrille(A, cat.k, s), b = niveauSousGrille(B, cat.k, s);
             const sa = scoreNiveauGrille(a), sb = scoreNiveauGrille(b);
             const trend = (sa == null || sb == null) ? "na" : (sb > sa ? "up" : (sb < sa ? "down" : "eq"));
             return (
-              <div key={s} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: "1px solid #EEF1F5", flexWrap: "wrap" }}>
-                <div style={{ flex: "1 1 130px", fontSize: 13, color: C.encre }}>{s}</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <ChipNiveauGrille v={a} />
-                  <span style={{ color: C.gris, fontWeight: 800 }}>›</span>
-                  <ChipNiveauGrille v={b} />
-                </div>
-                <div style={{ flex: "0 0 auto", minWidth: 92, textAlign: "right" }}>{badge(trend)}</div>
+              <div key={s} style={{ display: "grid", gridTemplateColumns: GRID_COMP, alignItems: "center", columnGap: 8, padding: "8px 0", borderBottom: "1px solid #EEF1F5" }}>
+                <div style={{ fontSize: 12.5, color: C.encre, lineHeight: 1.3 }}>{s}</div>
+                <ChipNiveauGrille v={a} />
+                <div style={{ textAlign: "center", color: "#AAB0B9", fontWeight: 800, fontSize: 13 }}>›</div>
+                <ChipNiveauGrille v={b} />
+                <div>{badge(trend)}</div>
               </div>
             );
           })}
         </div>
       ))}
       {A.axes && A.axes.trim() && (
-        <div style={{ marginTop: 6, background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 12, padding: 12 }}>
+        <div style={{ marginTop: 16, background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 12, padding: 12 }}>
           <div style={{ fontSize: 11, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 5 }}>Axes demandés au bilan du {fmtD(A.date)}</div>
           <div style={{ fontSize: 13, color: C.encre, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{A.axes}</div>
-          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6 }}>Compare ces axes avec les progrès ci-dessus pour voir s'ils ont été travaillés.</div>
+          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6 }}>À comparer avec les progrès ci-dessus pour voir s'ils ont été travaillés.</div>
         </div>
       )}
     </Modal>
