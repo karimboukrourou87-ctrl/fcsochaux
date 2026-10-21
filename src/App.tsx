@@ -2074,7 +2074,7 @@ function SelEncadrement({ value, onChange, liste, label, options = [] }) {
   );
 }
 
-function Modal({ title, onClose, children, footer }) {
+function Modal({ title, onClose, children, footer, titleCenter }) {
   return (
     <div onClick={onClose} style={{
       position: "fixed", inset: 0, background: "rgba(6,24,74,0.55)", zIndex: 50,
@@ -2085,9 +2085,9 @@ function Modal({ title, onClose, children, footer }) {
         borderTopLeftRadius: 22, borderTopRightRadius: 22, overflow: "hidden",
         display: "flex", flexDirection: "column",
       }}>
-        <div style={{ background: C.bleu, color: "#fff", padding: "16px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <strong style={{ fontSize: 16 }}>{title}</strong>
-          <X size={22} style={{ cursor: "pointer" }} onClick={onClose} />
+        <div style={{ background: C.bleu, color: "#fff", padding: "16px 18px", display: "flex", alignItems: "center", justifyContent: titleCenter ? "center" : "space-between", position: "relative" }}>
+          <strong style={{ fontSize: 16, textAlign: titleCenter ? "center" : "left" }}>{title}</strong>
+          <X size={22} style={{ cursor: "pointer", position: titleCenter ? "absolute" : "static", right: 18, top: "50%", transform: titleCenter ? "translateY(-50%)" : "none" }} onClick={onClose} />
         </div>
         <div style={{ padding: 18, overflowY: "auto", flex: 1 }}>{children}</div>
         {footer && <div style={{ padding: 14, borderTop: `1px solid ${C.grisClair}`, background: "#fff", display: "flex", gap: 10 }}>{footer}</div>}
@@ -3218,7 +3218,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.5.6</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.5.7</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -5163,7 +5163,7 @@ function EditGrilleEval({ grille, joueurNom, educateurs, onClose, onSave, onDele
   });
   const setRem = (ak, v) => setF((o) => ({ ...o, aspects: { ...(o.aspects || {}), [ak]: { ...((o.aspects || {})[ak] || {}), remarque: v } } }));
   return (
-    <Modal title={joueurNom ? (<span style={{ display: "flex", flexDirection: "column", lineHeight: 1.25 }}><span style={{ fontSize: 15 }}>Bilan et entretien</span><span style={{ fontSize: 15, fontWeight: 900, color: C.jaune }}>{joueurNom}</span></span>) : "Bilan et entretien"} onClose={onClose}
+    <Modal titleCenter title={joueurNom ? (<span style={{ display: "flex", flexDirection: "column", alignItems: "center", lineHeight: 1.3 }}><span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase", opacity: 0.85 }}>Bilan et entretien</span><span style={{ fontSize: 17, fontWeight: 900, color: C.jaune, marginTop: 1 }}>{joueurNom}</span></span>) : "Bilan et entretien"} onClose={onClose}
       footer={<><Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{onDelete && <BtnSuppr nom="ce bilan" onConfirm={onDelete} />}</>}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14, marginBottom: 10 }}>
         <Field label="Date du bilan"><Inp type="date" value={f.date || ""} onChange={(e) => setF((o) => ({ ...o, date: e.target.value }))} />{f.date ? <button type="button" onClick={() => setF((o) => ({ ...o, date: "" }))} style={{ marginTop: 7, background: "none", border: "none", padding: 0, color: C.bleu, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Effacer la date</button> : null}</Field>
