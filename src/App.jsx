@@ -3105,7 +3105,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v17.2</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.5.1</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -4464,9 +4464,37 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
     r.readAsText(f);
   }
   const orphelins = donneesOrphelines(db, cat);
+  const corbeille = (db.corbeille || []).filter((x) => x && x.cat === cat).sort((a, b) => (b._supprimeLe || 0) - (a._supprimeLe || 0));
   const [recup, setRecup] = useState(false);
   const [cibleRecup, setCibleRecup] = useState({});
   const [cibleTous, setCibleTous] = useState("");
+  // Restaure une fiche supprimee (depuis la corbeille) avec son identifiant d'origine : ses stats se rebranchent toutes seules.
+  function restaurerFiche(entry) {
+    if (!entry) return;
+    mutate((d) => {
+      d.players = d.players || [];
+      if (!d.players.some((x) => x.id === entry.id)) {
+        const copie = { ...entry }; delete copie._supprimeLe;
+        d.players.push(copie);
+      }
+      d.corbeille = (d.corbeille || []).filter((x) => !(x && x.id === entry.id));
+      return d;
+    });
+    setImportMsg(`${(entry.prenom || "").trim()} ${(entry.nom || "").trim()} restauré(e).`);
+  }
+  function restaurerToutesFiches() {
+    if (!corbeille.length) return;
+    const ids = corbeille.map((x) => x.id);
+    mutate((d) => {
+      d.players = d.players || [];
+      corbeille.forEach((entry) => {
+        if (!d.players.some((x) => x.id === entry.id)) { const copie = { ...entry }; delete copie._supprimeLe; d.players.push(copie); }
+      });
+      d.corbeille = (d.corbeille || []).filter((x) => !(x && ids.includes(x.id)));
+      return d;
+    });
+    setImportMsg(`${ids.length} fiche(s) restaurée(s).`);
+  }
   function appliquerReattache(d, orphanId, targetId) {
     (d.matches || []).forEach((m) => {
       if (m.cat !== cat) return;
@@ -4565,14 +4593,35 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
               <Upload size={15} /> Importer une fiche (JSON)
               <input type="file" accept=".json,application/json,text/plain,*/*" onChange={importerFiche} style={{ display: "none" }} />
             </label>
-            {orphelins.length > 0 && (
-              <Btn variant="ghost" size="sm" onClick={() => setRecup(true)}><ArrowRightLeft size={15} /> Récupérer des données supprimées ({orphelins.length})</Btn>
+            {(orphelins.length > 0 || corbeille.length > 0) && (
+              <Btn variant="ghost" size="sm" onClick={() => setRecup(true)}><ArrowRightLeft size={15} /> Récupérer des données supprimées ({orphelins.length + corbeille.length})</Btn>
             )}
           </div>
           {importMsg && <div style={{ fontSize: 12.5, fontWeight: 700, color: importMsg.includes("non valide") || importMsg.includes("impossible") ? C.rouge : C.vert, marginBottom: 10 }}>{importMsg}</div>}
           {recup && (
             <Modal title="Récupérer des données supprimées" onClose={() => setRecup(false)}>
-              <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Voici des données (matchs, présences, compos, blessures) qui étaient rattachées à un joueur supprimé. Choisis à quelle fiche actuelle les réattacher (ex. la fiche d'Issa recréée), puis touche Réattacher.</div>
+              {corbeille.length > 0 && (
+                <div style={{ marginBottom: 18 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: C.bleu, marginBottom: 5 }}>Fiches supprimées ({corbeille.length})</div>
+                  <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 10, lineHeight: 1.45 }}>Les fiches supprimées sont gardées en mémoire. Clique sur « Restaurer » pour remettre le joueur exactement comme avant (nom, prénom, licence, et toutes ses stats rebranchées automatiquement). Rien à retaper.</div>
+                  {corbeille.length > 1 && (
+                    <Btn variant="accent" size="sm" onClick={restaurerToutesFiches} style={{ marginBottom: 10 }}><ArrowRightLeft size={15} /> Tout restaurer ({corbeille.length})</Btn>
+                  )}
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {corbeille.map((e) => (
+                      <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "9px 11px", background: "#fff", flexWrap: "wrap" }}>
+                        <div style={{ flex: 1, minWidth: 140 }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 800, color: C.encre }}>{(e.prenom || "").trim()} {(e.nom || "").trim()}</div>
+                          <div style={{ fontSize: 11.5, color: C.gris }}>{e.licence ? `Licence ${e.licence}` : "Sans licence"}{e.poste ? ` · ${e.poste}` : ""}</div>
+                        </div>
+                        <Btn variant="accent" size="sm" onClick={() => restaurerFiche(e)}><ArrowRightLeft size={15} /> Restaurer</Btn>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {orphelins.length > 0 && (<>
+              <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Ci-dessous, des données (matchs, présences, compos, blessures) sans fiche connue. Choisis à quel joueur les réattacher, puis touche Réattacher.</div>
               {orphelins.length > 1 && (
                 <div style={{ background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 11, padding: 11, marginBottom: 12 }}>
                   <div style={{ fontSize: 12.5, fontWeight: 800, color: C.bleu, marginBottom: 6 }}>Tout réattacher au même joueur</div>
@@ -4602,6 +4651,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
                   </div>
                 ))}
               </div>
+              </>)}
             </Modal>
           )}
         </>
@@ -4701,7 +4751,12 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
       }} />}
 
       {ficheJoueur && <FicheJoueur p={ficheJoueur} db={db} mutate={mutate} lectureSeule={lectureSeule} demo={demo} onClose={() => setFiche(null)} onEdit={() => { setEdit(ficheJoueur); setFiche(null); }} onDelete={() => {
-        mutate((d) => { d.players = d.players.filter((x) => x.id !== ficheJoueur.id); return d; });
+        mutate((d) => {
+          const pl = (d.players || []).find((x) => x.id === ficheJoueur.id);
+          if (pl) { d.corbeille = [{ ...pl, _supprimeLe: Date.now() }, ...(d.corbeille || []).filter((x) => x && x.id !== pl.id)].slice(0, 200); }
+          d.players = d.players.filter((x) => x.id !== ficheJoueur.id);
+          return d;
+        });
         setFiche(null);
       }} />}
 
@@ -4718,7 +4773,13 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
       {supprTout && (
         <Modal title={`Supprimer tout l'effectif ${cat}`} onClose={() => setSupprTout(false)}
           footer={<><Btn variant="ghost" full onClick={() => setSupprTout(false)}>Annuler</Btn><Btn variant="danger" full disabled={confSuppr.trim().toUpperCase() !== String(cat).toUpperCase()} onClick={() => {
-            mutate((d) => { d.players = (d.players || []).filter((x) => x.cat !== cat); return d; });
+            mutate((d) => {
+              const retires = (d.players || []).filter((x) => x.cat === cat);
+              const idsRet = retires.map((p) => p.id);
+              d.corbeille = [...retires.map((p) => ({ ...p, _supprimeLe: Date.now() })), ...(d.corbeille || []).filter((x) => x && !idsRet.includes(x.id))].slice(0, 400);
+              d.players = (d.players || []).filter((x) => x.cat !== cat);
+              return d;
+            });
             setSupprTout(false); setConfSuppr("");
           }}><Trash2 size={16} /> Supprimer définitivement</Btn></>}>
           <div style={{ fontSize: 13.5, color: C.encre, lineHeight: 1.55 }}>
