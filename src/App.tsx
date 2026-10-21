@@ -1262,6 +1262,12 @@ function bilansComparables(p) {
   if (p && grilleRemplie(p.grilleEval) && p.grilleEval.date && !arr.some((h) => h && h.date === p.grilleEval.date)) arr.push(p.grilleEval);
   return arr.filter((g) => grilleRemplie(g) && g.date).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
 }
+// Bilan a afficher et exporter par defaut : celui dont la DATE est la plus recente (et non le dernier saisi).
+function bilanAffiche(p) {
+  const l = bilansComparables(p);
+  if (l.length) return l[l.length - 1];
+  return (p && p.grilleEval) || null;
+}
 
 function moyennesGroupeBilan(db, cat) {
   const res = { globale: null }; const acc = {}; const glob = [];
@@ -2635,17 +2641,18 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
     });
   }
 
-  if (grilleRemplie(p.grilleEval)) {
+  if (grilleRemplie(bilanAffiche(p))) {
+    const gEval = bilanAffiche(p) || p.grilleEval || {};
     section("Bilan et entretien");
     // date du bilan precedent (juste la date, pour situer la progression)
     const _datesBil = (Array.isArray(p.grillesHist) ? p.grillesHist : []).filter((h) => grilleRemplie(h) && h.date).map((h) => h.date);
-    if (p.grilleEval.date) _datesBil.push(p.grilleEval.date);
+    if (gEval.date) _datesBil.push(gEval.date);
     const _uniqBil = [...new Set(_datesBil)].sort();
-    const _curBil = p.grilleEval.date || (_uniqBil.length ? _uniqBil[_uniqBil.length - 1] : "");
+    const _curBil = gEval.date || (_uniqBil.length ? _uniqBil[_uniqBil.length - 1] : "");
     const _prevBil = _uniqBil.filter((d) => d < _curBil).pop() || null;
-    if (p.grilleEval.date || p.grilleEval.educateur) {
+    if (gEval.date || gEval.educateur) {
       sc(GRIS); doc.setFont("helvetica", "italic"); doc.setFontSize(8.5);
-      doc.text(`${p.grilleEval.date ? new Date(p.grilleEval.date + "T00:00:00").toLocaleDateString("fr-FR") : ""}${p.grilleEval.date && p.grilleEval.educateur ? "   ·   " : ""}${p.grilleEval.educateur || ""}${_prevBil ? "      (bilan precedent : " + new Date(_prevBil + "T00:00:00").toLocaleDateString("fr-FR") + ")" : ""}`, M, y);
+      doc.text(`${gEval.date ? new Date(gEval.date + "T00:00:00").toLocaleDateString("fr-FR") : ""}${gEval.date && gEval.educateur ? "   ·   " : ""}${gEval.educateur || ""}${_prevBil ? "      (bilan precedent : " + new Date(_prevBil + "T00:00:00").toLocaleDateString("fr-FR") + ")" : ""}`, M, y);
       doc.setFont("helvetica", "normal"); y += 13;
     }
     sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
@@ -2654,8 +2661,8 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
     const cw = 46, cg = 6, nbCols = GRILLE_NIVEAUX.length;
     const block = nbCols * cw + (nbCols - 1) * cg;
     const xCols = W - M - block;
-    grilleDeBilan(p.grilleEval, p.poste).forEach((a) => {
-      const A = (p.grilleEval.aspects || {})[a.k] || {};
+    grilleDeBilan(gEval, p.poste).forEach((a) => {
+      const A = (gEval.aspects || {})[a.k] || {};
       const n = A.n || {};
       const hasRows = a.sous.some((s) => n[s]);
       if (!hasRows && !(A.remarque && A.remarque.trim())) return;
@@ -2709,7 +2716,7 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
       y = cTop + cboxH + 14;
     });
 
-    if (p.grilleEval.axes && p.grilleEval.axes.trim()) {
+    if (gEval.axes && gEval.axes.trim()) {
       y += 4;
       sautPage(60);
       sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5);
@@ -2718,7 +2725,7 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
       sd(OR); doc.setLineWidth(1.4); doc.line(M, y + 6, M + twAxes, y + 6); doc.setLineWidth(0.5);
       y += 18;
       const aTop = y - 6;
-      const alignes = doc.splitTextToSize(String(p.grilleEval.axes), W - 2 * M - 16);
+      const alignes = doc.splitTextToSize(String(gEval.axes), W - 2 * M - 16);
       const aboxH = 16 + alignes.length * 11;
       sautPage(aboxH + 6);
       sf([234, 240, 247]); sd([198, 162, 76]); doc.setLineWidth(0.8);
@@ -3309,7 +3316,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.6.0</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.6.2</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -5347,12 +5354,27 @@ function exporterComparaisonPDF(jsPDF, p, A, B) {
   const scoreOf = (v) => v === "tb" ? 3 : v === "b" ? 2 : v === "dif" ? 1 : null;
   const sc = (c) => doc.setTextColor(c[0], c[1], c[2]);
   const sd = (c) => doc.setDrawColor(c[0], c[1], c[2]);
+  const sf = (c) => doc.setFillColor(c[0], c[1], c[2]);
   const xA = 322, xMid = 356, xB = 390, xEv = 440;
   let y = M;
+  // Photo du joueur en haut a droite
+  if (p.photo) {
+    const bw = 54, bh = 68, bx = W - M - bw, by = M - 8;
+    try {
+      sf([238, 241, 245]); sd(TRAIT); doc.setLineWidth(0.8);
+      doc.roundedRect(bx, by, bw, bh, 5, 5, "FD");
+      const pr = doc.getImageProperties(p.photo);
+      const ratio = pr.width / pr.height;
+      let iw = bw - 4, ih = iw / ratio;
+      if (ih > bh - 4) { ih = bh - 4; iw = ih * ratio; }
+      doc.addImage(p.photo, "JPEG", bx + (bw - iw) / 2, by + (bh - ih) / 2, iw, ih);
+    } catch (e) { try { doc.addImage(p.photo, "JPEG", bx, by, bw, bh); } catch (e2) {} }
+  }
   doc.setFont("helvetica", "bold"); doc.setFontSize(16); sc(BLEU);
   doc.text("Comparaison des bilans", M, y); y += 20;
   doc.setFont("helvetica", "bold"); doc.setFontSize(12); sc([35, 35, 35]);
-  doc.text(`${p.prenom || ""} ${p.nom || ""}`.trim(), M, y); y += 15;
+  doc.text(`${p.prenom || ""} ${p.nom || ""}`.trim(), M, y); y += 14;
+  if (p.poste) { doc.setFont("helvetica", "normal"); doc.setFontSize(10); sc(GRIS); doc.text(`${p.poste}${p.cat ? " · " + p.cat : ""}`, M, y); y += 14; }
   doc.setFont("helvetica", "normal"); doc.setFontSize(10); sc(GRIS);
   doc.text(`Bilan du ${fmtD(A.date)}  vers  bilan du ${fmtD(B.date)}`, M, y); y += 20;
   let nUp = 0, nEq = 0, nDown = 0;
@@ -5483,6 +5505,13 @@ function ComparerBilans({ p, onClose }) {
   return (
     <Modal title="Comparer les bilans" onClose={onClose}
       footer={<><Btn variant="accent" full onClick={fairePDF}><FileDown size={15} /> Exporter en PDF</Btn><Btn variant="ghost" full onClick={onClose}>Fermer</Btn></>}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, paddingBottom: 12, borderBottom: `1.5px solid ${C.grisClair}` }}>
+        <Avatar p={p} size={52} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 900, color: C.encre, lineHeight: 1.2 }}>{`${p.prenom || ""} ${p.nom || ""}`.trim()}</div>
+          <div style={{ fontSize: 12.5, color: C.gris, marginTop: 1 }}>{p.poste || "Poste non renseigné"}{p.cat ? " · " + p.cat : ""}</div>
+        </div>
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
         <Field label="Bilan de départ">
           <Sel value={String(iA)} onChange={(e) => setIA(+e.target.value)}>
@@ -6027,18 +6056,20 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
           )}
         </div>
       </div>
-      {grilleRemplie(p.grilleEval) ? (
+      {grilleRemplie(bilanAffiche(p)) ? (
         <div style={{ marginBottom: 16 }}>
-          {(p.grilleEval.date || p.grilleEval.educateur) && (
-            <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 8 }}>{p.grilleEval.date ? new Date(p.grilleEval.date + "T00:00:00").toLocaleDateString("fr-FR") : ""}{p.grilleEval.date && p.grilleEval.educateur ? " · " : ""}{p.grilleEval.educateur || ""}</div>
+          {(() => { const gAff = bilanAffiche(p) || {}; return (<>
+          {(gAff.date || gAff.educateur) && (
+            <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 8 }}>{gAff.date ? new Date(gAff.date + "T00:00:00").toLocaleDateString("fr-FR") : ""}{gAff.date && gAff.educateur ? " · " : ""}{gAff.educateur || ""}</div>
           )}
-          <GrilleEvalTable data={p.grilleEval} editable={false} aspects={grilleDeBilan(p.grilleEval, p.poste)} />
-          {p.grilleEval.axes && p.grilleEval.axes.trim() && (
+          <GrilleEvalTable data={gAff} editable={false} aspects={grilleDeBilan(gAff, p.poste)} />
+          {gAff.axes && gAff.axes.trim() && (
             <div style={{ marginTop: 12, background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 12, padding: 12 }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 5 }}>Axes d'amélioration</div>
-              <div style={{ fontSize: 13, color: C.encre, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{p.grilleEval.axes}</div>
+              <div style={{ fontSize: 13, color: C.encre, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{gAff.axes}</div>
             </div>
           )}
+          </>); })()}
         </div>
       ) : (
         <Card style={{ marginBottom: 16, textAlign: "center", color: C.gris, fontSize: 13, padding: 16 }}>Bilan et entretien non renseigné</Card>
@@ -6061,7 +6092,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
       )}
 
 
-      {grilleEdit && <EditGrilleEval grille={grilleEdit === "new" ? {} : (p.grilleEval || {})} joueurNom={`${p.prenom || ""} ${p.nom || ""}`.trim()} poste={p.poste} educateurs={educateurs} onAjouterEncadrant={ajouterEncadrant} encadrementListe={listeEnc} encadrementMaj={majEnc}
+      {grilleEdit && <EditGrilleEval grille={grilleEdit === "new" ? {} : (bilanAffiche(p) || {})} joueurNom={`${p.prenom || ""} ${p.nom || ""}`.trim()} poste={p.poste} educateurs={educateurs} onAjouterEncadrant={ajouterEncadrant} encadrementListe={listeEnc} encadrementMaj={majEnc}
         onClose={() => setGrilleEdit(null)}
         onSave={(g) => {
           mutate((d) => {
@@ -6072,15 +6103,16 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
             const gd = g.date || "";
             if (gd) { hist = hist.filter((h) => h && (h.date || "") !== gd); if (grilleRemplie(g)) hist.push(g); }
             pl.grillesHist = hist.filter((h) => grilleRemplie(h) && h.date).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-            pl.grilleEval = g;
+            // Le bilan courant est celui a la date la plus recente, pas forcement celui qu'on vient de saisir.
+            pl.grilleEval = (g.date && pl.grillesHist.length) ? pl.grillesHist[pl.grillesHist.length - 1] : g;
             return d;
           });
           setGrilleEdit(null);
         }}
-        onDelete={grilleEdit === "edit" && grilleRemplie(p.grilleEval) ? () => {
+        onDelete={grilleEdit === "edit" && grilleRemplie(bilanAffiche(p)) ? () => {
           mutate((d) => {
             const pl = d.players.find((x) => x.id === p.id);
-            const gd = (pl.grilleEval && pl.grilleEval.date) || "";
+            const gd = (bilanAffiche(p) || {}).date || "";
             const bil = (Array.isArray(pl.grillesHist) ? pl.grillesHist : []).find((h) => h && (h.date || "") === gd);
             if (bil) ajouterCorbeille(d, { ...bil, id: bil.id || ("bilan_" + gd) }, "bilan", p.cat, { _joueurId: p.id, _joueurNom: ((p.prenom || "") + " " + (p.nom || "")).trim(), _bilanDate: gd });
             const hist = (Array.isArray(pl.grillesHist) ? pl.grillesHist : []).filter((h) => h && (h.date || "") !== gd).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
