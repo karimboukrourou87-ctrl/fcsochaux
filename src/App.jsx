@@ -3105,7 +3105,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.8</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.9</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -3957,7 +3957,7 @@ function donneesOrphelines(db, cat) {
   const refs = {};
   const add = (id) => { if (!refs[id]) refs[id] = { matchs: new Set(), advs: [], minutes: 0, buts: 0, passes: 0, notes: [], blessures: 0, seances: 0 }; return refs[id]; };
   (db.matches || []).filter((m) => m.cat === cat).forEach((m) => {
-    const present = ["tempsJeu", "buteurs", "passeurs", "notes", "jaunes", "rouges", "blancs", "blesses", "cartonsMin"];
+    const present = ["tempsJeu", "buteurs", "passeurs", "notes", "jaunes", "rouges", "blancs", "blesses", "cartonsMin", "surclasses"];
     const idsM = new Set();
     present.forEach((ch) => { const o = m[ch]; if (o) Object.keys(o).forEach((id) => idsM.add(id)); });
     idsM.forEach((id) => { const r = add(id); if (!r.matchs.has(m.id)) { r.matchs.add(m.id); r.advs.push({ adv: m.adversaire || "Adversaire", date: m.date || "" }); } });
@@ -4420,30 +4420,38 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
   const orphelins = donneesOrphelines(db, cat);
   const [recup, setRecup] = useState(false);
   const [cibleRecup, setCibleRecup] = useState({});
+  const [cibleTous, setCibleTous] = useState("");
+  function appliquerReattache(d, orphanId, targetId) {
+    (d.matches || []).forEach((m) => {
+      if (m.cat !== cat) return;
+      ["tempsJeu", "buteurs", "passeurs", "notes", "jaunes", "rouges", "blancs", "blesses", "cartonsMin", "nonRetenus", "surclasses"].forEach((ch) => {
+        if (m[ch] && m[ch][orphanId] !== undefined) { m[ch][targetId] = m[ch][orphanId]; delete m[ch][orphanId]; }
+      });
+    });
+    (d.injuries || []).forEach((i) => { if (i.cat === cat && i.joueurId === orphanId) i.joueurId = targetId; });
+    (d.trainings || []).forEach((t) => {
+      if (t.cat !== cat) return;
+      if (t.presence && t.presence[orphanId] !== undefined) { t.presence[targetId] = t.presence[orphanId]; delete t.presence[orphanId]; }
+    });
+    Object.values(d.lineups || {}).forEach((lu) => {
+      if (!lu) return;
+      if (lu.slots) Object.keys(lu.slots).forEach((k) => { if (lu.slots[k] === orphanId) lu.slots[k] = targetId; });
+      if (Array.isArray(lu.remplacants)) lu.remplacants = lu.remplacants.map((x) => (x === orphanId ? targetId : x));
+      if (lu.capitaine === orphanId) lu.capitaine = targetId;
+      if (lu.numeros && lu.numeros[orphanId] !== undefined) { lu.numeros[targetId] = lu.numeros[orphanId]; delete lu.numeros[orphanId]; }
+    });
+  }
   function reattacher(orphanId, targetId) {
     if (!targetId) return;
-    mutate((d) => {
-      (d.matches || []).forEach((m) => {
-        if (m.cat !== cat) return;
-        ["tempsJeu", "buteurs", "passeurs", "notes", "jaunes", "rouges", "blancs", "blesses", "cartonsMin", "nonRetenus"].forEach((ch) => {
-          if (m[ch] && m[ch][orphanId] !== undefined) { m[ch][targetId] = m[ch][orphanId]; delete m[ch][orphanId]; }
-        });
-      });
-      (d.injuries || []).forEach((i) => { if (i.cat === cat && i.joueurId === orphanId) i.joueurId = targetId; });
-      (d.trainings || []).forEach((t) => {
-        if (t.cat !== cat) return;
-        if (t.presence && t.presence[orphanId] !== undefined) { t.presence[targetId] = t.presence[orphanId]; delete t.presence[orphanId]; }
-      });
-      Object.values(d.lineups || {}).forEach((lu) => {
-        if (!lu) return;
-        if (lu.slots) Object.keys(lu.slots).forEach((k) => { if (lu.slots[k] === orphanId) lu.slots[k] = targetId; });
-        if (Array.isArray(lu.remplacants)) lu.remplacants = lu.remplacants.map((x) => (x === orphanId ? targetId : x));
-        if (lu.capitaine === orphanId) lu.capitaine = targetId;
-        if (lu.numeros && lu.numeros[orphanId] !== undefined) { lu.numeros[targetId] = lu.numeros[orphanId]; delete lu.numeros[orphanId]; }
-      });
-      return d;
-    });
+    mutate((d) => { appliquerReattache(d, orphanId, targetId); return d; });
     setImportMsg("Données réattachées. Ouvre la fiche du joueur pour vérifier.");
+  }
+  function reattacherTous(targetId) {
+    if (!targetId || !orphelins.length) return;
+    const ids = orphelins.map((o) => o.id);
+    mutate((d) => { ids.forEach((id) => appliquerReattache(d, id, targetId)); return d; });
+    setImportMsg("Toutes les données ont été réattachées. Ouvre la fiche du joueur pour vérifier.");
+    setRecup(false);
   }
 
   const liste = players
@@ -4518,7 +4526,20 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
           {importMsg && <div style={{ fontSize: 12.5, fontWeight: 700, color: importMsg.includes("non valide") || importMsg.includes("impossible") ? C.rouge : C.vert, marginBottom: 10 }}>{importMsg}</div>}
           {recup && (
             <Modal title="Récupérer des données supprimées" onClose={() => setRecup(false)}>
-              <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Voici des données (matchs, blessures) qui étaient rattachées à un joueur supprimé. Choisis à quelle fiche actuelle les réattacher (ex. la fiche d'Issa recréée), puis touche Réattacher.</div>
+              <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Voici des données (matchs, présences, compos, blessures) qui étaient rattachées à un joueur supprimé. Choisis à quelle fiche actuelle les réattacher (ex. la fiche d'Issa recréée), puis touche Réattacher.</div>
+              {orphelins.length > 1 && (
+                <div style={{ background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 11, padding: 11, marginBottom: 12 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: C.bleu, marginBottom: 6 }}>Tout réattacher au même joueur</div>
+                  <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 8, lineHeight: 1.45 }}>Si toutes ces données appartiennent au même joueur recréé, choisis-le ici et réattache tout en une fois.</div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <Sel value={cibleTous} onChange={(e) => setCibleTous(e.target.value)} style={{ flex: 1, minWidth: 160 }}>
+                      <option value="">Choisir le joueur...</option>
+                      {[...players].sort((a, b) => `${a.nom}${a.prenom}`.localeCompare(`${b.nom}${b.prenom}`)).map((pl) => <option key={pl.id} value={pl.id}>{pl.prenom} {pl.nom}</option>)}
+                    </Sel>
+                    <Btn variant="accent" size="sm" disabled={!cibleTous} onClick={() => reattacherTous(cibleTous)}><ArrowRightLeft size={15} /> Tout réattacher</Btn>
+                  </div>
+                </div>
+              )}
               <div style={{ display: "grid", gap: 10 }}>
                 {orphelins.map((o) => (
                   <div key={o.id} style={{ border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: 11, background: "#fff" }}>
