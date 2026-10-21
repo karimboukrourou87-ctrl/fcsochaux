@@ -4,7 +4,7 @@ import {
   Plus, X, Trash2, ChevronLeft, Trophy, Award, Bell, Activity, Target,
   Footprints, Ruler, Weight, Gauge, Timer, Edit3, Save,
   HeartPulse, ShieldAlert, Star, MapPin, ArrowRightLeft, Eye, FileDown, Phone, Camera, LogOut,
-  Send, Check, Inbox, ListOrdered, ExternalLink, Bus, Upload, Lock, RefreshCw
+  Send, Check, Inbox, ListOrdered, ExternalLink, Bus, Upload, Lock, RefreshCw, TrendingUp, TrendingDown, Minus
 } from "lucide-react";
 
 // Contexte de verrouillage administratif : rôle (direction/responsable) + déverrouillage par mot de passe.
@@ -1166,6 +1166,16 @@ function grilleRemplie(g) {
   if (!g) return false;
   if (g.axes && g.axes.trim()) return true;
   return !!(g.aspects && GRILLE_ASPECTS.some((a) => { const A = g.aspects[a.k] || {}; return (A.n && Object.values(A.n).some(Boolean)) || (A.remarque && A.remarque.trim()); }));
+}
+// Score d'un niveau de la grille (pour comparer deux bilans) : Très bien = 3, Bien = 2, Difficulté = 1
+const SCORE_NIVEAU_GRILLE = { tb: 3, b: 2, dif: 1 };
+function scoreNiveauGrille(v) { return SCORE_NIVEAU_GRILLE[v] != null ? SCORE_NIVEAU_GRILLE[v] : null; }
+function niveauSousGrille(g, catK, sous) { const A = g && g.aspects && g.aspects[catK]; const n = A && A.n; return n ? n[sous] : undefined; }
+// Liste des bilans datés d'un joueur (historique + bilan courant), triés du plus ancien au plus récent
+function bilansComparables(p) {
+  const arr = Array.isArray(p && p.grillesHist) ? p.grillesHist.slice() : [];
+  if (p && grilleRemplie(p.grilleEval) && p.grilleEval.date && !arr.some((h) => h && h.date === p.grilleEval.date)) arr.push(p.grilleEval);
+  return arr.filter((g) => grilleRemplie(g) && g.date).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
 }
 
 function moyennesGroupeBilan(db, cat) {
@@ -3095,7 +3105,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.5</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.7</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -4758,7 +4768,7 @@ function EditBilan({ bilan, educateurs, axesPrecedent, onClose, onSave, onDelete
   return (
     <Modal title={bilan.id ? "Modifier le bilan" : "Nouveau bilan"} onClose={onClose}
       footer={<><Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{onDelete && <BtnSuppr nom="ce bilan" onConfirm={onDelete} />}</>}>
-      <Field label="Date du bilan"><Inp type="date" value={f.date} onChange={(e) => set("date", e.target.value)} /></Field>
+      <Field label="Date du bilan"><Inp type="date" value={f.date} onChange={(e) => set("date", e.target.value)} />{f.date ? <button type="button" onClick={() => set("date", "")} style={{ marginTop: 7, background: "none", border: "none", padding: 0, color: C.bleu, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Effacer la date</button> : null}</Field>
       <Field label="Éducateur (qui a fait le bilan)">
         {educateurs.length > 0 && !autre ? (
           <Sel value={f.educateur} onChange={(e) => { if (e.target.value === "__autre__") { setAutre(true); set("educateur", ""); } else set("educateur", e.target.value); }}>
@@ -4888,8 +4898,8 @@ function EditGrilleEval({ grille, educateurs, onClose, onSave, onDelete, onAjout
   return (
     <Modal title="Bilan et entretien" onClose={onClose}
       footer={<><Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{onDelete && <BtnSuppr nom="ce bilan" onConfirm={onDelete} />}</>}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 6 }}>
-        <Field label="Date du bilan"><Inp type="date" value={f.date || ""} onChange={(e) => setF((o) => ({ ...o, date: e.target.value }))} /></Field>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14, marginBottom: 10 }}>
+        <Field label="Date du bilan"><Inp type="date" value={f.date || ""} onChange={(e) => setF((o) => ({ ...o, date: e.target.value }))} />{f.date ? <button type="button" onClick={() => setF((o) => ({ ...o, date: "" }))} style={{ marginTop: 7, background: "none", border: "none", padding: 0, color: C.bleu, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Effacer la date</button> : null}</Field>
         <Field label="Dirigeant / coach qui fait le bilan">
           {educateurs.length > 0 && !autre ? (
             <Sel value={f.educateur || ""} onChange={(e) => { if (e.target.value === "__a__") { setAutre(true); setF((o) => ({ ...o, educateur: "" })); } else setF((o) => ({ ...o, educateur: e.target.value })); }}>
@@ -4934,13 +4944,99 @@ function EditGrilleEval({ grille, educateurs, onClose, onSave, onDelete, onAjout
   );
 }
 
+function ChipNiveauGrille({ v }) {
+  const nv = GRILLE_NIVEAUX.find((n) => n.k === v);
+  if (!nv) return <span style={{ color: C.gris, fontSize: 12, fontWeight: 700 }}>—</span>;
+  return <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 6, fontSize: 11.5, fontWeight: 800, color: nv.color, background: nv.bg, border: `1px solid ${nv.color}` }}>{nv.label}</span>;
+}
+
+function ComparerBilans({ p, onClose }) {
+  const liste = bilansComparables(p);
+  const [iA, setIA] = useState(Math.max(0, liste.length - 2));
+  const [iB, setIB] = useState(Math.max(0, liste.length - 1));
+  if (liste.length < 2) {
+    return (
+      <Modal title="Comparer les bilans" onClose={onClose} footer={<Btn full onClick={onClose}>Fermer</Btn>}>
+        <div style={{ fontSize: 14, color: C.gris, lineHeight: 1.5 }}>Il faut au moins deux bilans de dates différentes pour voir la progression. Enregistre un nouveau bilan à une autre date, puis reviens ici.</div>
+      </Modal>
+    );
+  }
+  const A = liste[Math.min(iA, liste.length - 1)] || liste[0];
+  const B = liste[Math.min(iB, liste.length - 1)] || liste[liste.length - 1];
+  const fmtD = (d) => d ? new Date(d + "T00:00:00").toLocaleDateString("fr-FR") : "—";
+  let nUp = 0, nEq = 0, nDown = 0;
+  GRILLE_ASPECTS.forEach((cat) => cat.sous.forEach((s) => {
+    const sa = scoreNiveauGrille(niveauSousGrille(A, cat.k, s));
+    const sb = scoreNiveauGrille(niveauSousGrille(B, cat.k, s));
+    if (sa == null || sb == null) return;
+    if (sb > sa) nUp++; else if (sb < sa) nDown++; else nEq++;
+  }));
+  const badge = (trend) => {
+    if (trend === "up") return <span style={{ color: "#2FA36B", fontWeight: 800, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 3 }}><TrendingUp size={15} /> Progrès</span>;
+    if (trend === "down") return <span style={{ color: "#B5483F", fontWeight: 800, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 3 }}><TrendingDown size={15} /> Régression</span>;
+    if (trend === "eq") return <span style={{ color: C.gris, fontWeight: 800, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 3 }}><Minus size={15} /> Stable</span>;
+    return <span style={{ color: C.gris, fontSize: 12 }}>—</span>;
+  };
+  return (
+    <Modal title="Comparer les bilans" onClose={onClose} footer={<Btn full onClick={onClose}>Fermer</Btn>}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12, marginBottom: 12 }}>
+        <Field label="Bilan de départ">
+          <Sel value={String(iA)} onChange={(e) => setIA(+e.target.value)}>
+            {liste.map((g, i) => <option key={"a" + i} value={i}>{fmtD(g.date)}{g.educateur ? " · " + g.educateur : ""}</option>)}
+          </Sel>
+        </Field>
+        <Field label="Bilan d'arrivée">
+          <Sel value={String(iB)} onChange={(e) => setIB(+e.target.value)}>
+            {liste.map((g, i) => <option key={"b" + i} value={i}>{fmtD(g.date)}{g.educateur ? " · " + g.educateur : ""}</option>)}
+          </Sel>
+        </Field>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+        <span style={{ background: "#E2F4E9", color: "#2FA36B", border: "1px solid #2FA36B", borderRadius: 8, padding: "4px 9px", fontSize: 12, fontWeight: 800 }}>{nUp} en progrès</span>
+        <span style={{ background: "#EEF1F5", color: C.gris, border: `1px solid ${C.gris}`, borderRadius: 8, padding: "4px 9px", fontSize: 12, fontWeight: 800 }}>{nEq} stables</span>
+        <span style={{ background: "#FBE3E3", color: "#B5483F", border: "1px solid #B5483F", borderRadius: 8, padding: "4px 9px", fontSize: 12, fontWeight: 800 }}>{nDown} en régression</span>
+      </div>
+      {GRILLE_ASPECTS.map((cat) => (
+        <div key={cat.k} style={{ marginBottom: 14 }}>
+          <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13.5, marginBottom: 6 }}>{cat.label}</div>
+          {cat.sous.map((s) => {
+            const a = niveauSousGrille(A, cat.k, s), b = niveauSousGrille(B, cat.k, s);
+            const sa = scoreNiveauGrille(a), sb = scoreNiveauGrille(b);
+            const trend = (sa == null || sb == null) ? "na" : (sb > sa ? "up" : (sb < sa ? "down" : "eq"));
+            return (
+              <div key={s} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: "1px solid #EEF1F5", flexWrap: "wrap" }}>
+                <div style={{ flex: "1 1 130px", fontSize: 13, color: C.encre }}>{s}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <ChipNiveauGrille v={a} />
+                  <span style={{ color: C.gris, fontWeight: 800 }}>›</span>
+                  <ChipNiveauGrille v={b} />
+                </div>
+                <div style={{ flex: "0 0 auto", minWidth: 92, textAlign: "right" }}>{badge(trend)}</div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      {A.axes && A.axes.trim() && (
+        <div style={{ marginTop: 6, background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 12, padding: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 5 }}>Axes demandés au bilan du {fmtD(A.date)}</div>
+          <div style={{ fontSize: 13, color: C.encre, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{A.axes}</div>
+          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6 }}>Compare ces axes avec les progrès ci-dessus pour voir s'ils ont été travaillés.</div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, demo }) {
   const [confirmer, setConfirmer] = useState(false);
   const [testEdit, setTestEdit] = useState(null);
   const [pdfMsg, setPdfMsg] = useState(null);
   const [saisonSel, setSaisonSel] = useState(saisonCourante());
-  const [grilleEdit, setGrilleEdit] = useState(false);
+  const [grilleEdit, setGrilleEdit] = useState(null);
+  const [compareBilans, setCompareBilans] = useState(false);
   const [confirmAnciens, setConfirmAnciens] = useState(false);
+  const peutComparer = bilansComparables(p).length >= 2;
   const [listeEnc, majEnc] = useEncadrementClub(demo, db, mutate);
   // Auto-application de la suspension réglementaire : si un rouge direct ou une exclusion (double jaune)
   // est actif mais qu'aucune suspension n'a encore été traitée, on applique automatiquement 1 match
@@ -5369,13 +5465,25 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
         </>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "4px 0 8px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "4px 0 8px" }}>
         <div style={{ fontWeight: 800, color: C.bleu, display: "flex", alignItems: "center", gap: 7 }}><ClipboardList size={16} /> Bilan et entretien</div>
-        {!lectureSeule && (
-          <button onClick={() => setGrilleEdit(true)} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
-            {grilleRemplie(p.grilleEval) ? <><Edit3 size={13} /> Modifier</> : <><Plus size={14} /> Compléter</>}
-          </button>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {peutComparer && (
+            <button onClick={() => setCompareBilans(true)} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+              <TrendingUp size={14} /> Comparer
+            </button>
+          )}
+          {!lectureSeule && grilleRemplie(p.grilleEval) && (
+            <button onClick={() => setGrilleEdit("new")} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+              <Plus size={14} /> Nouveau bilan
+            </button>
+          )}
+          {!lectureSeule && (
+            <button onClick={() => setGrilleEdit("edit")} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+              {grilleRemplie(p.grilleEval) ? <><Edit3 size={13} /> Modifier</> : <><Plus size={14} /> Compléter</>}
+            </button>
+          )}
+        </div>
       </div>
       {grilleRemplie(p.grilleEval) ? (
         <div style={{ marginBottom: 16 }}>
@@ -5411,16 +5519,35 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
       )}
 
 
-      {grilleEdit && <EditGrilleEval grille={p.grilleEval || {}} educateurs={educateurs} onAjouterEncadrant={ajouterEncadrant} encadrementListe={listeEnc} encadrementMaj={majEnc}
-        onClose={() => setGrilleEdit(false)}
+      {grilleEdit && <EditGrilleEval grille={grilleEdit === "new" ? {} : (p.grilleEval || {})} educateurs={educateurs} onAjouterEncadrant={ajouterEncadrant} encadrementListe={listeEnc} encadrementMaj={majEnc}
+        onClose={() => setGrilleEdit(null)}
         onSave={(g) => {
-          mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.grilleEval = g; return d; });
-          setGrilleEdit(false);
+          mutate((d) => {
+            const pl = d.players.find((x) => x.id === p.id);
+            let hist = Array.isArray(pl.grillesHist) ? pl.grillesHist.slice() : [];
+            // archive l'ancien bilan courant s'il est daté et pas déjà dans l'historique
+            if (grilleRemplie(pl.grilleEval) && pl.grilleEval.date && !hist.some((h) => h && h.date === pl.grilleEval.date)) hist.push(pl.grilleEval);
+            const gd = g.date || "";
+            if (gd) { hist = hist.filter((h) => h && (h.date || "") !== gd); if (grilleRemplie(g)) hist.push(g); }
+            pl.grillesHist = hist.filter((h) => grilleRemplie(h) && h.date).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+            pl.grilleEval = g;
+            return d;
+          });
+          setGrilleEdit(null);
         }}
-        onDelete={grilleRemplie(p.grilleEval) ? () => {
-          mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.grilleEval = null; return d; });
-          setGrilleEdit(false);
+        onDelete={grilleEdit === "edit" && grilleRemplie(p.grilleEval) ? () => {
+          mutate((d) => {
+            const pl = d.players.find((x) => x.id === p.id);
+            const gd = (pl.grilleEval && pl.grilleEval.date) || "";
+            const hist = (Array.isArray(pl.grillesHist) ? pl.grillesHist : []).filter((h) => h && (h.date || "") !== gd).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+            pl.grillesHist = hist;
+            pl.grilleEval = hist.length ? hist[hist.length - 1] : null;
+            return d;
+          });
+          setGrilleEdit(null);
         } : null} />}
+
+      {compareBilans && <ComparerBilans p={p} onClose={() => setCompareBilans(false)} />}
 
       {testEdit && <EditTest joueur={p} test={testEdit.nouveau ? null : testEdit} educateurs={educateurs} onAjouterEncadrant={ajouterEncadrant} encadrementListe={listeEnc} encadrementMaj={majEnc}
         onClose={() => setTestEdit(null)}
@@ -5612,7 +5739,7 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
         <Field label="Prénom"><Inp value={f.prenom} disabled={adminVerrouille} onChange={(e) => set("prenom", e.target.value)} /></Field>
         <Field label="Nom"><Inp value={f.nom} disabled={adminVerrouille} onChange={(e) => set("nom", e.target.value)} /></Field>
       </div>
-      <Field label="Date de naissance"><Inp type="date" value={f.dob} disabled={adminVerrouille} onChange={(e) => set("dob", e.target.value)} /></Field>
+      <Field label="Date de naissance"><Inp type="date" value={f.dob} disabled={adminVerrouille} onChange={(e) => set("dob", e.target.value)} />{f.dob && !adminVerrouille ? <button type="button" onClick={() => set("dob", "")} style={{ marginTop: 7, background: "none", border: "none", padding: 0, color: C.bleu, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Effacer la date</button> : null}</Field>
       <div className="fjg2">
         <Field label="Taille (cm)"><Inp type="number" inputMode="numeric" value={f.taille} onChange={(e) => set("taille", e.target.value)} /></Field>
         <Field label="Poids (kg)"><Inp type="number" inputMode="numeric" value={f.poids} onChange={(e) => set("poids", e.target.value)} /></Field>
@@ -5657,6 +5784,9 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
         <div style={{ gridColumn: "1 / -1" }}>
           <Field label="Date de validation de la licence">
             <Inp type="date" value={f.mutationDate || ""} disabled={adminVerrouille} onChange={(e) => set("mutationDate", e.target.value)} />
+            {f.mutationDate && !adminVerrouille ? (
+              <button type="button" onClick={() => set("mutationDate", "")} style={{ marginTop: 7, background: "none", border: "none", padding: 0, color: C.bleu, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Effacer la date</button>
+            ) : null}
             {!estSousContrat(f) && f.mutation && f.mutation !== "club" ? (() => {
               const lm = libelleMutation(f);
               return (
@@ -5688,8 +5818,8 @@ function EditJoueur({ joueur, cat, onClose, onSave, adminModifiable = true, admi
             {estSousContrat(f) && (
               <>
                 <div className="fjg2" style={{ marginTop: 10 }}>
-                  <Field label="Début de contrat"><Inp type="date" value={f.contratDebut || ""} disabled={adminVerrouille} onChange={(e) => set("contratDebut", e.target.value)} /></Field>
-                  <Field label="Fin de contrat"><Inp type="date" value={f.contratFin || ""} disabled={adminVerrouille} onChange={(e) => set("contratFin", e.target.value)} /></Field>
+                  <Field label="Début de contrat"><Inp type="date" value={f.contratDebut || ""} disabled={adminVerrouille} onChange={(e) => set("contratDebut", e.target.value)} />{f.contratDebut && !adminVerrouille ? <button type="button" onClick={() => set("contratDebut", "")} style={{ marginTop: 7, background: "none", border: "none", padding: 0, color: C.bleu, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Effacer la date</button> : null}</Field>
+                  <Field label="Fin de contrat"><Inp type="date" value={f.contratFin || ""} disabled={adminVerrouille} onChange={(e) => set("contratFin", e.target.value)} />{f.contratFin && !adminVerrouille ? <button type="button" onClick={() => set("contratFin", "")} style={{ marginTop: 7, background: "none", border: "none", padding: 0, color: C.bleu, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Effacer la date</button> : null}</Field>
                 </div>
                 <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6, lineHeight: 1.45 }}>Un joueur sous contrat ne compte pas comme mutation ni mutation hors période sur la feuille de match (retire la casquette).</div>
               </>
@@ -9460,12 +9590,12 @@ function EditBlessure({ blessure, players, medical, lecture, onClose, onSave, on
       </Field>
       <Field label="Kiné qui suit le joueur"><Inp value={f.kine || ""} onChange={(e) => set("kine", e.target.value)} disabled={!soinsEdit} style={!soinsEdit ? griseStyle : undefined} placeholder="Nom du kiné" /></Field>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Field label="Date de la blessure"><Inp type="date" value={f.debut || ""} onChange={(e) => set("debut", e.target.value)} disabled={!coachEdit} style={!coachEdit ? griseStyle : undefined} />{!coachEdit && interne ? <span style={{ display: "block", fontSize: 11, color: C.gris, marginTop: 3 }}>Renseignée par le coach</span> : null}</Field>
-        <Field label="Date de retour prévue"><Inp type="date" value={f.dateRetour || ""} onChange={(e) => set("dateRetour", e.target.value)} disabled={!soinsEdit} style={!soinsEdit ? griseStyle : undefined} /></Field>
+        <Field label="Date de la blessure"><Inp type="date" value={f.debut || ""} onChange={(e) => set("debut", e.target.value)} disabled={!coachEdit} style={!coachEdit ? griseStyle : undefined} />{f.debut && coachEdit ? <button type="button" onClick={() => set("debut", "")} style={{ marginTop: 7, background: "none", border: "none", padding: 0, color: C.bleu, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Effacer la date</button> : null}{!coachEdit && interne ? <span style={{ display: "block", fontSize: 11, color: C.gris, marginTop: 3 }}>Renseignée par le coach</span> : null}</Field>
+        <Field label="Date de retour prévue"><Inp type="date" value={f.dateRetour || ""} onChange={(e) => set("dateRetour", e.target.value)} disabled={!soinsEdit} style={!soinsEdit ? griseStyle : undefined} />{f.dateRetour && soinsEdit ? <button type="button" onClick={() => set("dateRetour", "")} style={{ marginTop: 7, background: "none", border: "none", padding: 0, color: C.bleu, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Effacer la date</button> : null}</Field>
       </div>
       {(medical || lecture) && interne && (
         <>
-          <Field label="Date de prise en charge par l'équipe médicale"><Inp type="date" value={f.datePriseEnCharge || ""} onChange={(e) => set("datePriseEnCharge", e.target.value)} disabled={!medEdit} style={!medEdit ? griseStyle : undefined} />{!medEdit ? <span style={{ display: "block", fontSize: 11, color: C.gris, marginTop: 3 }}>Renseignée par l'équipe médicale</span> : null}</Field>
+          <Field label="Date de prise en charge par l'équipe médicale"><Inp type="date" value={f.datePriseEnCharge || ""} onChange={(e) => set("datePriseEnCharge", e.target.value)} disabled={!medEdit} style={!medEdit ? griseStyle : undefined} />{f.datePriseEnCharge && medEdit ? <button type="button" onClick={() => set("datePriseEnCharge", "")} style={{ marginTop: 7, background: "none", border: "none", padding: 0, color: C.bleu, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Effacer la date</button> : null}{!medEdit ? <span style={{ display: "block", fontSize: 11, color: C.gris, marginTop: 3 }}>Renseignée par l'équipe médicale</span> : null}</Field>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6, marginTop: 2 }}>Évolution de la réathlétisation</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
             {["P1", "P2", "P3", "P4"].map((ph) => {
