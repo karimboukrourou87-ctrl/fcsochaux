@@ -3105,7 +3105,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.9</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v17.1</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -4383,29 +4383,73 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
   const [cloture, setCloture] = useState(false);
   const [importMsg, setImportMsg] = useState(null);
 
+  // Import JSON : cree une fiche si le joueur n'existe pas, sinon MET A JOUR les champs fournis
+  // sans effacer les donnees existantes. Reconnait le joueur par sa licence (ou nom + prenom).
   function traiterImportJoueur(texte) {
     try {
       let t = String(texte || "").trim();
-      const deb = t.indexOf("{"); const fin = t.lastIndexOf("}");
-      if (deb >= 0 && fin > deb) t = t.slice(deb, fin + 1);
-      const parsed = JSON.parse(t);
-      const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.players) ? parsed.players : (parsed.prenom || parsed.nom ? [parsed] : null));
+      let parsed;
+      try { parsed = JSON.parse(t); }
+      catch (e1) {
+        const a = t.indexOf("["), b = t.lastIndexOf("]"), c = t.indexOf("{"), e = t.lastIndexOf("}");
+        let sub = null;
+        if (a >= 0 && b > a) sub = t.slice(a, b + 1);
+        else if (c >= 0 && e > c) sub = t.slice(c, e + 1);
+        if (!sub) throw e1;
+        parsed = JSON.parse(sub);
+      }
+      let arr;
+      if (Array.isArray(parsed)) arr = parsed;
+      else if (parsed && Array.isArray(parsed.players)) arr = parsed.players;
+      else if (parsed && typeof parsed === "object") {
+        const vals = Object.values(parsed);
+        arr = (vals.length && vals.every((v) => Array.isArray(v))) ? [].concat.apply([], vals) : [parsed];
+      } else arr = null;
       if (!arr || !arr.length) throw new Error("format");
-      let ajout = 0, ignore = 0;
+      // date_validation est un alias de mutationDate (date de validation de licence)
+      const ALIAS = { date_validation: "mutationDate", dateValidation: "mutationDate" };
+      const HORS_MAJ = new Set(["id", "categorie", "cat", "prenom", "nom", "licence"]); // champs d'identite : non ecrases sur une fiche existante
+      let cree = 0, maj = 0, inchange = 0, ignore = 0;
       mutate((d) => {
         d.players = d.players || [];
         arr.forEach((j) => {
-          const n = String(j && j.nom || "").trim(), pr = String(j && j.prenom || "").trim();
-          if (!n && !pr) { ignore++; return; }
-          const lic = String(j && j.licence || "").trim();
-          const existe = d.players.some((x) => x.cat === cat && ((lic && x.licence === lic) || (x.nom || "").toLowerCase() === n.toLowerCase() && (x.prenom || "").toLowerCase() === pr.toLowerCase()));
-          if (existe) { ignore++; return; }
-          d.players.push({ ...j, id: uid(), cat });
-          ajout++;
+          if (!j || typeof j !== "object") { ignore++; return; }
+          const n = String(j.nom || "").trim(), pr = String(j.prenom || "").trim();
+          const lic = String(j.licence || "").trim();
+          if (!n && !pr && !lic) { ignore++; return; }
+          const existant = d.players.find((x) =>
+            (lic && String(x.licence || "").trim() === lic) ||
+            (!lic && n && pr && (x.nom || "").toLowerCase() === n.toLowerCase() && (x.prenom || "").toLowerCase() === pr.toLowerCase())
+          );
+          if (existant) {
+            let change = false;
+            Object.keys(j).forEach((k) => {
+              if (HORS_MAJ.has(k)) return;
+              const cible = ALIAS[k] || k;
+              const v = j[k];
+              if (v === undefined || v === null || v === "") return; // ne jamais effacer avec une valeur vide
+              if (existant[cible] !== v) { existant[cible] = v; change = true; }
+            });
+            if (change) maj++; else inchange++;
+            return;
+          }
+          const nouveau = { id: uid(), cat };
+          Object.keys(j).forEach((k) => {
+            if (k === "id" || k === "categorie") return;
+            const cible = ALIAS[k] || k;
+            if (j[k] !== undefined) nouveau[cible] = j[k];
+          });
+          d.players.push(nouveau);
+          cree++;
         });
         return d;
       });
-      setImportMsg(`${ajout} fiche(s) importée(s).` + (ignore ? ` ${ignore} ignorée(s) (déjà présente).` : ""));
+      const parts = [];
+      if (cree) parts.push(`${cree} fiche(s) créée(s)`);
+      if (maj) parts.push(`${maj} fiche(s) mise(s) à jour`);
+      if (inchange) parts.push(`${inchange} déjà à jour`);
+      if (ignore) parts.push(`${ignore} ignorée(s)`);
+      setImportMsg(parts.length ? parts.join(", ") + "." : "Rien à importer.");
       return true;
     } catch (e) { setImportMsg("Fichier non valide. Vérifie que c'est bien un JSON de fiche joueur."); return false; }
   }
@@ -4634,7 +4678,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
         </div>
       )}
 
-      {players.length > 0 && !lectureSeule && (
+      {players.length > 0 && !lectureSeule && (demo || peutValider) && (
         <Btn variant="ghost" full style={{ marginTop: 16 }} onClick={() => setCloture(true)}><CalendarDays size={16} /> Clôturer la saison {saisonCourante()}</Btn>
       )}
 
