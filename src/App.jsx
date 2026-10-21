@@ -1313,6 +1313,14 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const EMPTY_DB = { players: [], matches: [], trainings: [], injuries: [], scouting: [], lineups: {}, demandes: [], encadrement: [], transports: [], reunions: [], tournois: [], acces: [], planning: { vestiaires: {}, terrains: {} }, config: { trainingDays: {}, breaks: {}, classement: {} } };
 
+// Corbeille universelle : garde en memoire toute suppression pour pouvoir restaurer.
+// On ajoute une entree marquee par son _type et la categorie concernee.
+function ajouterCorbeille(d, obj, type, catParDefaut, extra) {
+  if (!d || !obj) return;
+  const entry = { ...obj, _type: type, _supprimeLe: Date.now(), _corbeilleCat: (obj && obj.cat) || catParDefaut || "", ...(extra || {}) };
+  d.corbeille = [entry, ...(d.corbeille || []).filter((x) => !(x && (x._type || "joueur") === type && String(x.id) === String(obj.id)))].slice(0, 800);
+}
+
 const estConfigure = () => SUPABASE_URL.startsWith("https://") && !SUPABASE_URL.includes("VOTRE-PROJET");
 
 let _sbPromise = null;
@@ -3116,7 +3124,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.5.2</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.5.3</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -4475,36 +4483,57 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
     r.readAsText(f);
   }
   const orphelins = donneesOrphelines(db, cat);
-  const corbeille = (db.corbeille || []).filter((x) => x && x.cat === cat).sort((a, b) => (b._supprimeLe || 0) - (a._supprimeLe || 0));
+  const corbeille = (db.corbeille || []).filter((x) => x && ((x._corbeilleCat || x.cat) === cat)).sort((a, b) => (b._supprimeLe || 0) - (a._supprimeLe || 0));
   const [recup, setRecup] = useState(false);
   const [cibleRecup, setCibleRecup] = useState({});
   const [cibleTous, setCibleTous] = useState("");
-  // Restaure une fiche supprimee (depuis la corbeille) avec son identifiant d'origine : ses stats se rebranchent toutes seules.
+  // Libelle lisible d'un element de la corbeille selon son type.
+  function typeCorbeille(e) { return (e && e._type) || "joueur"; }
+  function nomTypeCorbeille(t) {
+    return t === "match" ? "Match" : t === "seance" ? "Séance" : t === "blessure" ? "Blessure" : t === "test" ? "Test physique" : t === "bilan" ? "Bilan" : "Fiche joueur";
+  }
+  function libelleCorbeille(e) {
+    const t = typeCorbeille(e);
+    const dateFr = (s) => { if (!s) return ""; const d = new Date(s); return isNaN(d.getTime()) ? String(s) : d.toLocaleDateString("fr-FR"); };
+    if (t === "joueur") return `${(e.prenom || "").trim()} ${(e.nom || "").trim()}`.trim() || "Fiche sans nom";
+    if (t === "match") return `${e.adversaire ? "vs " + e.adversaire : "Match"}${e.date ? " · " + dateFr(e.date) : ""}`;
+    if (t === "seance") return `Séance${e.date ? " du " + dateFr(e.date) : ""}${e.theme ? " · " + e.theme : ""}`;
+    if (t === "blessure") { const pl = (db.players || []).find((x) => x.id === e.joueurId); const nj = pl ? `${pl.prenom || ""} ${pl.nom || ""}`.trim() : ""; return `${e.type || e.zone || "Blessure"}${nj ? " · " + nj : ""}${e.date ? " · " + dateFr(e.date) : ""}`; }
+    if (t === "test") return `${e._joueurNom || "Joueur"}${e.date ? " · " + dateFr(e.date) : ""}`;
+    if (t === "bilan") return `${e._joueurNom || "Joueur"}${e._bilanDate ? " · " + dateFr(e._bilanDate) : ""}`;
+    return "Élément supprimé";
+  }
+  // Remet un element supprime a sa place d'origine, avec son identifiant : ses liaisons se rebranchent toutes seules.
+  function restaurerDansDb(d, entry) {
+    const t = typeCorbeille(entry);
+    const copie = { ...entry };
+    delete copie._supprimeLe; delete copie._corbeilleCat; delete copie._type;
+    delete copie._joueurId; delete copie._joueurNom; delete copie._bilanDate;
+    if (t === "joueur") { d.players = d.players || []; if (!d.players.some((x) => x.id === entry.id)) d.players.push(copie); }
+    else if (t === "match") { d.matches = d.matches || []; if (!d.matches.some((x) => x.id === entry.id)) d.matches.push(copie); }
+    else if (t === "seance") { d.trainings = d.trainings || []; if (!d.trainings.some((x) => x.id === entry.id)) d.trainings.push(copie); }
+    else if (t === "blessure") { d.injuries = d.injuries || []; if (!d.injuries.some((x) => x.id === entry.id)) d.injuries.push(copie); }
+    else if (t === "test") { const pl = (d.players || []).find((x) => x.id === entry._joueurId); if (pl) { pl.tests = pl.tests || []; if (!pl.tests.some((x) => x.id === entry.id)) pl.tests.push(copie); } }
+    else if (t === "bilan") { const pl = (d.players || []).find((x) => x.id === entry._joueurId); if (pl) { pl.grillesHist = Array.isArray(pl.grillesHist) ? pl.grillesHist : []; if (!pl.grillesHist.some((h) => h && (h.date || "") === (copie.date || ""))) { pl.grillesHist.push(copie); pl.grillesHist.sort((a, b) => (a.date || "").localeCompare(b.date || "")); pl.grilleEval = pl.grillesHist[pl.grillesHist.length - 1]; } } }
+  }
+  function memeEntree(x, entry) { return x && typeCorbeille(x) === typeCorbeille(entry) && String(x.id) === String(entry.id) && (x._supprimeLe || 0) === (entry._supprimeLe || 0); }
   function restaurerFiche(entry) {
     if (!entry) return;
     mutate((d) => {
-      d.players = d.players || [];
-      if (!d.players.some((x) => x.id === entry.id)) {
-        const copie = { ...entry }; delete copie._supprimeLe;
-        d.players.push(copie);
-      }
-      d.corbeille = (d.corbeille || []).filter((x) => !(x && x.id === entry.id));
+      restaurerDansDb(d, entry);
+      d.corbeille = (d.corbeille || []).filter((x) => !memeEntree(x, entry));
       return d;
     });
-    setImportMsg(`${(entry.prenom || "").trim()} ${(entry.nom || "").trim()} restauré(e).`);
+    setImportMsg(`${nomTypeCorbeille(typeCorbeille(entry))} restauré(e) : ${libelleCorbeille(entry)}.`);
   }
   function restaurerToutesFiches() {
     if (!corbeille.length) return;
-    const ids = corbeille.map((x) => x.id);
     mutate((d) => {
-      d.players = d.players || [];
-      corbeille.forEach((entry) => {
-        if (!d.players.some((x) => x.id === entry.id)) { const copie = { ...entry }; delete copie._supprimeLe; d.players.push(copie); }
-      });
-      d.corbeille = (d.corbeille || []).filter((x) => !(x && ids.includes(x.id)));
+      corbeille.forEach((entry) => restaurerDansDb(d, entry));
+      d.corbeille = (d.corbeille || []).filter((x) => !corbeille.some((e) => memeEntree(x, e)));
       return d;
     });
-    setImportMsg(`${ids.length} fiche(s) restaurée(s).`);
+    setImportMsg(`${corbeille.length} élément(s) restauré(s).`);
   }
   function appliquerReattache(d, orphanId, targetId) {
     (d.matches || []).forEach((m) => {
@@ -4613,17 +4642,20 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
             <Modal title="Récupérer des données supprimées" onClose={() => setRecup(false)}>
               {corbeille.length > 0 && (
                 <div style={{ marginBottom: 18 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 800, color: C.bleu, marginBottom: 5 }}>Fiches supprimées ({corbeille.length})</div>
-                  <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 10, lineHeight: 1.45 }}>Les fiches supprimées sont gardées en mémoire. Clique sur « Restaurer » pour remettre le joueur exactement comme avant (nom, prénom, licence, et toutes ses stats rebranchées automatiquement). Rien à retaper.</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: C.bleu, marginBottom: 5 }}>Éléments supprimés ({corbeille.length})</div>
+                  <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 10, lineHeight: 1.45 }}>Toutes les suppressions sont gardées en mémoire : fiches joueurs, matchs, séances, blessures, tests physiques et bilans. Clique sur « Restaurer » pour remettre l'élément exactement comme avant, avec toutes ses données rebranchées automatiquement. Rien à retaper.</div>
                   {corbeille.length > 1 && (
                     <Btn variant="accent" size="sm" onClick={restaurerToutesFiches} style={{ marginBottom: 10 }}><ArrowRightLeft size={15} /> Tout restaurer ({corbeille.length})</Btn>
                   )}
                   <div style={{ display: "grid", gap: 8 }}>
-                    {corbeille.map((e) => (
-                      <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "9px 11px", background: "#fff", flexWrap: "wrap" }}>
+                    {corbeille.map((e, i) => (
+                      <div key={typeCorbeille(e) + "_" + e.id + "_" + (e._supprimeLe || i)} style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "9px 11px", background: "#fff", flexWrap: "wrap" }}>
                         <div style={{ flex: 1, minWidth: 140 }}>
-                          <div style={{ fontSize: 13.5, fontWeight: 800, color: C.encre }}>{(e.prenom || "").trim()} {(e.nom || "").trim()}</div>
-                          <div style={{ fontSize: 11.5, color: C.gris }}>{e.licence ? `Licence ${e.licence}` : "Sans licence"}{e.poste ? ` · ${e.poste}` : ""}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 10.5, fontWeight: 800, color: "#fff", background: C.bleu, borderRadius: 6, padding: "2px 7px" }}>{nomTypeCorbeille(typeCorbeille(e))}</span>
+                            <span style={{ fontSize: 13.5, fontWeight: 800, color: C.encre }}>{libelleCorbeille(e)}</span>
+                          </div>
+                          {e._supprimeLe ? <div style={{ fontSize: 11, color: C.gris, marginTop: 2 }}>Supprimé le {new Date(e._supprimeLe).toLocaleDateString("fr-FR")} à {new Date(e._supprimeLe).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</div> : null}
                         </div>
                         <Btn variant="accent" size="sm" onClick={() => restaurerFiche(e)}><ArrowRightLeft size={15} /> Restaurer</Btn>
                       </div>
@@ -4764,7 +4796,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
       {ficheJoueur && <FicheJoueur p={ficheJoueur} db={db} mutate={mutate} lectureSeule={lectureSeule} demo={demo} onClose={() => setFiche(null)} onEdit={() => { setEdit(ficheJoueur); setFiche(null); }} onDelete={() => {
         mutate((d) => {
           const pl = (d.players || []).find((x) => x.id === ficheJoueur.id);
-          if (pl) { d.corbeille = [{ ...pl, _supprimeLe: Date.now() }, ...(d.corbeille || []).filter((x) => x && x.id !== pl.id)].slice(0, 200); }
+          ajouterCorbeille(d, pl, "joueur", cat);
           d.players = d.players.filter((x) => x.id !== ficheJoueur.id);
           return d;
         });
@@ -4786,8 +4818,7 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
           footer={<><Btn variant="ghost" full onClick={() => setSupprTout(false)}>Annuler</Btn><Btn variant="danger" full disabled={confSuppr.trim().toUpperCase() !== String(cat).toUpperCase()} onClick={() => {
             mutate((d) => {
               const retires = (d.players || []).filter((x) => x.cat === cat);
-              const idsRet = retires.map((p) => p.id);
-              d.corbeille = [...retires.map((p) => ({ ...p, _supprimeLe: Date.now() })), ...(d.corbeille || []).filter((x) => x && !idsRet.includes(x.id))].slice(0, 400);
+              retires.forEach((p) => ajouterCorbeille(d, p, "joueur", cat));
               d.players = (d.players || []).filter((x) => x.cat !== cat);
               return d;
             });
@@ -5786,6 +5817,8 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
           mutate((d) => {
             const pl = d.players.find((x) => x.id === p.id);
             const gd = (pl.grilleEval && pl.grilleEval.date) || "";
+            const bil = (Array.isArray(pl.grillesHist) ? pl.grillesHist : []).find((h) => h && (h.date || "") === gd);
+            if (bil) ajouterCorbeille(d, { ...bil, id: bil.id || ("bilan_" + gd) }, "bilan", p.cat, { _joueurId: p.id, _joueurNom: ((p.prenom || "") + " " + (p.nom || "")).trim(), _bilanDate: gd });
             const hist = (Array.isArray(pl.grillesHist) ? pl.grillesHist : []).filter((h) => h && (h.date || "") !== gd).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
             pl.grillesHist = hist;
             pl.grilleEval = hist.length ? hist[hist.length - 1] : null;
@@ -5809,7 +5842,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
           setTestEdit(null);
         }}
         onDelete={(!testEdit.nouveau && testEdit.id) ? () => {
-          mutate((d) => { const pl = d.players.find((x) => x.id === p.id); pl.tests = (pl.tests || []).filter((x) => x.id !== testEdit.id); return d; });
+          mutate((d) => { const pl = d.players.find((x) => x.id === p.id); const t = (pl && pl.tests || []).find((x) => x.id === testEdit.id); ajouterCorbeille(d, t, "test", p.cat, { _joueurId: p.id, _joueurNom: ((p.prenom || "") + " " + (p.nom || "")).trim() }); if (pl) pl.tests = (pl.tests || []).filter((x) => x.id !== testEdit.id); return d; });
           setTestEdit(null);
         } : null} />}
 
@@ -6890,7 +6923,7 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }
       {open && <RapportMatch demo={demo} match={open} players={players} db={db} mutate={mutate} peutValider={peutValider} profil={profil}
         onClose={() => setOpen(null)}
         onEdit={() => { setEdit(open); setOpen(null); }}
-        onDelete={() => { mutate((d) => { d.matches = d.matches.filter((x) => x.id !== open.id); return d; }); setOpen(null); }} />}
+        onDelete={() => { mutate((d) => { const m = (d.matches || []).find((x) => x.id === open.id); ajouterCorbeille(d, m, "match", cat); d.matches = d.matches.filter((x) => x.id !== open.id); return d; }); setOpen(null); }} />}
 
       {orgaMatch && (() => {
         const om = db.matches.find((x) => x.id === orgaMatch);
@@ -9426,11 +9459,11 @@ function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessur
       {open && <DetailSeance seance={open} players={players} mutate={mutate} db={db}
         onClose={() => setOpen(null)}
         onEdit={() => { setEdit(open); setOpen(null); }}
-        onDelete={() => { mutate((d) => { d.trainings = d.trainings.filter((x) => x.id !== open.id); return d; }); setOpen(null); }} />}
+        onDelete={() => { mutate((d) => { const s = (d.trainings || []).find((x) => x.id === open.id); ajouterCorbeille(d, s, "seance", cat); d.trainings = d.trainings.filter((x) => x.id !== open.id); return d; }); setOpen(null); }} />}
 
       {blessure && <EditBlessure blessure={blessure} players={players} medical={estMedical} lecture={!estMedical && priseEnChargeMedicale(blessure.cat) !== "parents" && !!(blessure.datePriseEnCharge || blessure.pathologie || blessure.phase)} onClose={() => setBlessure(null)}
         onSave={(b) => { const ancien = b.id ? (db.injuries || []).find((x) => x.id === b.id) : null; mutate((d) => { b.id ? (d.injuries[d.injuries.findIndex((x) => x.id === b.id)] = b) : d.injuries.push({ ...b, id: uid() }); return d; }); if (onSignalerBlessure) onSignalerBlessure(ancien, b, !!estMedical); setBlessure(null); }}
-        onDelete={blessure.id ? () => { mutate((d) => { d.injuries = d.injuries.filter((x) => x.id !== blessure.id); return d; }); setBlessure(null); } : null} />}
+        onDelete={blessure.id ? () => { mutate((d) => { const inj = (d.injuries || []).find((x) => x.id === blessure.id); ajouterCorbeille(d, inj, "blessure", cat); d.injuries = d.injuries.filter((x) => x.id !== blessure.id); return d; }); setBlessure(null); } : null} />}
 
       {coller && (
         <Modal title="Coller le JSON des séances" onClose={() => setColler(false)}
@@ -11472,7 +11505,7 @@ function SuiviMedical({ db, mutate, cat, estMedical, onSignalerBlessure, onClose
       </div>
       {edit && <EditBlessure blessure={edit} players={players} medical={estMedical} lecture={!estMedical} onClose={() => setEdit(null)}
         onSave={(b) => { const ancien = b.id ? (db.injuries || []).find((x) => x.id === b.id) : null; mutate((d) => { d.injuries = d.injuries || []; if (b.id) { d.injuries[d.injuries.findIndex((x) => x.id === b.id)] = b; } else { d.injuries.push({ ...b, id: uid() }); } return d; }); if (onSignalerBlessure) onSignalerBlessure(ancien, b, !!estMedical); setEdit(null); }}
-        onDelete={edit.id ? () => { mutate((d) => { d.injuries = (d.injuries || []).filter((x) => x.id !== edit.id); return d; }); setEdit(null); } : null} />}
+        onDelete={edit.id ? () => { mutate((d) => { const inj = (d.injuries || []).find((x) => x.id === edit.id); ajouterCorbeille(d, inj, "blessure", cat); d.injuries = (d.injuries || []).filter((x) => x.id !== edit.id); return d; }); setEdit(null); } : null} />}
     </div>
   );
 }
