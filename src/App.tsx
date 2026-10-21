@@ -1153,10 +1153,95 @@ function dernierBilanAspects(j) { return (j.bilans || []).filter((b) => b.aspect
 const GRILLE_ASPECTS = [
   { k: "technique", label: "Technique", sous: ["Contrôle et passe", "Conduite de balle", "Dribbles", "Frappe", "Technique offensive", "Technique défensive"] },
   { k: "tactique", label: "Tactique", sous: ["Compréhension du jeu", "Placement", "Transitions", "Adaptabilité", "Travail collectif"] },
-  { k: "physique", label: "Physique", sous: ["Endurance", "Vitesse", "Puissance", "Coordination", "Répétition des efforts"] },
+  { k: "physique", label: "Athlétique", sous: ["Endurance", "Vitesse", "Puissance", "Coordination", "Répétition des efforts"] },
   { k: "mental", label: "Mental", sous: ["Concentration", "Motivation", "Résilience", "Confiance en soi"] },
   { k: "social", label: "Social", sous: ["Leadership", "Comportement", "Esprit d'équipe", "Capacité d'écoute"] },
 ];
+// Grilles d'evaluation adaptees par poste : chaque ligne de jeu a ses sous-criteres et ses aspects prioritaires (prio).
+// Les cles d'aspect (technique/tactique/physique/mental/social) restent constantes pour ne perdre aucune donnee.
+const GRILLES_POSTE = {
+  gardien: [
+    { k: "technique", label: "Technique gardien", prio: true, sous: ["Prise de balle", "Sortie aérienne", "Gestion de la profondeur", "Jeu au pied", "Jeu dans les 1 contre 1", "Relance et distribution"] },
+    { k: "tactique", label: "Tactique", prio: true, sous: ["Placement et cadrage", "Lecture du jeu", "Communication et organisation", "Prise de décision"] },
+    { k: "physique", label: "Athlétique", sous: ["Détente", "Vivacité", "Coordination", "Explosivité", "Souplesse"] },
+    { k: "mental", label: "Mental", prio: true, sous: ["Concentration", "Gestion du stress", "Résilience", "Confiance en soi"] },
+    { k: "social", label: "Social", sous: ["Leadership", "Comportement", "Esprit d'équipe", "Capacité d'écoute"] },
+  ],
+  defcentral: [
+    { k: "technique", label: "Technique", sous: ["Contrôle et passe", "Relance courte et longue", "Jeu de tête", "Première touche", "Duel au sol"] },
+    { k: "tactique", label: "Tactique", prio: true, sous: ["Placement et couverture", "Marquage", "Lecture et anticipation", "Montée et replacement", "Communication"] },
+    { k: "physique", label: "Athlétique", prio: true, sous: ["Puissance", "Jeu aérien et duel", "Vitesse", "Détente", "Répétition des efforts"] },
+    { k: "mental", label: "Mental", prio: true, sous: ["Concentration", "Agressivité maîtrisée", "Résilience", "Confiance en soi"] },
+    { k: "social", label: "Social", sous: ["Leadership", "Comportement", "Esprit d'équipe", "Capacité d'écoute"] },
+  ],
+  lateral: [
+    { k: "technique", label: "Technique", prio: true, sous: ["Contrôle et passe", "Centres", "Conduite de balle", "Un contre un offensif", "Duel défensif"] },
+    { k: "tactique", label: "Tactique", prio: true, sous: ["Placement défensif", "Couverture et cadrage", "Montées et appels", "Transitions", "Communication"] },
+    { k: "physique", label: "Athlétique", prio: true, sous: ["Endurance", "Vitesse", "Répétition des efforts", "Explosivité", "Puissance"] },
+    { k: "mental", label: "Mental", sous: ["Concentration", "Motivation", "Résilience", "Confiance en soi"] },
+    { k: "social", label: "Social", sous: ["Leadership", "Comportement", "Esprit d'équipe", "Capacité d'écoute"] },
+  ],
+  milieudef: [
+    { k: "technique", label: "Technique", sous: ["Contrôle orienté", "Passe courte et longue", "Conservation sous pression", "Première touche", "Récupération de balle"] },
+    { k: "tactique", label: "Tactique", prio: true, sous: ["Positionnement et équilibre", "Couverture et pressing", "Lecture du jeu", "Orientation du jeu", "Communication"] },
+    { k: "physique", label: "Athlétique", prio: true, sous: ["Endurance", "Puissance", "Répétition des efforts", "Duel et impact", "Vitesse"] },
+    { k: "mental", label: "Mental", prio: true, sous: ["Concentration", "Rigueur", "Résilience", "Confiance en soi"] },
+    { k: "social", label: "Social", sous: ["Leadership", "Comportement", "Esprit d'équipe", "Capacité d'écoute"] },
+  ],
+  milieucentral: [
+    { k: "technique", label: "Technique", prio: true, sous: ["Contrôle orienté", "Passe courte et longue", "Conduite de balle", "Frappe", "Conservation sous pression"] },
+    { k: "tactique", label: "Tactique", prio: true, sous: ["Compréhension du jeu", "Positionnement", "Transitions", "Projection vers l'avant", "Pressing et récupération"] },
+    { k: "physique", label: "Athlétique", prio: true, sous: ["Endurance", "Vitesse", "Répétition des efforts", "Coordination", "Puissance"] },
+    { k: "mental", label: "Mental", sous: ["Concentration", "Motivation", "Résilience", "Confiance en soi"] },
+    { k: "social", label: "Social", sous: ["Leadership", "Comportement", "Esprit d'équipe", "Capacité d'écoute"] },
+  ],
+  milieuoff: [
+    { k: "technique", label: "Technique", prio: true, sous: ["Contrôle orienté", "Passe décisive", "Dribble", "Frappe", "Conservation sous pression"] },
+    { k: "tactique", label: "Tactique", prio: true, sous: ["Démarquage entre les lignes", "Prise de décision", "Jeu en profondeur", "Occupation des espaces", "Pressing"] },
+    { k: "physique", label: "Athlétique", sous: ["Vivacité", "Vitesse", "Explosivité", "Coordination", "Répétition des efforts"] },
+    { k: "mental", label: "Mental", prio: true, sous: ["Créativité", "Confiance en soi", "Concentration", "Gestion de l'échec"] },
+    { k: "social", label: "Social", sous: ["Leadership", "Comportement", "Esprit d'équipe", "Capacité d'écoute"] },
+  ],
+  ailier: [
+    { k: "technique", label: "Technique", prio: true, sous: ["Dribble", "Un contre un", "Centres", "Finition", "Contrôle et première touche"] },
+    { k: "tactique", label: "Tactique", prio: true, sous: ["Démarquage et appels", "Jeu en profondeur", "Repli défensif", "Occupation de la largeur", "Prise de décision"] },
+    { k: "physique", label: "Athlétique", prio: true, sous: ["Vitesse", "Explosivité", "Vivacité", "Répétition des efforts", "Détente"] },
+    { k: "mental", label: "Mental", sous: ["Confiance en soi", "Audace", "Gestion de l'échec", "Concentration"] },
+    { k: "social", label: "Social", sous: ["Leadership", "Comportement", "Esprit d'équipe", "Capacité d'écoute"] },
+  ],
+  attaquant: [
+    { k: "technique", label: "Technique", prio: true, sous: ["Finition", "Jeu dos au but", "Contrôle et première touche", "Jeu de tête", "Remises et combinaisons"] },
+    { k: "tactique", label: "Tactique", prio: true, sous: ["Démarquage et appels", "Jeu en profondeur", "Occupation de la surface", "Pressing haut", "Prise de décision"] },
+    { k: "physique", label: "Athlétique", prio: true, sous: ["Explosivité", "Puissance", "Vitesse", "Détente", "Répétition des efforts"] },
+    { k: "mental", label: "Mental", prio: true, sous: ["Confiance en soi", "Détermination", "Gestion de l'échec", "Concentration"] },
+    { k: "social", label: "Social", sous: ["Leadership", "Comportement", "Esprit d'équipe", "Capacité d'écoute"] },
+  ],
+};
+// Associe un poste a son profil de grille.
+function profilPoste(poste) {
+  const p = (poste || "").toLowerCase();
+  if (p.includes("gardien")) return "gardien";
+  if (p.includes("défenseur central") || p.includes("defenseur central")) return "defcentral";
+  if (p.includes("latéral") || p.includes("lateral")) return "lateral";
+  if (p.includes("milieu défensif") || p.includes("milieu defensif")) return "milieudef";
+  if (p.includes("milieu central")) return "milieucentral";
+  if (p.includes("milieu offensif")) return "milieuoff";
+  if (p.includes("ailier")) return "ailier";
+  if (p.includes("attaquant")) return "attaquant";
+  return "general";
+}
+const NOM_PROFIL = { gardien: "Gardien", defcentral: "Défenseur central", lateral: "Latéral", milieudef: "Milieu défensif", milieucentral: "Milieu central", milieuoff: "Milieu offensif", ailier: "Ailier", attaquant: "Attaquant", general: "Général" };
+// Renvoie la grille (aspects) adaptee au poste ; a defaut la grille generale.
+function grilleAspectsPour(poste) {
+  const prof = profilPoste(poste);
+  return GRILLES_POSTE[prof] || GRILLE_ASPECTS;
+}
+// Grille a utiliser pour un bilan precis : si le bilan a ete saisi en mode "poste", on prend la grille du poste ;
+// sinon (choix "general", ou ancien bilan sans marqueur) on garde la grille generale unique, comme avant.
+function grilleDeBilan(g, poste) {
+  if (g && g.grilleType === "poste") return grilleAspectsPour(poste);
+  return GRILLE_ASPECTS;
+}
 const GRILLE_NIVEAUX = [
   { k: "tb", label: "T.B", full: "Très bien", color: "#2FA36B", bg: "#E2F4E9" },
   { k: "b", label: "B", full: "Bien", color: "#B87A2B", bg: "#FBEAD9" },
@@ -2569,7 +2654,7 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
     const cw = 46, cg = 6, nbCols = GRILLE_NIVEAUX.length;
     const block = nbCols * cw + (nbCols - 1) * cg;
     const xCols = W - M - block;
-    GRILLE_ASPECTS.forEach((a) => {
+    grilleDeBilan(p.grilleEval, p.poste).forEach((a) => {
       const A = (p.grilleEval.aspects || {})[a.k] || {};
       const n = A.n || {};
       const hasRows = a.sous.some((s) => n[s]);
@@ -2578,7 +2663,7 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
       // bandeau de l'aspect + en-têtes de colonnes
       sf(NAVY); doc.roundedRect(M, y - 9, W - 2 * M, 18, 3, 3, "F");
       sc([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
-      doc.text(a.label, M + 7, y + 3.5);
+      doc.text(a.label + (a.prio ? "  (prioritaire)" : ""), M + 7, y + 3.5);
       GRILLE_NIVEAUX.forEach((nv, i) => {
         const cx = xCols + i * (cw + cg);
         sc([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
@@ -3224,7 +3309,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.5.8</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.6.0</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -5111,16 +5196,17 @@ function EditBilan({ bilan, educateurs, axesPrecedent, onClose, onSave, onDelete
   );
 }
 
-function GrilleEvalTable({ data, editable, onCell, onRemarque }) {
+function GrilleEvalTable({ data, editable, onCell, onRemarque, aspects }) {
   const asp = (k) => (data.aspects || {})[k] || {};
+  const liste = aspects || GRILLE_ASPECTS;
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      {GRILLE_ASPECTS.map((a) => {
+      {liste.map((a) => {
         const A = asp(a.k); const n = A.n || {};
         return (
-          <div key={a.k} style={{ border: `1px solid ${C.grisClair}`, borderRadius: 13, overflow: "hidden", background: "#fff", boxShadow: "0 1px 2px rgba(16,32,64,0.04)" }}>
+          <div key={a.k} style={{ border: `1px solid ${a.prio ? C.jaune : C.grisClair}`, borderRadius: 13, overflow: "hidden", background: "#fff", boxShadow: "0 1px 2px rgba(16,32,64,0.04)" }}>
             <div style={{ background: C.bleuNuit, color: "#fff", padding: "9px 12px", display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ flex: 1, fontWeight: 800, fontSize: 14, letterSpacing: 0.2 }}>{a.label}</span>
+              <span style={{ flex: 1, fontWeight: 800, fontSize: 14, letterSpacing: 0.2 }}>{a.label}{a.prio ? <span style={{ marginLeft: 7, fontSize: 9.5, fontWeight: 800, color: C.bleuNuit, background: C.jaune, borderRadius: 5, padding: "2px 6px", letterSpacing: 0.3 }}>PRIORITAIRE</span> : null}</span>
               {GRILLE_NIVEAUX.map((nv) => (
                 <span key={nv.k} style={{ width: 40, textAlign: "center", fontSize: 10, fontWeight: 900, color: nv.color, background: "#fff", borderRadius: 5, padding: "3px 0" }}>{nv.label}</span>
               ))}
@@ -5158,8 +5244,14 @@ function GrilleEvalTable({ data, editable, onCell, onRemarque }) {
   );
 }
 
-function EditGrilleEval({ grille, joueurNom, educateurs, onClose, onSave, onDelete, onAjouterEncadrant, encadrementListe, encadrementMaj }) {
-  const [f, setF] = useState({ date: hoyISO(), educateur: "", aspects: {}, ...grille });
+function EditGrilleEval({ grille, joueurNom, poste, educateurs, onClose, onSave, onDelete, onAjouterEncadrant, encadrementListe, encadrementMaj }) {
+  const profil = profilPoste(poste);
+  // Type de grille : "poste" (adaptee au poste) ou "general" (grille unique, comme avant).
+  // Les anciens bilans deja remplis gardent la grille generale pour ne rien perdre.
+  const typeInit = grille && grille.grilleType ? grille.grilleType : (grilleRemplie(grille) ? "general" : (profil !== "general" ? "poste" : "general"));
+  const [f, setF] = useState({ date: hoyISO(), educateur: "", aspects: {}, grilleType: typeInit, ...grille });
+  const grilleType = f.grilleType || typeInit;
+  const aspectsCourant = grilleType === "poste" ? grilleAspectsPour(poste) : GRILLE_ASPECTS;
   const [autre, setAutre] = useState(!!(grille && grille.educateur) && educateurs.length > 0 && !educateurs.includes(grille.educateur));
   const [gererDir, setGererDir] = useState(false);
   const setCell = (ak, s, v) => setF((o) => {
@@ -5205,8 +5297,26 @@ function EditGrilleEval({ grille, joueurNom, educateurs, onClose, onSave, onDele
           </span>
         ))}
       </div>
+      {profil !== "general" && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 6 }}>Type de grille</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[["poste", `Adaptée au poste (${NOM_PROFIL[profil]})`], ["general", "Générale (unique)"]].map(([val, lab]) => {
+              const on = grilleType === val;
+              return (
+                <button key={val} type="button" onClick={() => setF((o) => ({ ...o, grilleType: val }))} style={{ flex: 1, cursor: "pointer", borderRadius: 10, padding: "9px 10px", fontSize: 12.5, fontWeight: 800, lineHeight: 1.25, border: `1.5px solid ${on ? C.bleu : C.grisClair}`, background: on ? C.bleu : "#fff", color: on ? "#fff" : C.gris }}>{lab}</button>
+              );
+            })}
+          </div>
+          {grilleType === "poste" && (
+            <div style={{ fontSize: 11.5, color: C.bleuNuit, background: "#FFF7E4", border: `1px solid ${C.jaune}`, borderRadius: 10, padding: "7px 11px", marginTop: 8, lineHeight: 1.4 }}>
+              Les aspects marqués <strong>PRIORITAIRE</strong> sont les plus attendus pour un {NOM_PROFIL[profil].toLowerCase()}.
+            </div>
+          )}
+        </div>
+      )}
       <div style={{ fontSize: 12, color: C.gris, marginBottom: 10, lineHeight: 1.45 }}>Coche une case par ligne. Reclique pour effacer. Ajoute un commentaire par aspect si besoin.</div>
-      <GrilleEvalTable data={f} editable onCell={setCell} onRemarque={setRem} />
+      <GrilleEvalTable data={f} editable onCell={setCell} onRemarque={setRem} aspects={aspectsCourant} />
       <div style={{ marginTop: 14 }}>
         <Field label="Axes d'amélioration (fin du bilan)">
           <textarea value={f.axes || ""} maxLength={600} onChange={(e) => setF((o) => ({ ...o, axes: e.target.value }))} rows={4} placeholder="Points prioritaires à travailler d'ici la prochaine évaluation..." style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
@@ -5228,6 +5338,7 @@ function ChipNiveauGrille({ v }) {
 
 function exporterComparaisonPDF(jsPDF, p, A, B) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const aspectsC = grilleDeBilan(B, p.poste);
   const W = 595, H = 842, M = 44;
   const BLEU = [26, 53, 83], GRIS = [120, 130, 142], TRAIT = [228, 232, 238];
   const col = { tb: [47, 163, 107], b: [184, 122, 43], dif: [181, 72, 63] };
@@ -5245,7 +5356,7 @@ function exporterComparaisonPDF(jsPDF, p, A, B) {
   doc.setFont("helvetica", "normal"); doc.setFontSize(10); sc(GRIS);
   doc.text(`Bilan du ${fmtD(A.date)}  vers  bilan du ${fmtD(B.date)}`, M, y); y += 20;
   let nUp = 0, nEq = 0, nDown = 0;
-  GRILLE_ASPECTS.forEach((cat) => cat.sous.forEach((s) => {
+  aspectsC.forEach((cat) => cat.sous.forEach((s) => {
     const sa = scoreOf(niveauSousGrille(A, cat.k, s)), sb = scoreOf(niveauSousGrille(B, cat.k, s));
     if (sa == null || sb == null) return; if (sb > sa) nUp++; else if (sb < sa) nDown++; else nEq++;
   }));
@@ -5261,7 +5372,7 @@ function exporterComparaisonPDF(jsPDF, p, A, B) {
   doc.text("EVOLUTION", xEv, y); y += 8;
   sd(TRAIT); doc.line(M, y, W - M, y); y += 15;
   const saut = (h) => { if (y > H - M - (h || 24)) { doc.addPage(); y = M; } };
-  GRILLE_ASPECTS.forEach((cat) => {
+  aspectsC.forEach((cat) => {
     saut(40);
     doc.setFont("helvetica", "bold"); doc.setFontSize(11.5); sc(BLEU);
     doc.text(cat.label, M, y); y += 15;
@@ -5284,7 +5395,7 @@ function exporterComparaisonPDF(jsPDF, p, A, B) {
   });
   // Synthese automatique (points forts / a travailler a partir du bilan d'arrivee)
   const _forts = [], _faibles = [];
-  GRILLE_ASPECTS.forEach((cat) => cat.sous.forEach((s) => {
+  aspectsC.forEach((cat) => cat.sous.forEach((s) => {
     const nb = niveauSousGrille(B, cat.k, s);
     if (nb === "tb") _forts.push(s); else if (nb === "dif") _faibles.push(s);
   }));
@@ -5341,10 +5452,11 @@ function ComparerBilans({ p, onClose }) {
   }
   const A = liste[Math.min(iA, liste.length - 1)] || liste[0];
   const B = liste[Math.min(iB, liste.length - 1)] || liste[liste.length - 1];
+  const aspectsC = grilleDeBilan(B, p.poste);
   const fmtD = (d) => d ? new Date(d + "T00:00:00").toLocaleDateString("fr-FR") : "—";
   let nUp = 0, nEq = 0, nDown = 0;
   const forts = [], aTravailler = [], progresMarquants = [];
-  GRILLE_ASPECTS.forEach((cat) => cat.sous.forEach((s) => {
+  aspectsC.forEach((cat) => cat.sous.forEach((s) => {
     const na = niveauSousGrille(A, cat.k, s), nb = niveauSousGrille(B, cat.k, s);
     const sa = scoreNiveauGrille(na), sb = scoreNiveauGrille(nb);
     if (nb === "tb") forts.push(s);
@@ -5396,7 +5508,7 @@ function ComparerBilans({ p, onClose }) {
         <div style={{ fontSize: 9.5, fontWeight: 700, color: C.gris, textAlign: "center" }}>Arrivée</div>
         <div style={{ fontSize: 10, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.4 }}>Évolution</div>
       </div>
-      {GRILLE_ASPECTS.map((cat) => (
+      {aspectsC.map((cat) => (
         <div key={cat.k} style={{ marginTop: 12 }}>
           <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13, marginBottom: 2, paddingBottom: 4 }}>{cat.label}</div>
           {cat.sous.map((s) => {
@@ -5920,7 +6032,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
           {(p.grilleEval.date || p.grilleEval.educateur) && (
             <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 8 }}>{p.grilleEval.date ? new Date(p.grilleEval.date + "T00:00:00").toLocaleDateString("fr-FR") : ""}{p.grilleEval.date && p.grilleEval.educateur ? " · " : ""}{p.grilleEval.educateur || ""}</div>
           )}
-          <GrilleEvalTable data={p.grilleEval} editable={false} />
+          <GrilleEvalTable data={p.grilleEval} editable={false} aspects={grilleDeBilan(p.grilleEval, p.poste)} />
           {p.grilleEval.axes && p.grilleEval.axes.trim() && (
             <div style={{ marginTop: 12, background: "#EAF0F7", border: `1px solid ${C.bleu}`, borderRadius: 12, padding: 12 }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 5 }}>Axes d'amélioration</div>
@@ -5949,7 +6061,7 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
       )}
 
 
-      {grilleEdit && <EditGrilleEval grille={grilleEdit === "new" ? {} : (p.grilleEval || {})} joueurNom={`${p.prenom || ""} ${p.nom || ""}`.trim()} educateurs={educateurs} onAjouterEncadrant={ajouterEncadrant} encadrementListe={listeEnc} encadrementMaj={majEnc}
+      {grilleEdit && <EditGrilleEval grille={grilleEdit === "new" ? {} : (p.grilleEval || {})} joueurNom={`${p.prenom || ""} ${p.nom || ""}`.trim()} poste={p.poste} educateurs={educateurs} onAjouterEncadrant={ajouterEncadrant} encadrementListe={listeEnc} encadrementMaj={majEnc}
         onClose={() => setGrilleEdit(null)}
         onSave={(g) => {
           mutate((d) => {
