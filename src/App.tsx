@@ -3218,7 +3218,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.5.5</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.5.6</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -5163,9 +5163,8 @@ function EditGrilleEval({ grille, joueurNom, educateurs, onClose, onSave, onDele
   });
   const setRem = (ak, v) => setF((o) => ({ ...o, aspects: { ...(o.aspects || {}), [ak]: { ...((o.aspects || {})[ak] || {}), remarque: v } } }));
   return (
-    <Modal title="Bilan et entretien" onClose={onClose}
+    <Modal title={joueurNom ? (<span style={{ display: "flex", flexDirection: "column", lineHeight: 1.25 }}><span style={{ fontSize: 15 }}>Bilan et entretien</span><span style={{ fontSize: 15, fontWeight: 900, color: C.jaune }}>{joueurNom}</span></span>) : "Bilan et entretien"} onClose={onClose}
       footer={<><Btn variant="accent" full onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>{onDelete && <BtnSuppr nom="ce bilan" onConfirm={onDelete} />}</>}>
-      {joueurNom ? <div style={{ textAlign: "center", fontSize: 17, fontWeight: 900, color: C.bleu, marginBottom: 14, paddingBottom: 12, borderBottom: `2px solid ${C.grisClair}` }}>{joueurNom}</div> : null}
       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14, marginBottom: 10 }}>
         <Field label="Date du bilan"><Inp type="date" value={f.date || ""} onChange={(e) => setF((o) => ({ ...o, date: e.target.value }))} />{f.date ? <button type="button" onClick={() => setF((o) => ({ ...o, date: "" }))} style={{ marginTop: 7, background: "none", border: "none", padding: 0, color: C.bleu, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Effacer la date</button> : null}</Field>
         <Field label="Dirigeant / coach qui fait le bilan">
