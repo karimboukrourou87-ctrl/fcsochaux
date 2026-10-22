@@ -3316,7 +3316,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.6.5</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.6.7</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -6597,6 +6597,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
   const matchProchain = matchsCat.find((m) => (m.date || "") >= aujourdhui);
   const matchDefaut = matchProchain ? matchProchain.id : (matchsCat.length ? matchsCat[matchsCat.length - 1].id : "");
   const [matchSel, setMatchSel] = useState(matchDefaut);
+  const [convocCompo, setConvocCompo] = useState(false);
   const key = matchSel || cat;
   // Encadrement du match (liste commune du club) : coach, coach adjoint, dirigeant, délégué
   const [listeEncCompo] = useEncadrementClub(demo, db, mutate);
@@ -6798,6 +6799,10 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
           </select>
         </div>
       )}
+      {matchSel && matchCourant && (
+        <Btn variant="accent" full style={{ marginBottom: 12 }} onClick={() => setConvocCompo(true)}><Send size={16} /> Feuille de convocation</Btn>
+      )}
+      {convocCompo && matchCourant && <Convocation db={db} cat={cat} match={matchCourant} mutate={mutate} onClose={() => setConvocCompo(false)} />}
       {(() => {
         if (!dateMatchCompo) return null;
         const suspendusMatch = [...players, ...surclasses].filter((p) => estSuspenduPourDate(p, dateMatchCompo));
@@ -7461,11 +7466,20 @@ function Convocation({ db, cat, match, mutate, onClose }) {
   }
 
   const t = cur.transport || {}, e = cur.encadrement || {};
-  const lignesEnc = [
-    e.dirigeant ? `Dirigeant : ${e.dirigeant}` : null,
-    e.delegue ? `Délégué : ${e.delegue}` : null,
-    e.arbitre ? `Arbitre : ${e.arbitre}` : null,
-  ].filter(Boolean);
+  // Tout l'encadrement renseigné apparaît sur la convocation.
+  const ENC_LIGNES = [
+    ["educateur", "Éducateur"], ["coachAdjoint", "Coach adjoint"],
+    ["coachGardiens", "Coach des gardiens"], ["prepaPhysique", "Préparateur physique"],
+    ["dirigeant", "Dirigeant"], ["delegue", "Délégué"], ["arbitre", "Arbitre central"],
+    ["assistant1", "Arbitre assistant 1"], ["assistant2", "Arbitre assistant 2"], ["assistant3", "Arbitre assistant 3"],
+  ];
+  const lignesEnc = ENC_LIGNES.map(([k, lab]) => (e[k] && String(e[k]).trim()) ? `${lab} : ${e[k]}` : null).filter(Boolean);
+
+  // Liste "À prévoir" : seuls les éléments cochés apparaissent sur la convocation.
+  const A_PREVOIR = ["Tenue de sortie du club", "Tenue d'entraînement", "Protège tibia", "Coupe vent", "Repas tiré du sac", "Chaussures vissées en supplément", "Baskets de course"];
+  const aPrevoir = cur.convocAPrevoir || {};
+  const prevoirCoches = A_PREVOIR.filter((x) => aPrevoir[x]);
+  const toggleAPrevoir = (x) => maj({ convocAPrevoir: { ...aPrevoir, [x]: !aPrevoir[x] } });
 
   const texte = [
     `CONVOCATION ${cat}`,
@@ -7475,6 +7489,7 @@ function Convocation({ db, cat, match, mutate, onClose }) {
     "",
     `Convoqués (${total}) :`,
     ...[...titulaires, ...remplacants].map((x, i) => `${i + 1}. ${x.nom}${x.id === cap ? " (capitaine)" : ""}`),
+    prevoirCoches.length ? `\nÀ prévoir :\n${prevoirCoches.map((x) => `- ${x}`).join("\n")}` : null,
     (cur.lieu === "Extérieur" && t.mode) ? `\nTransport : ${resumeTransport(t)}` : null,
     lignesEnc.length ? `\nEncadrement :\n${lignesEnc.join("\n")}` : null,
   ].filter((l) => l !== null && l !== undefined).join("\n");
@@ -7558,6 +7573,21 @@ function Convocation({ db, cat, match, mutate, onClose }) {
       footer={<><Btn full disabled={total === 0} onClick={partagerWhatsApp} style={{ background: "#25D366", color: "#fff" }}><Send size={16} /> WhatsApp (texte)</Btn><Btn variant="primary" full disabled={total === 0} onClick={partagerImage}><FileDown size={16} /> Partager en image</Btn></>}>
       <Field label="Heure de rendez-vous"><Inp type="time" value={cur.rdv || ""} onChange={(ev) => maj({ rdv: ev.target.value })} /></Field>
       <Field label="Lieu de rendez-vous (optionnel)"><Inp value={cur.lieuRdv || ""} onChange={(ev) => maj({ lieuRdv: ev.target.value })} placeholder="Parking du stade, adresse..." /></Field>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 2 }}>À prévoir</div>
+        <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 8 }}>Coche ce qui doit apparaître sur la convocation. Ce qui n'est pas coché n'apparaît pas.</div>
+        <div style={{ display: "grid", gap: 7 }}>
+          {A_PREVOIR.map((x) => {
+            const on = !!aPrevoir[x];
+            return (
+              <button key={x} type="button" onClick={() => toggleAPrevoir(x)} style={{ display: "flex", alignItems: "center", gap: 10, textAlign: "left", background: on ? "#EAF0F7" : "#fff", border: `1.5px solid ${on ? C.bleu : C.grisClair}`, borderRadius: 10, padding: "9px 11px", cursor: "pointer" }}>
+                <span style={{ width: 20, height: 20, borderRadius: 6, flex: "0 0 auto", display: "grid", placeItems: "center", background: on ? C.bleu : "#fff", border: `1.5px solid ${on ? C.bleu : C.grisClair}`, color: "#fff", fontWeight: 900, fontSize: 13 }}>{on ? "✓" : ""}</span>
+                <span style={{ fontSize: 13.5, fontWeight: on ? 800 : 600, color: C.encre }}>{x}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
       {total === 0 ? (
         <Empty icon={<Users size={22} color={C.gris} />} text="Aucun joueur convoqué" sub="Place des joueurs dans la composition pour générer la convocation" />
       ) : (<>
