@@ -3316,7 +3316,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.6.7</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.6.8</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -7452,7 +7452,9 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
 function Convocation({ db, cat, match, mutate, onClose }) {
   const [copie, setCopie] = useState(false);
   const [texteManuel, setTexteManuel] = useState(null);
+  const [texteStaffManuel, setTexteStaffManuel] = useState(null);
   const [pngMsg, setPngMsg] = useState(null);
+  const [volet, setVolet] = useState("joueurs");
   const cur = db.matches.find((x) => x.id === match.id) || match;
   const lu = (db.lineups || {})[match.id] || (db.lineups || {})[cat] || {};
   const cap = lu.capitaine;
@@ -7494,26 +7496,54 @@ function Convocation({ db, cat, match, mutate, onClose }) {
     lignesEnc.length ? `\nEncadrement :\n${lignesEnc.join("\n")}` : null,
   ].filter((l) => l !== null && l !== undefined).join("\n");
 
-  // Texte effectif : celui modifié à la main s'il existe, sinon le texte généré automatiquement (avec heure et lieu).
+  // ----- Volet "Matériel staff" (message dissocié pour le groupe WhatsApp du staff) -----
+  const rdvStaff = cur.rdvStaff || "";
+  const mat = cur.materielStaff || {};
+  const matCoches = mat.coches || {};
+  const MATERIEL = ["Pharmacie", "Drapeau arbitrage", "Drapeau de corner", "Tableau tactique", "Coupelle échauffement", "Chasubles 2 couleurs", "Veo", "Jeu de maillots", "Tablette ou feuille de match papier", "Pack d'eau", "Brassard de capitaine", "Brassard de délégué", "Sacs à ballons", "Sifflet arbitre", "Goûter pour les joueurs"];
+  const toggleMat = (x) => maj({ materielStaff: { ...mat, coches: { ...matCoches, [x]: !matCoches[x] } } });
+  const setMat = (k, v) => maj({ materielStaff: { ...mat, [k]: v } });
+  const ligneMateriel = (x) => {
+    if (x === "Chasubles 2 couleurs") return `- ${x}${mat.chasublesCouleur ? " (" + mat.chasublesCouleur + ")" : ""}${mat.chasublesNb ? " x" + mat.chasublesNb : ""}`;
+    if (x === "Jeu de maillots") return `- Jeu de maillots${mat.maillots ? " " + String(mat.maillots).toLowerCase() : ""}`;
+    if (x === "Sacs à ballons") return `- ${x}${mat.nbBallons ? " (" + mat.nbBallons + " ballons)" : ""}`;
+    return `- ${x}`;
+  };
+  const materielCoches = MATERIEL.filter((x) => matCoches[x]);
+  const texteStaff = [
+    `MATÉRIEL STAFF ${cat}`,
+    `${CLUB} contre ${cur.adversaire || "Adversaire"}${cur.type ? ` (${cur.type})` : ""}`,
+    `${cur.date ? fmtDate(cur.date) : "Date à définir"}${cur.lieu ? ` - ${cur.lieu}` : ""}`,
+    (rdvStaff || cur.lieuRdv) ? `Rendez-vous staff : ${[rdvStaff, cur.lieuRdv].filter(Boolean).join(" - ")}` : null,
+    "",
+    materielCoches.length ? `Matériel à préparer :\n${materielCoches.map(ligneMateriel).join("\n")}` : "Matériel à préparer : (rien de coché pour l'instant)",
+    (cur.lieu === "Extérieur" && t.mode) ? `\nTransport : ${resumeTransport(t)}` : null,
+    lignesEnc.length ? `\nEncadrement :\n${lignesEnc.join("\n")}` : null,
+  ].filter((l) => l !== null && l !== undefined).join("\n");
+
+  // Texte effectif : celui modifié à la main s'il existe, sinon le texte généré automatiquement.
   const texteFinal = texteManuel != null ? texteManuel : texte;
+  const texteStaffFinal = texteStaffManuel != null ? texteStaffManuel : texteStaff;
+  const texteActif = volet === "joueurs" ? texteFinal : texteStaffFinal;
+  const partageDesactive = volet === "joueurs" && total === 0;
 
   function copier() {
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(texteFinal).then(() => setCopie(true)).catch(() => setCopie(false));
+        navigator.clipboard.writeText(texteActif).then(() => setCopie(true)).catch(() => setCopie(false));
       }
     } catch (er) { setCopie(false); }
   }
   function partagerWhatsApp() {
     try {
-      const url = "https://wa.me/?text=" + encodeURIComponent(texteFinal);
+      const url = "https://wa.me/?text=" + encodeURIComponent(texteActif);
       window.open(url, "_blank", "noopener");
     } catch (er) {}
   }
-  // Transforme le texte de la convocation en image PNG (en-tête club + texte).
+  // Transforme le texte actif en image PNG (en-tête club + texte).
   function genererImagePNG(cb) {
     try {
-      const lignes = String(texteFinal).split("\n");
+      const lignes = String(texteActif).split("\n");
       const Wi = 1000, pad = 60, lh = 40, headerH = 128;
       const cv = document.createElement("canvas");
       const ctx = cv.getContext("2d");
@@ -7538,7 +7568,7 @@ function Convocation({ db, cat, match, mutate, onClose }) {
       ctx.fillStyle = "#ffffff"; ctx.font = 'bold 34px -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
       ctx.fillText(CLUB, pad, 56);
       ctx.fillStyle = "#E8C877"; ctx.font = 'bold 23px -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
-      ctx.fillText("Feuille de convocation · " + cat, pad, 96);
+      ctx.fillText((volet === "joueurs" ? "Feuille de convocation · " : "Matériel staff · ") + cat, pad, 96);
       ctx.fillStyle = "#15233B"; ctx.font = fontBody; ctx.textBaseline = "alphabetic";
       let y = headerH + pad + 20;
       wrapped.forEach((l) => { ctx.fillText(l, pad, y); y += lh; });
@@ -7550,11 +7580,11 @@ function Convocation({ db, cat, match, mutate, onClose }) {
     setPngMsg("Préparation de l'image...");
     genererImagePNG((blob) => {
       if (!blob) { setPngMsg("Création de l'image impossible sur cet appareil."); return; }
-      const nomFichier = `Convocation_${cat}_${(cur.adversaire || "match").replace(/\s+/g, "_")}.png`;
+      const nomFichier = `${volet === "joueurs" ? "Convocation" : "Materiel_staff"}_${cat}_${(cur.adversaire || "match").replace(/\s+/g, "_")}.png`;
       try {
         const file = new File([blob], nomFichier, { type: "image/png" });
         if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
-          navigator.share({ files: [file], title: "Convocation " + cat }).then(() => setPngMsg(null)).catch(() => setPngMsg(null));
+          navigator.share({ files: [file], title: (volet === "joueurs" ? "Convocation " : "Matériel staff ") + cat }).then(() => setPngMsg(null)).catch(() => setPngMsg(null));
           return;
         }
       } catch (er) {}
@@ -7568,40 +7598,94 @@ function Convocation({ db, cat, match, mutate, onClose }) {
     });
   }
 
+  const caseStyle = (on) => ({ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", background: on ? "#EAF0F7" : "#fff", border: `1.5px solid ${on ? C.bleu : C.grisClair}`, borderRadius: 10, padding: "9px 11px", cursor: "pointer" });
+  const coche = (on) => <span style={{ width: 20, height: 20, borderRadius: 6, flex: "0 0 auto", display: "grid", placeItems: "center", background: on ? C.bleu : "#fff", border: `1.5px solid ${on ? C.bleu : C.grisClair}`, color: "#fff", fontWeight: 900, fontSize: 13 }}>{on ? "✓" : ""}</span>;
+
   return (
     <Modal title="Feuille de convocation" onClose={onClose}
-      footer={<><Btn full disabled={total === 0} onClick={partagerWhatsApp} style={{ background: "#25D366", color: "#fff" }}><Send size={16} /> WhatsApp (texte)</Btn><Btn variant="primary" full disabled={total === 0} onClick={partagerImage}><FileDown size={16} /> Partager en image</Btn></>}>
-      <Field label="Heure de rendez-vous"><Inp type="time" value={cur.rdv || ""} onChange={(ev) => maj({ rdv: ev.target.value })} /></Field>
-      <Field label="Lieu de rendez-vous (optionnel)"><Inp value={cur.lieuRdv || ""} onChange={(ev) => maj({ lieuRdv: ev.target.value })} placeholder="Parking du stade, adresse..." /></Field>
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 12, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 2 }}>À prévoir</div>
-        <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 8 }}>Coche ce qui doit apparaître sur la convocation. Ce qui n'est pas coché n'apparaît pas.</div>
-        <div style={{ display: "grid", gap: 7 }}>
-          {A_PREVOIR.map((x) => {
-            const on = !!aPrevoir[x];
-            return (
-              <button key={x} type="button" onClick={() => toggleAPrevoir(x)} style={{ display: "flex", alignItems: "center", gap: 10, textAlign: "left", background: on ? "#EAF0F7" : "#fff", border: `1.5px solid ${on ? C.bleu : C.grisClair}`, borderRadius: 10, padding: "9px 11px", cursor: "pointer" }}>
-                <span style={{ width: 20, height: 20, borderRadius: 6, flex: "0 0 auto", display: "grid", placeItems: "center", background: on ? C.bleu : "#fff", border: `1.5px solid ${on ? C.bleu : C.grisClair}`, color: "#fff", fontWeight: 900, fontSize: 13 }}>{on ? "✓" : ""}</span>
-                <span style={{ fontSize: 13.5, fontWeight: on ? 800 : 600, color: C.encre }}>{x}</span>
-              </button>
-            );
-          })}
-        </div>
+      footer={<><Btn full disabled={partageDesactive} onClick={partagerWhatsApp} style={{ background: "#25D366", color: "#fff" }}><Send size={16} /> WhatsApp (texte)</Btn><Btn variant="primary" full disabled={partageDesactive} onClick={partagerImage}><FileDown size={16} /> Partager en image</Btn></>}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        {[["joueurs", "Convocation joueurs"], ["staff", "Matériel staff"]].map(([v, lab]) => {
+          const on = volet === v;
+          return <button key={v} type="button" onClick={() => { setVolet(v); setCopie(false); setPngMsg(null); }} style={{ flex: 1, cursor: "pointer", borderRadius: 10, padding: "9px 10px", fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${on ? C.bleu : C.grisClair}`, background: on ? C.bleu : "#fff", color: on ? "#fff" : C.gris }}>{lab}</button>;
+        })}
       </div>
-      {total === 0 ? (
-        <Empty icon={<Users size={22} color={C.gris} />} text="Aucun joueur convoqué" sub="Place des joueurs dans la composition pour générer la convocation" />
-      ) : (<>
+
+      {volet === "joueurs" ? (<>
+        <Field label="Heure de rendez-vous"><Inp type="time" value={cur.rdv || ""} onChange={(ev) => maj({ rdv: ev.target.value })} /></Field>
+        <Field label="Lieu de rendez-vous (optionnel)"><Inp value={cur.lieuRdv || ""} onChange={(ev) => maj({ lieuRdv: ev.target.value })} placeholder="Parking du stade, adresse..." /></Field>
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 2 }}>À prévoir</div>
+          <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 8 }}>Coche ce qui doit apparaître sur la convocation. Ce qui n'est pas coché n'apparaît pas.</div>
+          <div style={{ display: "grid", gap: 7 }}>
+            {A_PREVOIR.map((x) => {
+              const on = !!aPrevoir[x];
+              return (
+                <button key={x} type="button" onClick={() => toggleAPrevoir(x)} style={caseStyle(on)}>
+                  {coche(on)}<span style={{ fontSize: 13.5, fontWeight: on ? 800 : 600, color: C.encre }}>{x}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {total === 0 ? (
+          <Empty icon={<Users size={22} color={C.gris} />} text="Aucun joueur convoqué" sub="Place des joueurs dans la composition pour générer la convocation" />
+        ) : (<>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5, flexWrap: "wrap", gap: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3 }}>Texte de la convocation (modifiable)</div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              {texteManuel != null && <button type="button" onClick={() => { setTexteManuel(null); setPngMsg(null); }} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12, fontWeight: 700, textDecoration: "underline", padding: 0 }}>Revenir au texte automatique</button>}
+              <button type="button" onClick={copier} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4, padding: 0 }}><Send size={13} /> {copie ? "Copié" : "Copier"}</button>
+            </div>
+          </div>
+          <textarea value={texteFinal} onChange={(ev) => { setTexteManuel(ev.target.value); setCopie(false); }} rows={Math.min(22, 9 + total)} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit", fontSize: 13, lineHeight: 1.5 }} />
+        </>)}
+        <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8 }}>Le texte inclut l'heure et le lieu de rendez-vous. Tu peux le modifier avant de le partager en texte sur WhatsApp ou en image.</div>
+      </>) : (<>
+        <Field label="Heure de rendez-vous du staff"><Inp type="time" value={rdvStaff} onChange={(ev) => maj({ rdvStaff: ev.target.value })} /></Field>
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 2 }}>Matériel à préparer</div>
+          <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 8 }}>Coche ce qui doit apparaître dans le message du staff. Ce qui n'est pas coché n'apparaît pas.</div>
+          <div style={{ display: "grid", gap: 7 }}>
+            {MATERIEL.map((x) => {
+              const on = !!matCoches[x];
+              return (
+                <div key={x}>
+                  <button type="button" onClick={() => toggleMat(x)} style={caseStyle(on)}>
+                    {coche(on)}<span style={{ fontSize: 13.5, fontWeight: on ? 800 : 600, color: C.encre }}>{x}</span>
+                  </button>
+                  {on && x === "Chasubles 2 couleurs" && (
+                    <div style={{ display: "flex", gap: 8, marginTop: 6, paddingLeft: 30 }}>
+                      <Inp value={mat.chasublesCouleur || ""} onChange={(ev) => setMat("chasublesCouleur", ev.target.value)} placeholder="Couleurs (ex : rouge et bleu)" style={{ flex: 2 }} />
+                      <Inp type="number" value={mat.chasublesNb || ""} onChange={(ev) => setMat("chasublesNb", ev.target.value)} placeholder="Nb" style={{ flex: 1, minWidth: 60 }} />
+                    </div>
+                  )}
+                  {on && x === "Jeu de maillots" && (
+                    <div style={{ display: "flex", gap: 8, marginTop: 6, paddingLeft: 30 }}>
+                      {["Blancs", "Jaunes"].map((c) => { const sel = mat.maillots === c; return <button key={c} type="button" onClick={() => setMat("maillots", c)} style={{ flex: 1, cursor: "pointer", borderRadius: 9, padding: "8px 10px", fontSize: 13, fontWeight: 800, border: `1.5px solid ${sel ? C.bleu : C.grisClair}`, background: sel ? C.bleu : "#fff", color: sel ? "#fff" : C.gris }}>{c}</button>; })}
+                    </div>
+                  )}
+                  {on && x === "Sacs à ballons" && (
+                    <div style={{ marginTop: 6, paddingLeft: 30 }}>
+                      <Inp type="number" value={mat.nbBallons || ""} onChange={(ev) => setMat("nbBallons", ev.target.value)} placeholder="Nombre de ballons" />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5, flexWrap: "wrap", gap: 6 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3 }}>Texte de la convocation (modifiable)</div>
+          <div style={{ fontSize: 12, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3 }}>Message du staff (modifiable)</div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            {texteManuel != null && <button type="button" onClick={() => { setTexteManuel(null); setPngMsg(null); }} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12, fontWeight: 700, textDecoration: "underline", padding: 0 }}>Revenir au texte automatique</button>}
+            {texteStaffManuel != null && <button type="button" onClick={() => { setTexteStaffManuel(null); setPngMsg(null); }} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12, fontWeight: 700, textDecoration: "underline", padding: 0 }}>Revenir au texte automatique</button>}
             <button type="button" onClick={copier} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4, padding: 0 }}><Send size={13} /> {copie ? "Copié" : "Copier"}</button>
           </div>
         </div>
-        <textarea value={texteFinal} onChange={(ev) => { setTexteManuel(ev.target.value); setCopie(false); }} rows={Math.min(22, 9 + total)} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit", fontSize: 13, lineHeight: 1.5 }} />
+        <textarea value={texteStaffFinal} onChange={(ev) => { setTexteStaffManuel(ev.target.value); setCopie(false); }} rows={Math.min(22, 10 + materielCoches.length)} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit", fontSize: 13, lineHeight: 1.5 }} />
+        <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8 }}>Message dissocié à partager sur le groupe WhatsApp du staff, en texte ou en image.</div>
       </>)}
       {pngMsg && <div style={{ fontSize: 12, fontWeight: 700, color: pngMsg.includes("impossible") ? C.rouge : C.vert, marginTop: 8 }}>{pngMsg}</div>}
-      <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8 }}>Le texte vient de la composition (titulaires et remplaçants) et inclut l'heure et le lieu de rendez-vous. Tu peux le modifier librement avant de le partager en texte sur WhatsApp ou en image.</div>
     </Modal>
   );
 }
