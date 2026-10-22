@@ -3316,7 +3316,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.6.8</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.6.9</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -7497,14 +7497,22 @@ function Convocation({ db, cat, match, mutate, onClose }) {
   ].filter((l) => l !== null && l !== undefined).join("\n");
 
   // ----- Volet "Matériel staff" (message dissocié pour le groupe WhatsApp du staff) -----
-  const rdvStaff = cur.rdvStaff || "";
+  // Rendez-vous staff : par défaut 30 min avant celui des joueurs, modifiable.
+  const moins30 = (hhmm) => { if (!hhmm || !/^\d{1,2}:\d{2}$/.test(hhmm)) return ""; const [h, m] = hhmm.split(":").map(Number); let tot = h * 60 + m - 30; if (tot < 0) tot += 1440; return `${String(Math.floor(tot / 60)).padStart(2, "0")}:${String(tot % 60).padStart(2, "0")}`; };
+  const rdvStaffDefaut = moins30(cur.rdv || "");
+  const rdvStaffEffectif = cur.rdvStaff || rdvStaffDefaut;
   const mat = cur.materielStaff || {};
   const matCoches = mat.coches || {};
   const MATERIEL = ["Pharmacie", "Drapeau arbitrage", "Drapeau de corner", "Tableau tactique", "Coupelle échauffement", "Chasubles 2 couleurs", "Veo", "Jeu de maillots", "Tablette ou feuille de match papier", "Pack d'eau", "Brassard de capitaine", "Brassard de délégué", "Sacs à ballons", "Sifflet arbitre", "Goûter pour les joueurs"];
   const toggleMat = (x) => maj({ materielStaff: { ...mat, coches: { ...matCoches, [x]: !matCoches[x] } } });
   const setMat = (k, v) => maj({ materielStaff: { ...mat, [k]: v } });
   const ligneMateriel = (x) => {
-    if (x === "Chasubles 2 couleurs") return `- ${x}${mat.chasublesCouleur ? " (" + mat.chasublesCouleur + ")" : ""}${mat.chasublesNb ? " x" + mat.chasublesNb : ""}`;
+    if (x === "Chasubles 2 couleurs") {
+      const parts = [];
+      if (mat.chasublesCouleur1 || mat.chasublesNb1) parts.push(`${mat.chasublesNb1 ? mat.chasublesNb1 + " " : ""}${mat.chasublesCouleur1 || ""}`.trim());
+      if (mat.chasublesCouleur2 || mat.chasublesNb2) parts.push(`${mat.chasublesNb2 ? mat.chasublesNb2 + " " : ""}${mat.chasublesCouleur2 || ""}`.trim());
+      return `- ${x}${parts.length ? " : " + parts.join(", ") : ""}`;
+    }
     if (x === "Jeu de maillots") return `- Jeu de maillots${mat.maillots ? " " + String(mat.maillots).toLowerCase() : ""}`;
     if (x === "Sacs à ballons") return `- ${x}${mat.nbBallons ? " (" + mat.nbBallons + " ballons)" : ""}`;
     return `- ${x}`;
@@ -7514,7 +7522,7 @@ function Convocation({ db, cat, match, mutate, onClose }) {
     `MATÉRIEL STAFF ${cat}`,
     `${CLUB} contre ${cur.adversaire || "Adversaire"}${cur.type ? ` (${cur.type})` : ""}`,
     `${cur.date ? fmtDate(cur.date) : "Date à définir"}${cur.lieu ? ` - ${cur.lieu}` : ""}`,
-    (rdvStaff || cur.lieuRdv) ? `Rendez-vous staff : ${[rdvStaff, cur.lieuRdv].filter(Boolean).join(" - ")}` : null,
+    (rdvStaffEffectif || cur.lieuRdv) ? `Rendez-vous staff : ${[rdvStaffEffectif, cur.lieuRdv].filter(Boolean).join(" - ")}` : null,
     "",
     materielCoches.length ? `Matériel à préparer :\n${materielCoches.map(ligneMateriel).join("\n")}` : "Matériel à préparer : (rien de coché pour l'instant)",
     (cur.lieu === "Extérieur" && t.mode) ? `\nTransport : ${resumeTransport(t)}` : null,
@@ -7642,7 +7650,7 @@ function Convocation({ db, cat, match, mutate, onClose }) {
         </>)}
         <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8 }}>Le texte inclut l'heure et le lieu de rendez-vous. Tu peux le modifier avant de le partager en texte sur WhatsApp ou en image.</div>
       </>) : (<>
-        <Field label="Heure de rendez-vous du staff"><Inp type="time" value={rdvStaff} onChange={(ev) => maj({ rdvStaff: ev.target.value })} /></Field>
+        <Field label="Heure de rendez-vous du staff"><Inp type="time" value={rdvStaffEffectif} onChange={(ev) => maj({ rdvStaff: ev.target.value })} />{cur.rdv ? <div style={{ fontSize: 11, color: C.gris, marginTop: 4 }}>Par défaut 30 min avant les joueurs ({cur.rdv}). Modifiable.</div> : null}</Field>
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 2 }}>Matériel à préparer</div>
           <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 8 }}>Coche ce qui doit apparaître dans le message du staff. Ce qui n'est pas coché n'apparaît pas.</div>
@@ -7655,9 +7663,15 @@ function Convocation({ db, cat, match, mutate, onClose }) {
                     {coche(on)}<span style={{ fontSize: 13.5, fontWeight: on ? 800 : 600, color: C.encre }}>{x}</span>
                   </button>
                   {on && x === "Chasubles 2 couleurs" && (
-                    <div style={{ display: "flex", gap: 8, marginTop: 6, paddingLeft: 30 }}>
-                      <Inp value={mat.chasublesCouleur || ""} onChange={(ev) => setMat("chasublesCouleur", ev.target.value)} placeholder="Couleurs (ex : rouge et bleu)" style={{ flex: 2 }} />
-                      <Inp type="number" value={mat.chasublesNb || ""} onChange={(ev) => setMat("chasublesNb", ev.target.value)} placeholder="Nb" style={{ flex: 1, minWidth: 60 }} />
+                    <div style={{ display: "grid", gap: 6, marginTop: 6, paddingLeft: 30 }}>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <Inp value={mat.chasublesCouleur1 || ""} onChange={(ev) => setMat("chasublesCouleur1", ev.target.value)} placeholder="Couleur 1 (ex : rouge)" style={{ flex: 2 }} />
+                        <Inp type="number" value={mat.chasublesNb1 || ""} onChange={(ev) => setMat("chasublesNb1", ev.target.value)} placeholder="Nb" style={{ flex: 1, minWidth: 60 }} />
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <Inp value={mat.chasublesCouleur2 || ""} onChange={(ev) => setMat("chasublesCouleur2", ev.target.value)} placeholder="Couleur 2 (ex : bleu)" style={{ flex: 2 }} />
+                        <Inp type="number" value={mat.chasublesNb2 || ""} onChange={(ev) => setMat("chasublesNb2", ev.target.value)} placeholder="Nb" style={{ flex: 1, minWidth: 60 }} />
+                      </div>
                     </div>
                   )}
                   {on && x === "Jeu de maillots" && (
