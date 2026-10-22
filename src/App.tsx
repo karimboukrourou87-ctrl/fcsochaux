@@ -3316,7 +3316,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.6.2</span></div>
+          <div className="fcSub">ÉCOLE DE FOOT · FORMATION · PROFESSIONNELS{sousTitre} <span className="fcVer">· v16.6.5</span></div>
 
           {groupesDispo.length > 1 && (
             <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
@@ -7446,6 +7446,8 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
 
 function Convocation({ db, cat, match, mutate, onClose }) {
   const [copie, setCopie] = useState(false);
+  const [texteManuel, setTexteManuel] = useState(null);
+  const [pngMsg, setPngMsg] = useState(null);
   const cur = db.matches.find((x) => x.id === match.id) || match;
   const lu = (db.lineups || {})[match.id] || (db.lineups || {})[cat] || {};
   const cap = lu.capitaine;
@@ -7472,31 +7474,104 @@ function Convocation({ db, cat, match, mutate, onClose }) {
     (cur.rdv || cur.lieuRdv) ? `Rendez-vous : ${[cur.rdv, cur.lieuRdv].filter(Boolean).join(" - ")}` : null,
     "",
     `Convoqués (${total}) :`,
-    ...titulaires.map((x, i) => `${i + 1}. ${x.nom}${x.id === cap ? " (capitaine)" : ""}`),
-    ...(remplacants.length ? ["", "Remplaçants :", ...remplacants.map((x) => `- ${x.nom}`)] : []),
+    ...[...titulaires, ...remplacants].map((x, i) => `${i + 1}. ${x.nom}${x.id === cap ? " (capitaine)" : ""}`),
     (cur.lieu === "Extérieur" && t.mode) ? `\nTransport : ${resumeTransport(t)}` : null,
     lignesEnc.length ? `\nEncadrement :\n${lignesEnc.join("\n")}` : null,
   ].filter((l) => l !== null && l !== undefined).join("\n");
 
+  // Texte effectif : celui modifié à la main s'il existe, sinon le texte généré automatiquement (avec heure et lieu).
+  const texteFinal = texteManuel != null ? texteManuel : texte;
+
   function copier() {
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(texte).then(() => setCopie(true)).catch(() => setCopie(false));
+        navigator.clipboard.writeText(texteFinal).then(() => setCopie(true)).catch(() => setCopie(false));
       }
     } catch (er) { setCopie(false); }
+  }
+  function partagerWhatsApp() {
+    try {
+      const url = "https://wa.me/?text=" + encodeURIComponent(texteFinal);
+      window.open(url, "_blank", "noopener");
+    } catch (er) {}
+  }
+  // Transforme le texte de la convocation en image PNG (en-tête club + texte).
+  function genererImagePNG(cb) {
+    try {
+      const lignes = String(texteFinal).split("\n");
+      const Wi = 1000, pad = 60, lh = 40, headerH = 128;
+      const cv = document.createElement("canvas");
+      const ctx = cv.getContext("2d");
+      const fontBody = '26px -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+      ctx.font = fontBody;
+      const maxW = Wi - pad * 2;
+      const wrapped = [];
+      lignes.forEach((l) => {
+        if (!l) { wrapped.push(""); return; }
+        const mots = l.split(" "); let cur = "";
+        mots.forEach((w) => {
+          const test = cur ? cur + " " + w : w;
+          if (ctx.measureText(test).width > maxW && cur) { wrapped.push(cur); cur = w; } else cur = test;
+        });
+        wrapped.push(cur);
+      });
+      const Hi = headerH + pad + wrapped.length * lh + pad;
+      cv.width = Wi; cv.height = Hi;
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, Wi, Hi);
+      ctx.fillStyle = "#0E1E33"; ctx.fillRect(0, 0, Wi, headerH);
+      ctx.fillStyle = "#C8A24B"; ctx.fillRect(0, headerH, Wi, 5);
+      ctx.fillStyle = "#ffffff"; ctx.font = 'bold 34px -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+      ctx.fillText(CLUB, pad, 56);
+      ctx.fillStyle = "#E8C877"; ctx.font = 'bold 23px -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+      ctx.fillText("Feuille de convocation · " + cat, pad, 96);
+      ctx.fillStyle = "#15233B"; ctx.font = fontBody; ctx.textBaseline = "alphabetic";
+      let y = headerH + pad + 20;
+      wrapped.forEach((l) => { ctx.fillText(l, pad, y); y += lh; });
+      if (cv.toBlob) cv.toBlob((b) => cb(b), "image/png");
+      else cb(null);
+    } catch (er) { cb(null); }
+  }
+  function partagerImage() {
+    setPngMsg("Préparation de l'image...");
+    genererImagePNG((blob) => {
+      if (!blob) { setPngMsg("Création de l'image impossible sur cet appareil."); return; }
+      const nomFichier = `Convocation_${cat}_${(cur.adversaire || "match").replace(/\s+/g, "_")}.png`;
+      try {
+        const file = new File([blob], nomFichier, { type: "image/png" });
+        if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+          navigator.share({ files: [file], title: "Convocation " + cat }).then(() => setPngMsg(null)).catch(() => setPngMsg(null));
+          return;
+        }
+      } catch (er) {}
+      // repli : téléchargement de l'image
+      try {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a"); a.href = url; a.download = nomFichier; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 3000);
+        setPngMsg("Image enregistrée. Tu peux la joindre dans WhatsApp.");
+      } catch (er) { setPngMsg("Partage de l'image impossible sur cet appareil."); }
+    });
   }
 
   return (
     <Modal title="Feuille de convocation" onClose={onClose}
-      footer={<Btn variant="accent" full disabled={total === 0} onClick={copier}><Send size={16} /> {copie ? "Texte copié" : "Copier le texte"}</Btn>}>
+      footer={<><Btn full disabled={total === 0} onClick={partagerWhatsApp} style={{ background: "#25D366", color: "#fff" }}><Send size={16} /> WhatsApp (texte)</Btn><Btn variant="primary" full disabled={total === 0} onClick={partagerImage}><FileDown size={16} /> Partager en image</Btn></>}>
       <Field label="Heure de rendez-vous"><Inp type="time" value={cur.rdv || ""} onChange={(ev) => maj({ rdv: ev.target.value })} /></Field>
       <Field label="Lieu de rendez-vous (optionnel)"><Inp value={cur.lieuRdv || ""} onChange={(ev) => maj({ lieuRdv: ev.target.value })} placeholder="Parking du stade, adresse..." /></Field>
       {total === 0 ? (
         <Empty icon={<Users size={22} color={C.gris} />} text="Aucun joueur convoqué" sub="Place des joueurs dans la composition pour générer la convocation" />
-      ) : (
-        <textarea readOnly value={texte} rows={Math.min(22, 9 + total)} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit", fontSize: 13, lineHeight: 1.5 }} />
-      )}
-      <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8 }}>La liste vient de la composition de la catégorie (titulaires et remplaçants). Tu peux aussi sélectionner le texte à la main pour l'envoyer aux parents.</div>
+      ) : (<>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5, flexWrap: "wrap", gap: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3 }}>Texte de la convocation (modifiable)</div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            {texteManuel != null && <button type="button" onClick={() => { setTexteManuel(null); setPngMsg(null); }} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12, fontWeight: 700, textDecoration: "underline", padding: 0 }}>Revenir au texte automatique</button>}
+            <button type="button" onClick={copier} style={{ background: "none", border: "none", color: C.bleu, cursor: "pointer", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4, padding: 0 }}><Send size={13} /> {copie ? "Copié" : "Copier"}</button>
+          </div>
+        </div>
+        <textarea value={texteFinal} onChange={(ev) => { setTexteManuel(ev.target.value); setCopie(false); }} rows={Math.min(22, 9 + total)} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit", fontSize: 13, lineHeight: 1.5 }} />
+      </>)}
+      {pngMsg && <div style={{ fontSize: 12, fontWeight: 700, color: pngMsg.includes("impossible") ? C.rouge : C.vert, marginTop: 8 }}>{pngMsg}</div>}
+      <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8 }}>Le texte vient de la composition (titulaires et remplaçants) et inclut l'heure et le lieu de rendez-vous. Tu peux le modifier librement avant de le partager en texte sur WhatsApp ou en image.</div>
     </Modal>
   );
 }
