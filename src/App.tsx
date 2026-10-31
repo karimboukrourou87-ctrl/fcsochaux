@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.18.88";
+const APP_VERSION = "16.18.93";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -18310,21 +18310,15 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
   // Enregistrement temporisé : l'affichage se met à jour tout de suite, mais la sauvegarde (réseau)
   // n'est envoyée qu'après une courte pause de frappe, pour éviter des enregistrements à chaque touche.
   const onSaveRef = useRef(onSave); onSaveRef.current = onSave;
-  const saveTimer = useRef(null);
   const pendingOrg = useRef(null);
-  const flushSave = () => {
-    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
-    if (pendingOrg.current) { onSaveRef.current(pendingOrg.current); pendingOrg.current = null; }
-  };
-  const commit = (next) => {
-    setOrg(next);
-    pendingOrg.current = next;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => { if (pendingOrg.current) { onSaveRef.current(pendingOrg.current); pendingOrg.current = null; } saveTimer.current = null; }, 1000);
-  };
+  const [nonEnregistre, setNonEnregistre] = useState(false);
+  // AUCUN enregistrement automatique pendant la saisie : on garde les modifications en local.
+  // La sauvegarde (réseau) ne part qu'au clic sur « Enregistrer » ou à la fermeture de la fenêtre.
+  const flushSave = () => { if (pendingOrg.current) { onSaveRef.current(pendingOrg.current); pendingOrg.current = null; setNonEnregistre(false); } };
+  const commit = (next) => { setOrg(next); pendingOrg.current = next; setNonEnregistre(true); };
   // Sécurité : on force la sauvegarde en attente si la fenêtre est fermée/démontée.
-  useEffect(() => () => { flushSave(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
-  function enregistrerManuel() { flushSave(); onSave(org); setMsgSave("Modifications enregistrées"); setTimeout(() => setMsgSave(null), 2500); }
+  useEffect(() => () => { if (pendingOrg.current) onSaveRef.current(pendingOrg.current); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  function enregistrerManuel() { const aEnvoyer = pendingOrg.current || org; pendingOrg.current = null; onSave(aEnvoyer); setNonEnregistre(false); setMsgSave("Modifications enregistrées"); setTimeout(() => setMsgSave(null), 2500); }
   const fermer = () => { flushSave(); onClose(); };
   async function exporterPDF() {
     setMsgPdf("Préparation du PDF...");
@@ -18376,15 +18370,44 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
   function renommerEquipe(id, nouveauNom) {
     const n = String(nouveauNom || "").trim();
     if (!n) return;
-    commit({ ...org, equipes: org.equipes.map((e) => e.id === id ? { ...e, nom: n } : e) });
+    // Le nouveau nom est aussi répercuté dans le planning déjà généré (sans le reconstruire).
+    const planR = (org.planning || []).map((s) => s.matchs ? { ...s, matchs: s.matchs.map((m) => ({ ...m, a: m.aId === id ? n : m.a, b: m.bId === id ? n : m.b })) } : s);
+    const planTR = (org.planningTeams || []).map((t) => t.id === id ? { ...t, nom: n } : t);
+    commit({ ...org, equipes: org.equipes.map((e) => e.id === id ? { ...e, nom: n } : e), planning: planR, planningTeams: planTR });
   }
-  function suppEquipe(id) {
+  // CAS 1 — l'équipe quitte PENDANT le tournoi : on garde toutes ses rencontres mais on les met
+  // en « forfait » : l'adversaire gagne (3-0). L'équipe reste affichée, marquée « Forfait ».
+  const FORFAIT_BUTS = 3;
+  function forfaitEquipe(id) {
+    const majMatchs = (arr) => (arr || []).map((m) => {
+      if (m.aId === id) return { ...m, sa: 0, sb: FORFAIT_BUTS, forfait: true };
+      if (m.bId === id) return { ...m, sa: FORFAIT_BUTS, sb: 0, forfait: true };
+      return m;
+    });
     commit({
+      ...org,
+      equipes: org.equipes.map((e) => e.id === id ? { ...e, forfait: true } : e),
+      poules: org.poules.map((p) => ({ ...p, matchs: majMatchs(p.matchs) })),
+      finales: org.finales.map((f) => ({ ...f, matchs: majMatchs(f.matchs) })),
+      planning: (org.planning || []).map((s) => s.matchs ? { ...s, matchs: majMatchs(s.matchs) } : s),
+    });
+  }
+  // CAS 2 — l'équipe est absente AU DÉPART : on la retire complètement et on réorganise le planning
+  // en fonction des équipes réellement présentes.
+  function retirerReorganiser(id) {
+    const next = {
       ...org,
       equipes: org.equipes.filter((e) => e.id !== id),
       poules: org.poules.map((p) => ({ ...p, equipeIds: (p.equipeIds || []).filter((x) => x !== id), matchs: (p.matchs || []).filter((m) => m.aId !== id && m.bId !== id) })),
       finales: org.finales.map((f) => ({ ...f, matchs: (f.matchs || []).map((m) => ({ ...m, aId: m.aId === id ? "" : m.aId, bId: m.bId === id ? "" : m.bId })) })),
-    });
+      planningTeams: (org.planningTeams || []).filter((t) => t.id !== id),
+    };
+    if ((org.planning || []).length > 0) {
+      genererPlanning({ ...next, planningConf: { ...next.planningConf, nbEquipes: "" } });
+      setMsgSave("Planning réorganisé avec les équipes présentes."); setTimeout(() => setMsgSave(null), 4000);
+    } else {
+      commit({ ...next, planning: [] });
+    }
   }
   function majPoule(pid, patch) { commit({ ...org, poules: org.poules.map((p) => p.id === pid ? { ...p, ...patch } : p) }); }
   function ajouterPoule() { commit({ ...org, poules: [...org.poules, { id: uid(), nom: `Poule ${String.fromCharCode(65 + org.poules.length)}`, temps: 10, equipeIds: [], matchs: [] }] }); }
@@ -18473,16 +18496,53 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
   function ajouterMatchFinale(fid) { const f = org.finales.find((x) => x.id === fid); majFinale(fid, { matchs: [...(f.matchs || []), { id: uid(), aId: "", bId: "", sa: "", sb: "" }] }); }
   function majMatchFinale(fid, mid, patch) { const f = org.finales.find((x) => x.id === fid); majFinale(fid, { matchs: (f.matchs || []).map((m) => m.id === mid ? { ...m, ...patch } : m) }); }
   function suppMatchFinale(fid, mid) { const f = org.finales.find((x) => x.id === fid); majFinale(fid, { matchs: (f.matchs || []).filter((m) => m.id !== mid) }); }
+  // Équipes déjà engagées dans une phase finale (pour ne pas repêcher une équipe déjà qualifiée).
+  function equipesEnFinale() {
+    const s = new Set();
+    (org.finales || []).forEach((f) => (f.matchs || []).forEach((m) => { if (m.aId) s.add(m.aId); if (m.bId) s.add(m.bId); }));
+    return s;
+  }
+  // Meilleure équipe repêchable = la mieux classée en phase de qualification (poules),
+  // pas encore qualifiée en finale et non forfait.
+  function meilleureRepechable(exclureId) {
+    const used = equipesEnFinale();
+    const forfaitIds = new Set((org.equipes || []).filter((e) => e.forfait).map((e) => e.id));
+    const rows = [];
+    (org.poules || []).forEach((p) => {
+      const cl = classementPoule(p.equipeIds, p.matchs, org.equipes, org.regle);
+      cl.forEach((r, idx) => rows.push({ id: r.id, rangPoule: idx + 1, pts: r.pts, diff: (r.bp - r.bc), bp: r.bp }));
+    });
+    rows.sort((a, z) => a.rangPoule - z.rangPoule || z.pts - a.pts || z.diff - a.diff || z.bp - a.bp);
+    return rows.find((r) => r.id !== exclureId && !used.has(r.id) && !forfaitIds.has(r.id)) || null;
+  }
+  function repecher(fid, mid, cote) {
+    const f = org.finales.find((x) => x.id === fid); if (!f) return;
+    const m = (f.matchs || []).find((x) => x.id === mid); if (!m) return;
+    const actuel = cote === "a" ? m.aId : m.bId;
+    const best = meilleureRepechable(actuel);
+    if (!best) { setMsgSave("Aucune équipe à repêcher (toutes déjà qualifiées ou forfait)."); setTimeout(() => setMsgSave(null), 3500); return; }
+    majMatchFinale(fid, mid, cote === "a" ? { aId: best.id } : { bId: best.id });
+    const nom = (org.equipes.find((e) => e.id === best.id) || {}).nom || "Équipe";
+    setMsgSave(`${nom} repêchée (mieux classée en qualification).`); setTimeout(() => setMsgSave(null), 3500);
+  }
+  // Forfait sur une rencontre de phase finale : l'équipe du côté choisi déclare forfait, l'adversaire gagne.
+  function forfaitMatchFinale(fid, mid, cote) {
+    majMatchFinale(fid, mid, cote === "a" ? { sa: 0, sb: FORFAIT_BUTS, forfait: true } : { sa: FORFAIT_BUTS, sb: 0, forfait: true });
+    setMsgSave("Forfait enregistré : l'adversaire remporte la rencontre."); setTimeout(() => setMsgSave(null), 3000);
+  }
 
   function majPlanningConf(patch) { commit({ ...org, planningConf: { ...org.planningConf, ...patch } }); }
-  function genererPlanning() {
-    const conf = org.planningConf;
+  function genererPlanning(baseOrg) {
+    const src = baseOrg || org;
+    const conf = src.planningConf;
     const nbT = Math.max(1, Number(conf.nbTerrains) || 1);
     let nb = Number(conf.nbEquipes);
-    if (!nb || nb < 2) nb = org.equipes.length;
-    if (!nb || nb < 2) { commit({ ...org, planning: [] }); return; }
+    if (!nb || nb < 2) nb = src.equipes.length;
+    // Réorganisation : si on régénère après un départ, on cale sur le nombre d'équipes réellement présentes.
+    if (baseOrg) nb = src.equipes.length;
+    if (!nb || nb < 2) { commit({ ...src, planning: [] }); return; }
     const teams = [];
-    for (let i = 0; i < nb; i++) teams.push(org.equipes[i] ? { id: org.equipes[i].id, nom: org.equipes[i].nom } : { id: "g" + (i + 1), nom: `Équipe ${i + 1}` });
+    for (let i = 0; i < nb; i++) teams.push(src.equipes[i] ? { id: src.equipes[i].id, nom: src.equipes[i].nom } : { id: "g" + (i + 1), nom: `Équipe ${i + 1}` });
     const allerRounds = roundsRoundRobin(teams);
     const pause = Math.max(0, Number(conf.pause) || 0);
     const repas = Math.max(0, Number(conf.repas) || 0);
@@ -18518,7 +18578,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
     });
     const totalMin = Math.max(0, elapsed - pause);
     const finPrevue = addMinutesHM(conf.debut, totalMin);
-    commit({ ...org, planningConf: { ...conf, nbEquipes: nb, duree }, planning: slots, planningTeams: teams });
+    commit({ ...src, planningConf: { ...conf, nbEquipes: nb, duree }, planning: slots, planningTeams: teams });
     let msg = msgCalc ? msgCalc + " " : `Durée ${duree} min par match. `;
     msg += `Fin estimée vers ${finPrevue}.`;
     if (conf.fin && (toMin(conf.debut) + totalMin) > toMin(conf.fin)) msg += " Attention : cela dépasse l'heure de fin prévue, réduisez la durée ou ajoutez un terrain.";
@@ -18612,7 +18672,9 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
         <button onClick={enregistrerManuel} style={{ border: "none", background: C.jaune, color: C.bleuNuit, borderRadius: 10, padding: "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 800, flex: "0 0 auto" }}><Save size={16} /> Enregistrer</button>
         <button onClick={fermer} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={20} /></button>
       </header>
-      {msgSave && <div style={{ background: "#E2F4E9", color: C.vert, fontWeight: 700, fontSize: 13, textAlign: "center", padding: "8px 12px" }}>{msgSave}</div>}
+      {msgSave ? <div style={{ background: "#E2F4E9", color: C.vert, fontWeight: 700, fontSize: 13, textAlign: "center", padding: "8px 12px" }}>{msgSave}</div>
+        : nonEnregistre ? <div style={{ background: "#FFF3DA", color: "#8A6D00", fontWeight: 700, fontSize: 13, textAlign: "center", padding: "8px 12px" }}>Modifications non enregistrées. Touche « Enregistrer » (ou ferme la fenêtre) pour les sauvegarder.</div>
+        : null}
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
         <Btn variant="accent" full onClick={exporterPDF}><FileDown size={16} /> Exporter le planning et les classements en PDF</Btn>
@@ -18648,20 +18710,27 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
                   <button onClick={() => { renommerEquipe(e.id, editEquipe.nom); setEditEquipe({ id: null, nom: "" }); }} title="Valider" style={{ border: "none", background: "transparent", color: C.vert, cursor: "pointer", display: "grid", placeItems: "center", padding: 0 }}><Check size={15} /></button>
                 </span>
               ) : suppEquipeId === e.id ? (
-                <span key={e.id} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#FBE3E3", border: `1px solid ${C.rouge}`, borderRadius: 20, padding: "6px 10px", fontSize: 12.5, fontWeight: 800, color: C.rouge }}>
-                  Retirer {e.nom} ?
-                  <button onClick={() => { suppEquipe(e.id); setSuppEquipeId(null); }} title="Confirmer le retrait" style={{ border: "none", background: C.rouge, color: "#fff", cursor: "pointer", borderRadius: 8, padding: "3px 9px", fontSize: 12, fontWeight: 800 }}>Oui</button>
-                  <button onClick={() => setSuppEquipeId(null)} title="Annuler" style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.gris, cursor: "pointer", borderRadius: 8, padding: "3px 9px", fontSize: 12, fontWeight: 800 }}>Non</button>
+                <span key={e.id} style={{ flexBasis: "100%", width: "100%", background: "#FFF6F6", border: `1px solid ${C.rouge}`, borderRadius: 14, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: C.rouge, marginBottom: 8 }}>{e.nom} ne joue plus. Que faire ?</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    <button onClick={() => { forfaitEquipe(e.id); setSuppEquipeId(null); }} style={{ border: "none", background: "#8A6D00", color: "#fff", cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Forfait (tournoi commencé)</button>
+                    <button onClick={() => { retirerReorganiser(e.id); setSuppEquipeId(null); }} style={{ border: "none", background: C.bleu, color: "#fff", cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Retirer et réorganiser (absente au départ)</button>
+                    <button onClick={() => setSuppEquipeId(null)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.gris, cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Annuler</button>
+                  </div>
+                  <div style={{ fontSize: 11, color: C.gris, marginTop: 7, lineHeight: 1.45 }}>Forfait : l'équipe reste au classement mais toutes ses rencontres sont gagnées par l'adversaire ({FORFAIT_BUTS}-0). Réorganiser : l'équipe est retirée et le planning est recalculé avec les équipes présentes.</div>
                 </span>
               ) : (
-                <span key={e.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 20, padding: "6px 10px", fontSize: 13, fontWeight: 700 }}>
-                  {e.nom}
+                <span key={e.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", border: `1px solid ${e.forfait ? "#EBD3AE" : C.grisClair}`, borderRadius: 20, padding: "6px 10px", fontSize: 13, fontWeight: 700 }}>
+                  {e.nom}{e.forfait ? <span style={{ fontSize: 10, fontWeight: 800, color: "#8A6D00", background: "#FFF3DA", borderRadius: 6, padding: "1px 6px" }}>Forfait</span> : null}
                   <button onClick={() => setEditEquipe({ id: e.id, nom: e.nom })} title="Modifier le nom" style={{ border: "none", background: "transparent", color: C.bleu, cursor: "pointer", display: "grid", placeItems: "center", padding: 0 }}><Edit3 size={13} /></button>
-                  <button onClick={() => setSuppEquipeId(e.id)} title="Retirer" style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", display: "grid", placeItems: "center", padding: 0 }}><X size={14} /></button>
+                  <button onClick={() => setSuppEquipeId(e.id)} title="Retirer / forfait" style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", display: "grid", placeItems: "center", padding: 0 }}><X size={14} /></button>
                 </span>
               )
             ))}
           </div>
+        )}
+        {org.equipes.length > 0 && (
+          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, marginBottom: 2, lineHeight: 1.45 }}>Crayon : renommer. Croix : gérer un départ, avec deux choix — « Forfait » si le tournoi a commencé (l'adversaire gagne {FORFAIT_BUTS}-0 à chaque rencontre) ou « Retirer et réorganiser » si l'équipe est absente au départ (le planning est recalculé avec les présentes).</div>
         )}
 
         {/* REGLE POINTS */}
@@ -19025,6 +19094,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
 
         {/* PHASES FINALES */}
         <div style={titreSection}>Phases finales</div>
+        <div style={{ fontSize: 11.5, color: C.gris, margin: "0 0 10px", lineHeight: 1.45 }}>Si une équipe quitte à ce stade, tu as deux choix sous chaque rencontre : « Repêcher » (remplacée automatiquement par la mieux classée de la qualification encore disponible) ou « Forfait » (l'adversaire gagne la rencontre {FORFAIT_BUTS}-0). Le reste de la phase finale ne bouge pas.</div>
         <Btn variant="ghost" full style={{ marginBottom: 12 }} onClick={ajouterFinale}><Plus size={16} /> Ajouter une phase finale</Btn>
         {org.finales.map((f) => (
           <Card key={f.id} style={{ marginBottom: 14, padding: 13 }}>
@@ -19037,21 +19107,36 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
               </div>
               <button onClick={() => suppFinale(f.id)} style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", display: "grid", placeItems: "center" }}><Trash2 size={17} /></button>
             </div>
-            <div style={{ display: "grid", gap: 7, marginBottom: 10 }}>
+            <div style={{ display: "grid", gap: 10, marginBottom: 10 }}>
               {(f.matchs || []).map((m) => (
-                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <select value={m.aId} onChange={(e) => majMatchFinale(f.id, m.id, { aId: e.target.value })} style={styleSelEq}>
-                    <option value="">Équipe A</option>
-                    {org.equipes.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
-                  </select>
-                  <input type="number" value={m.sa} onChange={(e) => majMatchFinale(f.id, m.id, { sa: e.target.value })} style={styleInputScore} />
-                  <span style={{ color: C.gris, fontWeight: 800 }}>-</span>
-                  <input type="number" value={m.sb} onChange={(e) => majMatchFinale(f.id, m.id, { sb: e.target.value })} style={styleInputScore} />
-                  <select value={m.bId} onChange={(e) => majMatchFinale(f.id, m.id, { bId: e.target.value })} style={styleSelEq}>
-                    <option value="">Équipe B</option>
-                    {org.equipes.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
-                  </select>
-                  <button onClick={() => suppMatchFinale(f.id, m.id)} style={{ border: "none", background: "transparent", color: C.gris, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={15} /></button>
+                <div key={m.id}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <select value={m.aId} onChange={(e) => majMatchFinale(f.id, m.id, { aId: e.target.value })} style={styleSelEq}>
+                      <option value="">Équipe A</option>
+                      {org.equipes.map((e) => <option key={e.id} value={e.id}>{e.nom}{e.forfait ? " (forfait)" : ""}</option>)}
+                    </select>
+                    <input type="number" value={m.sa} onChange={(e) => majMatchFinale(f.id, m.id, { sa: e.target.value })} style={styleInputScore} />
+                    <span style={{ color: C.gris, fontWeight: 800 }}>-</span>
+                    <input type="number" value={m.sb} onChange={(e) => majMatchFinale(f.id, m.id, { sb: e.target.value })} style={styleInputScore} />
+                    <select value={m.bId} onChange={(e) => majMatchFinale(f.id, m.id, { bId: e.target.value })} style={styleSelEq}>
+                      <option value="">Équipe B</option>
+                      {org.equipes.map((e) => <option key={e.id} value={e.id}>{e.nom}{e.forfait ? " (forfait)" : ""}</option>)}
+                    </select>
+                    <button onClick={() => suppMatchFinale(f.id, m.id)} style={{ border: "none", background: "transparent", color: C.gris, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={15} /></button>
+                  </div>
+                  <div style={{ display: "flex", gap: 10, marginTop: 5, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3 }}>Si départ :</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ fontSize: 11, color: C.gris, fontWeight: 700 }}>A</span>
+                      <button onClick={() => repecher(f.id, m.id, "a")} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, cursor: "pointer", borderRadius: 8, padding: "4px 9px", fontSize: 11.5, fontWeight: 800 }}>Repêcher</button>
+                      <button onClick={() => forfaitMatchFinale(f.id, m.id, "a")} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: "#8A6D00", cursor: "pointer", borderRadius: 8, padding: "4px 9px", fontSize: 11.5, fontWeight: 800 }}>Forfait</button>
+                    </span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ fontSize: 11, color: C.gris, fontWeight: 700 }}>B</span>
+                      <button onClick={() => repecher(f.id, m.id, "b")} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, cursor: "pointer", borderRadius: 8, padding: "4px 9px", fontSize: 11.5, fontWeight: 800 }}>Repêcher</button>
+                      <button onClick={() => forfaitMatchFinale(f.id, m.id, "b")} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: "#8A6D00", cursor: "pointer", borderRadius: 8, padding: "4px 9px", fontSize: 11.5, fontWeight: 800 }}>Forfait</button>
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
