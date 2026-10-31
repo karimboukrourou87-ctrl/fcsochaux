@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.05";
+const APP_VERSION = "16.19.06";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -18433,12 +18433,24 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
     const ff = new Set((baseOrg.equipes || []).filter((e) => e.forfait).map((e) => e.id));
     const maj = (arr) => (arr || []).map((m) => {
       const aFF = ff.has(m.aId), bFF = ff.has(m.bId);
-      if (aFF && !bFF) return { ...m, sa: 0, sb: FORFAIT_BUTS, forfaitEq: true };
-      if (bFF && !aFF) return { ...m, sa: FORFAIT_BUTS, sb: 0, forfaitEq: true };
-      if (aFF && bFF) return { ...m, sa: 0, sb: 0, forfaitEq: true };
-      // plus aucune équipe en forfait sur ce match : si on l'avait mis en forfait d'équipe, on le vide.
+      if (aFF || bFF) {
+        // On pose le forfait. Si ce match n'etait pas deja en forfait, on MEMORISE son vrai score
+        // (scoreAvant) pour pouvoir le restaurer si le forfait etait une erreur. Si une sauvegarde
+        // existe deja (forfait deja actif), on la conserve.
+        const scoreAvant = (!m.forfaitEq && !m.forfait) ? { sa: m.sa, sb: m.sb } : m.scoreAvant;
+        if (aFF && !bFF) return { ...m, sa: 0, sb: FORFAIT_BUTS, forfaitEq: true, scoreAvant };
+        if (bFF && !aFF) return { ...m, sa: FORFAIT_BUTS, sb: 0, forfaitEq: true, scoreAvant };
+        return { ...m, sa: 0, sb: 0, forfaitEq: true, scoreAvant };
+      }
+      // plus aucune équipe en forfait sur ce match : si on l'avait mis en forfait d'équipe, on RESTAURE
+      // le vrai score memorise (annulation d'une erreur), ou on vide s'il n'y en avait pas.
       // (m.forfait : ancien marqueur, migré ici ; m.forfaitManuel d'une finale n'est PAS touché.)
-      if (m.forfaitEq || m.forfait) return { ...m, sa: "", sb: "", forfaitEq: false, forfait: false };
+      if (m.forfaitEq || m.forfait) {
+        const r = m.scoreAvant || { sa: "", sb: "" };
+        const copie = { ...m, sa: r.sa == null ? "" : r.sa, sb: r.sb == null ? "" : r.sb, forfaitEq: false, forfait: false };
+        delete copie.scoreAvant;
+        return copie;
+      }
       return m;
     });
     return {
@@ -18455,7 +18467,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
   function annulerForfaitEquipe(id) {
     const next = { ...org, equipes: org.equipes.map((e) => e.id === id ? { ...e, forfait: false } : e) };
     commit(appliquerForfaits(next));
-    setMsgSave("Forfait annulé. Poules, phases finales et planning remis à jour."); setTimeout(() => setMsgSave(null), 3500);
+    setMsgSave("Forfait annulé. Les vrais scores saisis avant le forfait sont restaurés (poules, phases finales et planning)."); setTimeout(() => setMsgSave(null), 4000);
   }
   // CAS 2 — l'équipe est absente AU DÉPART : on la retire complètement et on réorganise le planning
   // en fonction des équipes réellement présentes.
@@ -18894,7 +18906,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
                     <button onClick={() => { retirerReorganiser(e.id); setSuppEquipeId(null); }} style={{ border: "none", background: C.bleu, color: "#fff", cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Retirer et réorganiser (absente au départ)</button>
                     <button onClick={() => setSuppEquipeId(null)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.gris, cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Annuler</button>
                   </div>
-                  <div style={{ fontSize: 11, color: C.gris, marginTop: 7, lineHeight: 1.45 }}>{e.forfait ? "Annuler le forfait : l'équipe reprend sa place normale et ses rencontres forfait sont remises à zéro (tu ressaisis les vrais scores)." : `Forfait : l'équipe reste au classement mais toutes ses rencontres sont gagnées par l'adversaire (${FORFAIT_BUTS}-0). Réorganiser : l'équipe est retirée et le planning est recalculé avec les équipes présentes.`}</div>
+                  <div style={{ fontSize: 11, color: C.gris, marginTop: 7, lineHeight: 1.45 }}>{e.forfait ? "Annuler le forfait : l'équipe reprend sa place normale. Les vrais scores saisis avant le forfait sont restaurés automatiquement (et les rencontres non jouées redeviennent vides)." : `Forfait : l'équipe reste au classement mais toutes ses rencontres sont gagnées par l'adversaire (${FORFAIT_BUTS}-0). Les scores déjà saisis sont conservés et restaurés si tu annules le forfait. Réorganiser : l'équipe est retirée et le planning est recalculé avec les équipes présentes.`}</div>
                 </span>
               ) : (
                 <span key={e.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", border: `1px solid ${e.forfait ? "#EBD3AE" : C.grisClair}`, borderRadius: 20, padding: "6px 10px", fontSize: 13, fontWeight: 700 }}>
