@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.18.86";
+const APP_VERSION = "16.18.87";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -18307,8 +18307,25 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
   const [msgPdf, setMsgPdf] = useState(null);
   const [msgSave, setMsgSave] = useState(null);
   const [retardMin, setRetardMin] = useState("");
-  const commit = (next) => { setOrg(next); onSave(next); };
-  function enregistrerManuel() { onSave(org); setMsgSave("Modifications enregistrées"); setTimeout(() => setMsgSave(null), 2500); }
+  // Enregistrement temporisé : l'affichage se met à jour tout de suite, mais la sauvegarde (réseau)
+  // n'est envoyée qu'après une courte pause de frappe, pour éviter des enregistrements à chaque touche.
+  const onSaveRef = useRef(onSave); onSaveRef.current = onSave;
+  const saveTimer = useRef(null);
+  const pendingOrg = useRef(null);
+  const flushSave = () => {
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
+    if (pendingOrg.current) { onSaveRef.current(pendingOrg.current); pendingOrg.current = null; }
+  };
+  const commit = (next) => {
+    setOrg(next);
+    pendingOrg.current = next;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { if (pendingOrg.current) { onSaveRef.current(pendingOrg.current); pendingOrg.current = null; } saveTimer.current = null; }, 1000);
+  };
+  // Sécurité : on force la sauvegarde en attente si la fenêtre est fermée/démontée.
+  useEffect(() => () => { flushSave(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  function enregistrerManuel() { flushSave(); onSave(org); setMsgSave("Modifications enregistrées"); setTimeout(() => setMsgSave(null), 2500); }
+  const fermer = () => { flushSave(); onClose(); };
   async function exporterPDF() {
     setMsgPdf("Préparation du PDF...");
     try { const jsPDF = await chargerJsPDF(); exporterPlateauPDF(jsPDF, tournoi.nom || "Plateau", org); setMsgPdf(null); }
@@ -18583,13 +18600,13 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 70, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
+        <button onClick={fermer} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontWeight: 800, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Plateau · {tournoi.nom || "Tournoi"}</div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Équipes, poules, phases finales et classement</div>
         </div>
         <button onClick={enregistrerManuel} style={{ border: "none", background: C.jaune, color: C.bleuNuit, borderRadius: 10, padding: "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 800, flex: "0 0 auto" }}><Save size={16} /> Enregistrer</button>
-        <button onClick={() => { try { enregistrerManuel(); } catch (e) {} onClose(); }} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={20} /></button>
+        <button onClick={fermer} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={20} /></button>
       </header>
       {msgSave && <div style={{ background: "#E2F4E9", color: C.vert, fontWeight: 700, fontSize: 13, textAlign: "center", padding: "8px 12px" }}>{msgSave}</div>}
 
