@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.04";
+const APP_VERSION = "16.19.05";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -12021,8 +12021,8 @@ function DefiJonglageLigue({ match, players, db, mutate, onClose }) {
         <Field label="Match N°"><Inp value={j.matchNum} onChange={(e) => setJ((o) => ({ ...o, matchNum: e.target.value }))} /></Field>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
-        <Field label="Score domicile"><Inp type="number" inputMode="numeric" value={j.scoreDom} onChange={(e) => setJ((o) => ({ ...o, scoreDom: e.target.value }))} placeholder="Buts marqués" /></Field>
-        <Field label="Score visiteuse"><Inp type="number" inputMode="numeric" value={j.scoreVis} onChange={(e) => setJ((o) => ({ ...o, scoreVis: e.target.value }))} placeholder="Buts adverses" /></Field>
+        <Field label="Score domicile"><Inp type="number" inputMode="numeric" min={0} value={j.scoreDom} onChange={(e) => setJ((o) => ({ ...o, scoreDom: e.target.value === "" ? "" : String(Math.max(0, parseInt(e.target.value, 10) || 0)) }))} placeholder="Buts marqués" /></Field>
+        <Field label="Score visiteuse"><Inp type="number" inputMode="numeric" min={0} value={j.scoreVis} onChange={(e) => setJ((o) => ({ ...o, scoreVis: e.target.value === "" ? "" : String(Math.max(0, parseInt(e.target.value, 10) || 0)) }))} placeholder="Buts adverses" /></Field>
       </div>
       {tableau("dom", "ÉQUIPE À DOMICILE")}
       {tableau("vis", "ÉQUIPE VISITEUSE")}
@@ -18828,6 +18828,8 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
     <Btn variant="accent" full style={{ margin: "6px 0 14px" }} onClick={exporterPDF}><FileDown size={16} /> {label || "Exporter en PDF (planning et classements)"}</Btn>
   );
   const styleInputScore = { width: 42, textAlign: "center", border: `1px solid ${C.grisClair}`, borderRadius: 8, padding: "7px 0", fontSize: 15, fontWeight: 800, boxSizing: "border-box" };
+  // Garde-fou : un score ne peut jamais etre negatif (ni en tapant, ni avec les fleches, ni en collant).
+  const scoreOk = (v) => { if (v === "" || v == null) return ""; const n = parseInt(v, 10); if (Number.isNaN(n)) return ""; return String(Math.max(0, n)); };
   const styleSelEq = { flex: 1, minWidth: 0, border: `1px solid ${C.grisClair}`, borderRadius: 8, padding: "7px 8px", fontSize: 13, background: "#fff" };
   const titreSection = { fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "18px 0 8px" };
 
@@ -19062,9 +19064,9 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
                         </div>
                         {m.aId && (
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                            <input type="number" inputMode="numeric" value={m.sa ?? ""} onChange={(e) => majScorePlanning(i, m.id, { sa: e.target.value })} placeholder="-" style={styleInputScore} />
+                            <input type="number" inputMode="numeric" min={0} value={m.sa ?? ""} onChange={(e) => majScorePlanning(i, m.id, { sa: scoreOk(e.target.value) })} placeholder="-" style={styleInputScore} />
                             <span style={{ color: C.gris, fontWeight: 800 }}>-</span>
-                            <input type="number" inputMode="numeric" value={m.sb ?? ""} onChange={(e) => majScorePlanning(i, m.id, { sb: e.target.value })} placeholder="-" style={styleInputScore} />
+                            <input type="number" inputMode="numeric" min={0} value={m.sb ?? ""} onChange={(e) => majScorePlanning(i, m.id, { sb: scoreOk(e.target.value) })} placeholder="-" style={styleInputScore} />
                           </div>
                         )}
                       </div>
@@ -19192,9 +19194,9 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
                     return (
                     <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 7, background: (ffA || ffB) ? "#FFFBF0" : "transparent", borderRadius: 8, padding: (ffA || ffB) ? "3px 4px" : 0 }}>
                       <div style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.aId)}{ffA ? badge : null}</div>
-                      <input type="number" value={m.sa} onChange={(e) => majMatchPoule(p.id, m.id, { sa: e.target.value })} style={styleInputScore} />
+                      <input type="number" min={0} value={m.sa} onChange={(e) => majMatchPoule(p.id, m.id, { sa: scoreOk(e.target.value) })} style={styleInputScore} />
                       <span style={{ color: C.gris, fontWeight: 800 }}>-</span>
-                      <input type="number" value={m.sb} onChange={(e) => majMatchPoule(p.id, m.id, { sb: e.target.value })} style={styleInputScore} />
+                      <input type="number" min={0} value={m.sb} onChange={(e) => majMatchPoule(p.id, m.id, { sb: scoreOk(e.target.value) })} style={styleInputScore} />
                       <div style={{ flex: 1, fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.bId)}{ffB ? badge : null}</div>
                       <button onClick={() => suppMatchPoule(p.id, m.id)} style={{ border: "none", background: "transparent", color: C.gris, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={15} /></button>
                     </div>
@@ -19279,9 +19281,9 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
                       {p.matchs.map((m) => (
                         <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 7 }}>
                           <div style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.aId)}</div>
-                          <input type="number" value={m.sa} onChange={(e) => majMatchPoule(p.id, m.id, { sa: e.target.value })} style={styleInputScore} />
+                          <input type="number" min={0} value={m.sa} onChange={(e) => majMatchPoule(p.id, m.id, { sa: scoreOk(e.target.value) })} style={styleInputScore} />
                           <span style={{ color: C.gris, fontWeight: 800 }}>-</span>
-                          <input type="number" value={m.sb} onChange={(e) => majMatchPoule(p.id, m.id, { sb: e.target.value })} style={styleInputScore} />
+                          <input type="number" min={0} value={m.sb} onChange={(e) => majMatchPoule(p.id, m.id, { sb: scoreOk(e.target.value) })} style={styleInputScore} />
                           <div style={{ flex: 1, fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.bId)}</div>
                         </div>
                       ))}
@@ -19350,9 +19352,9 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
                       <option value="">Équipe A</option>
                       {org.equipes.map((e) => <option key={e.id} value={e.id}>{e.nom}{e.forfait ? " (forfait)" : ""}</option>)}
                     </select>
-                    <input type="number" value={m.sa} onChange={(e) => majMatchFinale(f.id, m.id, { sa: e.target.value })} style={styleInputScore} />
+                    <input type="number" min={0} value={m.sa} onChange={(e) => majMatchFinale(f.id, m.id, { sa: scoreOk(e.target.value) })} style={styleInputScore} />
                     <span style={{ color: C.gris, fontWeight: 800 }}>-</span>
-                    <input type="number" value={m.sb} onChange={(e) => majMatchFinale(f.id, m.id, { sb: e.target.value })} style={styleInputScore} />
+                    <input type="number" min={0} value={m.sb} onChange={(e) => majMatchFinale(f.id, m.id, { sb: scoreOk(e.target.value) })} style={styleInputScore} />
                     <select value={m.bId} onChange={(e) => majMatchFinale(f.id, m.id, { bId: e.target.value })} style={styleSelEq}>
                       <option value="">Équipe B</option>
                       {org.equipes.map((e) => <option key={e.id} value={e.id}>{e.nom}{e.forfait ? " (forfait)" : ""}</option>)}
