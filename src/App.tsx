@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.18.93";
+const APP_VERSION = "16.19.03";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -18046,6 +18046,20 @@ function couleurRang(place) {
 function classementPoule(equipeIds, matchs, equipes, regle) {
   const st = {};
   (equipeIds || []).forEach((id) => { st[id] = { id, j: 0, g: 0, n: 0, p: 0, bp: 0, bc: 0, pts: 0 }; });
+  // Filet de securite forfait : si une equipe est declaree forfait et que le score
+  // du match n'a pas encore ete fige dans le planning, on applique 3-0 au calcul.
+  const ff = new Set((equipes || []).filter((e) => e && e.forfait).map((e) => e.id));
+  const PTS_FORF = 3;
+  const avecForfait = (matchs || []).map((m) => {
+    const vide = m.sa === "" || m.sa == null || m.sb === "" || m.sb == null;
+    if (!vide) return m;
+    const aFF = ff.has(m.aId), bFF = ff.has(m.bId);
+    if (aFF && !bFF) return { ...m, sa: 0, sb: PTS_FORF };
+    if (bFF && !aFF) return { ...m, sa: PTS_FORF, sb: 0 };
+    if (aFF && bFF) return { ...m, sa: 0, sb: 0 };
+    return m;
+  });
+  matchs = avecForfait;
   (matchs || []).forEach((m) => {
     const sa = m.sa === "" || m.sa == null ? null : Number(m.sa);
     const sb = m.sb === "" || m.sb == null ? null : Number(m.sb);
@@ -18148,11 +18162,19 @@ function exporterPlateauPDF(jsPDF, titre, org) {
       if (s.phase) { const pw = doc.getTextWidth(s.phase); doc.text(s.phase, W - M - 8 - pw, y + 1); }
       y += 20;
       (s.matchs || []).forEach((m) => {
+        // Terrain a gauche, rencontre centree : equipe A (alignee a droite vers le centre),
+        // "contre" ou le score au centre, equipe B (alignee a gauche depuis le centre).
         sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(nomTerr(m.terrain), M + 8, y);
-        sc(encre); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+        const cx = W / 2;
         const aScore = m.sa !== "" && m.sa != null, bScore = m.sb !== "" && m.sb != null;
-        const milieu = (aScore || bScore) ? `   ${aScore ? m.sa : "-"}  -  ${bScore ? m.sb : "-"}   ` : "   contre   ";
-        doc.text(`${m.a}${milieu}${m.b}`, M + 90, y);
+        const avecScore = aScore || bScore;
+        const milieu = avecScore ? `${aScore ? m.sa : "-"}  -  ${bScore ? m.sb : "-"}` : "contre";
+        doc.setFont("helvetica", avecScore ? "bold" : "normal"); doc.setFontSize(avecScore ? 11 : 9);
+        const demi = doc.getTextWidth(String(milieu)) / 2 + 10;
+        sc(gris); doc.text(String(milieu), cx, y, { align: "center" });
+        sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+        doc.text(String(m.a || ""), cx - demi, y, { align: "right" });
+        doc.text(String(m.b || ""), cx + demi, y, { align: "left" });
         y += 15;
       });
       y += 6;
@@ -18197,12 +18219,37 @@ function exporterPlateauPDF(jsPDF, titre, org) {
     }
   }
 
-  // Classement général (à partir du planning)
-  const teamsPlan = org.planningTeams || [];
+  // Classement général (à partir du planning) : meme logique robuste que l'ecran.
+  const rawMatchsPDF = [];
+  (org.planning || []).forEach((s) => { if (s.repas) return; (s.matchs || []).forEach((m) => rawMatchsPDF.push(m)); });
+  const refAp = (m) => m.aId || m.a, refBp = (m) => m.bId || m.b;
+  let teamsPlanBrut = (org.planningTeams || []).filter((t) => t && t.id);
+  if (!teamsPlanBrut.length) {
+    const vus = new Map();
+    rawMatchsPDF.forEach((m) => { const ia = refAp(m), ib = refBp(m); if (ia && !vus.has(ia)) vus.set(ia, m.a || ia); if (ib && !vus.has(ib)) vus.set(ib, m.b || ib); });
+    teamsPlanBrut = [...vus.entries()].map(([id, nom]) => ({ id, nom }));
+  }
+  const forfaitEqsPDF = (org.equipes || []).filter((e) => e && e.forfait);
+  const mapTP = new Map(teamsPlanBrut.map((t) => [t.id, { id: t.id, nom: t.nom }]));
+  forfaitEqsPDF.forEach((e) => { if (!mapTP.has(e.id)) mapTP.set(e.id, { id: e.id, nom: e.nom }); });
+  const ffIdPDF = new Set(forfaitEqsPDF.map((e) => e.id));
+  const ffNomPDF = new Set(forfaitEqsPDF.map((e) => e.nom));
+  const teamsPlan = [...mapTP.values()].map((t) => ({ ...t, forfait: ffIdPDF.has(t.id) || ffNomPDF.has(t.nom) }));
   if (teamsPlan.length) {
-    const matchsPlan = [];
-    (org.planning || []).forEach((s) => (s.matchs || []).forEach((m) => { if (m.aId && m.bId) matchsPlan.push(m); }));
-    const cg = classementPoule(teamsPlan.map((t) => t.id), matchsPlan, teamsPlan, regle);
+    const matchsPlan = rawMatchsPDF.filter((m) => refAp(m) && refBp(m)).map((m) => ({ ...m, aId: refAp(m), bId: refBp(m) }));
+    const paireP = (x, y) => [x, y].sort().join("|");
+    const dejaLaP = new Set(matchsPlan.map((m) => paireP(m.aId, m.bId)));
+    const idsP = teamsPlan.map((t) => t.id);
+    const forfaitIdsP = teamsPlan.filter((t) => t.forfait).map((t) => t.id);
+    const synthP = [];
+    forfaitIdsP.forEach((fid) => idsP.forEach((oid) => {
+      if (oid === fid) return;
+      const k = paireP(fid, oid);
+      if (dejaLaP.has(k)) return;
+      dejaLaP.add(k);
+      synthP.push({ id: "synthFF-" + fid + "-" + oid, aId: fid, bId: oid, sa: 0, sb: forfaitIdsP.indexOf(oid) !== -1 ? 0 : 3, forfaitEq: true });
+    }));
+    const cg = classementPoule(idsP, matchsPlan.concat(synthP), teamsPlan, regle);
     const nomTeam = (id) => { const t = teamsPlan.find((x) => x.id === id); return t ? t.nom : "?"; };
     if (cg.length) {
       place(40 + cg.length * 16);
@@ -18375,22 +18422,40 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
     const planTR = (org.planningTeams || []).map((t) => t.id === id ? { ...t, nom: n } : t);
     commit({ ...org, equipes: org.equipes.map((e) => e.id === id ? { ...e, nom: n } : e), planning: planR, planningTeams: planTR });
   }
-  // CAS 1 — l'équipe quitte PENDANT le tournoi : on garde toutes ses rencontres mais on les met
-  // en « forfait » : l'adversaire gagne (3-0). L'équipe reste affichée, marquée « Forfait ».
+  // Forfait d'équipe = l'équipe quitte PENDANT le tournoi : l'adversaire gagne (3-0) dans TOUTES ses
+  // rencontres. On recalcule de façon déterministe à chaque changement pour que poules, phases finales
+  // ET planning restent toujours synchronisés, quels que soient les allers-retours (activer/annuler).
   const FORFAIT_BUTS = 3;
-  function forfaitEquipe(id) {
-    const majMatchs = (arr) => (arr || []).map((m) => {
-      if (m.aId === id) return { ...m, sa: 0, sb: FORFAIT_BUTS, forfait: true };
-      if (m.bId === id) return { ...m, sa: FORFAIT_BUTS, sb: 0, forfait: true };
+  // Recalcule toutes les rencontres en fonction des équipes actuellement en forfait.
+  // Marqueur dédié `forfaitEq` (différent du forfait manuel d'une rencontre de finale), pour pouvoir
+  // le poser et le retirer sans toucher aux scores saisis à la main.
+  function appliquerForfaits(baseOrg) {
+    const ff = new Set((baseOrg.equipes || []).filter((e) => e.forfait).map((e) => e.id));
+    const maj = (arr) => (arr || []).map((m) => {
+      const aFF = ff.has(m.aId), bFF = ff.has(m.bId);
+      if (aFF && !bFF) return { ...m, sa: 0, sb: FORFAIT_BUTS, forfaitEq: true };
+      if (bFF && !aFF) return { ...m, sa: FORFAIT_BUTS, sb: 0, forfaitEq: true };
+      if (aFF && bFF) return { ...m, sa: 0, sb: 0, forfaitEq: true };
+      // plus aucune équipe en forfait sur ce match : si on l'avait mis en forfait d'équipe, on le vide.
+      // (m.forfait : ancien marqueur, migré ici ; m.forfaitManuel d'une finale n'est PAS touché.)
+      if (m.forfaitEq || m.forfait) return { ...m, sa: "", sb: "", forfaitEq: false, forfait: false };
       return m;
     });
-    commit({
-      ...org,
-      equipes: org.equipes.map((e) => e.id === id ? { ...e, forfait: true } : e),
-      poules: org.poules.map((p) => ({ ...p, matchs: majMatchs(p.matchs) })),
-      finales: org.finales.map((f) => ({ ...f, matchs: majMatchs(f.matchs) })),
-      planning: (org.planning || []).map((s) => s.matchs ? { ...s, matchs: majMatchs(s.matchs) } : s),
-    });
+    return {
+      ...baseOrg,
+      poules: (baseOrg.poules || []).map((p) => ({ ...p, matchs: maj(p.matchs) })),
+      finales: (baseOrg.finales || []).map((f) => ({ ...f, matchs: maj(f.matchs) })),
+      planning: (baseOrg.planning || []).map((s) => s.matchs ? { ...s, matchs: maj(s.matchs) } : s),
+    };
+  }
+  function forfaitEquipe(id) {
+    const next = { ...org, equipes: org.equipes.map((e) => e.id === id ? { ...e, forfait: true } : e) };
+    commit(appliquerForfaits(next));
+  }
+  function annulerForfaitEquipe(id) {
+    const next = { ...org, equipes: org.equipes.map((e) => e.id === id ? { ...e, forfait: false } : e) };
+    commit(appliquerForfaits(next));
+    setMsgSave("Forfait annulé. Poules, phases finales et planning remis à jour."); setTimeout(() => setMsgSave(null), 3500);
   }
   // CAS 2 — l'équipe est absente AU DÉPART : on la retire complètement et on réorganise le planning
   // en fonction des équipes réellement présentes.
@@ -18527,7 +18592,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
   }
   // Forfait sur une rencontre de phase finale : l'équipe du côté choisi déclare forfait, l'adversaire gagne.
   function forfaitMatchFinale(fid, mid, cote) {
-    majMatchFinale(fid, mid, cote === "a" ? { sa: 0, sb: FORFAIT_BUTS, forfait: true } : { sa: FORFAIT_BUTS, sb: 0, forfait: true });
+    majMatchFinale(fid, mid, cote === "a" ? { sa: 0, sb: FORFAIT_BUTS, forfaitManuel: true } : { sa: FORFAIT_BUTS, sb: 0, forfaitManuel: true });
     setMsgSave("Forfait enregistré : l'adversaire remporte la rencontre."); setTimeout(() => setMsgSave(null), 3000);
   }
 
@@ -18578,7 +18643,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
     });
     const totalMin = Math.max(0, elapsed - pause);
     const finPrevue = addMinutesHM(conf.debut, totalMin);
-    commit({ ...src, planningConf: { ...conf, nbEquipes: nb, duree }, planning: slots, planningTeams: teams });
+    commit(appliquerForfaits({ ...src, planningConf: { ...conf, nbEquipes: nb, duree }, planning: slots, planningTeams: teams }));
     let msg = msgCalc ? msgCalc + " " : `Durée ${duree} min par match. `;
     msg += `Fin estimée vers ${finPrevue}.`;
     if (conf.fin && (toMin(conf.debut) + totalMin) > toMin(conf.fin)) msg += " Attention : cela dépasse l'heure de fin prévue, réduisez la durée ou ajoutez un terrain.";
@@ -18619,13 +18684,116 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
     commit({ ...org, planning: slots });
   }
   const classementGeneral = (() => {
-    const teams = org.planningTeams || [];
-    if (!teams.length) return [];
-    const matchs = [];
-    (org.planning || []).forEach((s) => (s.matchs || []).forEach((m) => { if (m.aId && m.bId) matchs.push(m); }));
-    return classementPoule(teams.map((t) => t.id), matchs, teams, org.regle);
+    // Rencontres du planning (hors pauses repas).
+    const rawMatchs = [];
+    (org.planning || []).forEach((s) => { if (s.repas) return; (s.matchs || []).forEach((m) => rawMatchs.push(m)); });
+    // Identifiant de reference d'une equipe dans une rencontre : aId sinon le nom (anciens plannings).
+    const refA = (m) => m.aId || m.a, refB = (m) => m.bId || m.b;
+    // Liste des equipes : planningTeams si presente, sinon DEDUITE des rencontres (robuste aux anciens plannings).
+    let teams = (org.planningTeams || []).filter((t) => t && t.id);
+    if (!teams.length) {
+      const vus = new Map();
+      rawMatchs.forEach((m) => {
+        const ia = refA(m), ib = refB(m);
+        if (ia && !vus.has(ia)) vus.set(ia, m.a || ia);
+        if (ib && !vus.has(ib)) vus.set(ib, m.b || ib);
+      });
+      teams = [...vus.entries()].map(([id, nom]) => ({ id, nom }));
+    }
+    // Equipes en forfait (statut vivant) : on les ajoute au classement meme si elles ne sont PAS
+    // dans le planning, pour que leurs adversaires recoivent bien la victoire 3-0.
+    const forfaitEqs = (org.equipes || []).filter((e) => e && e.forfait);
+    const mapT = new Map(teams.map((t) => [t.id, { id: t.id, nom: t.nom }]));
+    forfaitEqs.forEach((e) => { if (!mapT.has(e.id)) mapT.set(e.id, { id: e.id, nom: e.nom }); });
+    const teamsAll = [...mapT.values()];
+    if (!teamsAll.length) return [];
+    const ffId = new Set(forfaitEqs.map((e) => e.id));
+    const ffNom = new Set(forfaitEqs.map((e) => e.nom));
+    const teamsFF = teamsAll.map((t) => ({ ...t, forfait: ffId.has(t.id) || ffNom.has(t.nom) }));
+    // Rencontres reelles (deux equipes), identifiant normalise.
+    const matchs = rawMatchs.filter((m) => refA(m) && refB(m)).map((m) => ({ ...m, aId: refA(m), bId: refB(m) }));
+    // Rencontres de forfait synthetiques : pour chaque equipe forfait, une defaite 3-0 contre
+    // chaque autre equipe avec qui elle n'a PAS deja une rencontre au planning (evite les doublons).
+    const paire = (x, y) => [x, y].sort().join("|");
+    const dejaLa = new Set(matchs.map((m) => paire(m.aId, m.bId)));
+    const ids = teamsFF.map((t) => t.id);
+    const forfaitIds = teamsFF.filter((t) => t.forfait).map((t) => t.id);
+    const synth = [];
+    forfaitIds.forEach((fid) => ids.forEach((oid) => {
+      if (oid === fid) return;
+      const k = paire(fid, oid);
+      if (dejaLa.has(k)) return;
+      dejaLa.add(k);
+      const advForfait = forfaitIds.indexOf(oid) !== -1;
+      synth.push({ id: "synthFF-" + fid + "-" + oid, aId: fid, bId: oid, sa: 0, sb: advForfait ? 0 : 3, forfaitEq: true });
+    }));
+    return classementPoule(ids, matchs.concat(synth), teamsFF, org.regle);
   })();
-  const nomTeamPlan = (id) => { const t = (org.planningTeams || []).find((x) => x.id === id); return t ? t.nom : id; };
+  const nomTeamPlan = (id) => { const t = (org.planningTeams || []).find((x) => x.id === id) || (org.equipes || []).find((x) => x.id === id); return t ? t.nom : id; };
+  // Diagnostic du classement general : comment chaque rencontre du planning est comptee.
+  const diagGeneral = (() => {
+    const teams = org.planningTeams || [];
+    const ffLive = new Set((org.equipes || []).filter((e) => e && e.forfait).map((e) => e.id));
+    const ffNomD = new Set((org.equipes || []).filter((e) => e && e.forfait).map((e) => e.nom));
+    const lignes = [];
+    (org.planning || []).forEach((s) => { if (s.repas) return; (s.matchs || []).forEach((m) => {
+      const vide = m.sa === "" || m.sa == null || m.sb === "" || m.sb == null;
+      const aFF = ffLive.has(m.aId) || ffNomD.has(m.a), bFF = ffLive.has(m.bId) || ffNomD.has(m.b);
+      // Une rencontre ne compte au classement que si elle a bien deux equipes (identifiant ou nom).
+      const exclu = !(m.aId || m.a) || !(m.bId || m.b);
+      let etat, score;
+      if (exclu) { etat = "exclu"; score = "adversaire manquant"; }
+      else if (!vide) { etat = "saisi"; score = `${m.sa} - ${m.sb}`; }
+      else if (aFF || bFF) { etat = "forfait"; score = aFF && bFF ? "0 - 0" : (aFF ? `0 - 3 pour ${nomTeamPlan(m.bId)}` : `3 - 0 pour ${nomTeamPlan(m.aId)}`); }
+      else { etat = "attente"; score = "non joue"; }
+      lignes.push({ id: m.id, aId: m.aId, bId: m.bId, a: m.a || nomTeamPlan(m.aId), b: m.b || nomTeamPlan(m.bId), sa: m.sa, sb: m.sb, forfaitEq: !!m.forfaitEq, etat, score });
+    }); });
+    const forfaits = (org.equipes || []).filter((e) => e && e.forfait);
+    const nbPlanning = lignes.length; // rencontres reelles du planning (avant ajout des forfaits synthetiques)
+    // Equipes dont une rencontre figure dans le planning.
+    const idsDansPlan = new Set();
+    lignes.forEach((l) => { if (l.aId) idsDansPlan.add(l.aId); if (l.bId) idsDansPlan.add(l.bId); });
+    const forfaitsHorsPlan = forfaits.filter((e) => !idsDansPlan.has(e.id));
+    // Victoires de forfait synthetiques (equipes forfait absentes du planning) : on les ajoute a la
+    // liste du diagnostic pour que l'attribution des 3-0 soit visible, pas seulement calculee.
+    {
+      const toutesEq = (org.planningTeams || []).concat((org.equipes || []).filter((e) => !((org.planningTeams || []).some((t) => t.id === e.id))));
+      const idsForfait = new Set(forfaits.map((e) => e.id));
+      const dejaVu = new Set(lignes.map((l) => [l.aId, l.bId].sort().join("|")));
+      forfaits.forEach((f) => {
+        toutesEq.forEach((t) => {
+          if (!t || t.id === f.id) return;
+          const k = [f.id, t.id].sort().join("|");
+          if (dejaVu.has(k)) return;
+          dejaVu.add(k);
+          const advFF = idsForfait.has(t.id);
+          lignes.push({ id: "synthdiag-" + f.id + "-" + t.id, aId: f.id, bId: t.id, a: f.nom, b: t.nom, sa: 0, sb: advFF ? 0 : 3, forfaitEq: true, etat: "forfait", score: advFF ? "0 - 0" : `3 - 0 pour ${t.nom}` });
+        });
+      });
+    }
+    const dump = [
+      `APP ${APP_VERSION} · format=${org.format || "(simple)"} · equipes=${(org.equipes || []).length} · planningTeams=${teams.length}`,
+      `Forfaits: ${forfaits.length ? forfaits.map((e) => `${e.nom}(${e.id})`).join(", ") : "aucun"}`,
+      `Forfaits hors planning: ${forfaitsHorsPlan.length ? forfaitsHorsPlan.map((e) => e.nom).join(", ") : "aucun"}`,
+      `planningTeams: ${teams.map((t) => `${t.nom}(${t.id})`).join(", ") || "vide"}`,
+      `Rencontres (${nbPlanning} au planning + ${lignes.length - nbPlanning} forfait) :`,
+      ...lignes.map((l) => `  ${l.a}[${l.aId || "?"}] vs ${l.b}[${l.bId || "?"}] sa=${l.sa === "" || l.sa == null ? "vide" : l.sa} sb=${l.sb === "" || l.sb == null ? "vide" : l.sb} forfaitEq=${l.forfaitEq} -> ${l.etat}`),
+    ].join("\n");
+    return {
+      nbEquipes: teams.length,
+      forfaits: forfaits.map((e) => e.nom),
+      forfaitsHorsPlan: forfaitsHorsPlan.map((e) => e.nom),
+      total: nbPlanning,
+      saisis: lignes.filter((l) => l.etat === "saisi").length,
+      forfaitsM: lignes.filter((l) => l.etat === "forfait").length,
+      attente: lignes.filter((l) => l.etat === "attente").length,
+      exclus: lignes.filter((l) => l.etat === "exclu").length,
+      lignes, dump,
+    };
+  })();
+  // On fait remonter l'etat du classement du tournoi dans le traceur global (bouton Diag),
+  // pour pouvoir le copier depuis le panneau habituel.
+  useEffect(() => { try { trace("tournoi " + (tournoi.nom || tournoi.titre || tournoi.adversaire || ""), diagGeneral.dump); } catch (e) {} }, [diagGeneral.dump]);
 
   // estimation en temps réel (durée des matchs et heure de fin) selon les réglages
   const estim = (() => {
@@ -18711,13 +18879,18 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
                 </span>
               ) : suppEquipeId === e.id ? (
                 <span key={e.id} style={{ flexBasis: "100%", width: "100%", background: "#FFF6F6", border: `1px solid ${C.rouge}`, borderRadius: 14, padding: "10px 12px" }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 800, color: C.rouge, marginBottom: 8 }}>{e.nom} ne joue plus. Que faire ?</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: C.rouge, marginBottom: 8 }}>{e.nom} {e.forfait ? "est en forfait." : "ne joue plus. Que faire ?"}</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    <button onClick={() => { forfaitEquipe(e.id); setSuppEquipeId(null); }} style={{ border: "none", background: "#8A6D00", color: "#fff", cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Forfait (tournoi commencé)</button>
+                    {e.forfait && (
+                      <button onClick={() => { annulerForfaitEquipe(e.id); setSuppEquipeId(null); }} style={{ border: "none", background: C.vert, color: "#fff", cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Annuler le forfait (revenir en arrière)</button>
+                    )}
+                    {!e.forfait && (
+                      <button onClick={() => { forfaitEquipe(e.id); setSuppEquipeId(null); }} style={{ border: "none", background: "#8A6D00", color: "#fff", cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Forfait (tournoi commencé)</button>
+                    )}
                     <button onClick={() => { retirerReorganiser(e.id); setSuppEquipeId(null); }} style={{ border: "none", background: C.bleu, color: "#fff", cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Retirer et réorganiser (absente au départ)</button>
                     <button onClick={() => setSuppEquipeId(null)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.gris, cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Annuler</button>
                   </div>
-                  <div style={{ fontSize: 11, color: C.gris, marginTop: 7, lineHeight: 1.45 }}>Forfait : l'équipe reste au classement mais toutes ses rencontres sont gagnées par l'adversaire ({FORFAIT_BUTS}-0). Réorganiser : l'équipe est retirée et le planning est recalculé avec les équipes présentes.</div>
+                  <div style={{ fontSize: 11, color: C.gris, marginTop: 7, lineHeight: 1.45 }}>{e.forfait ? "Annuler le forfait : l'équipe reprend sa place normale et ses rencontres forfait sont remises à zéro (tu ressaisis les vrais scores)." : `Forfait : l'équipe reste au classement mais toutes ses rencontres sont gagnées par l'adversaire (${FORFAIT_BUTS}-0). Réorganiser : l'équipe est retirée et le planning est recalculé avec les équipes présentes.`}</div>
                 </span>
               ) : (
                 <span key={e.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", border: `1px solid ${e.forfait ? "#EBD3AE" : C.grisClair}`, borderRadius: 20, padding: "6px 10px", fontSize: 13, fontWeight: 700 }}>
@@ -18865,12 +19038,14 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
                   <div style={{ background: i === slotActifIdx ? C.vert : C.bleuNuit, color: "#fff", padding: "7px 11px", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}><Timer size={14} /> {s.heure}{i === slotActifIdx ? <span style={{ fontSize: 10.5, fontWeight: 800, background: "rgba(255,255,255,0.25)", borderRadius: 7, padding: "2px 7px" }}>EN COURS</span> : null}{s.phase ? <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,0.18)", borderRadius: 7, padding: "2px 8px" }}>{s.phase}</span> : null}</div>
                   <div style={{ display: "grid", gap: 1, background: C.grisClair }}>
                     {(s.matchs || []).map((m, k) => (
-                      <div key={m.id || k} style={{ background: "#fff", padding: "9px 11px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: m.aId ? 7 : 0 }}>
-                          <span style={{ flex: "0 0 auto", fontSize: 11, fontWeight: 800, color: C.bleu, background: "#EAF0F8", borderRadius: 7, padding: "3px 7px" }}>{nomTerrain(m.terrain)}</span>
-                          <span style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.a}</span>
-                          <span style={{ color: C.gris, fontWeight: 800, fontSize: 12 }}>contre</span>
-                          <span style={{ flex: 1, fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.b}</span>
+                      <div key={m.id || k} style={{ background: "#fff", padding: "10px 11px" }}>
+                        <div style={{ textAlign: "center", marginBottom: 6 }}>
+                          <span style={{ fontSize: 10.5, fontWeight: 800, color: C.bleu, background: "#EAF0F8", borderRadius: 7, padding: "3px 9px", letterSpacing: 0.3 }}>{nomTerrain(m.terrain)}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: m.aId ? 8 : 0 }}>
+                          <span style={{ flex: 1, textAlign: "right", fontSize: 15, fontWeight: 800, color: C.encre, minWidth: 0, overflowWrap: "anywhere", lineHeight: 1.25 }}>{m.a}</span>
+                          <span style={{ flex: "0 0 auto", color: C.gris, fontWeight: 800, fontSize: 12 }}>contre</span>
+                          <span style={{ flex: 1, textAlign: "left", fontSize: 15, fontWeight: 800, color: C.encre, minWidth: 0, overflowWrap: "anywhere", lineHeight: 1.25 }}>{m.b}</span>
                         </div>
                         {m.aId && (
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
@@ -18916,7 +19091,49 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
                 </tbody>
               </table>
             </div>
-            <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Ce classement se calcule tout seul à partir des scores saisis sur le planning ci-dessus.</div>
+            <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Ce classement se calcule tout seul à partir des scores saisis sur le planning ci-dessus. Les équipes en forfait font gagner 3-0 à chacun de leurs adversaires, même si le match n'est pas encore saisi.</div>
+          </Card>
+        )}
+
+        {(org.planning || []).length > 0 && (
+          <Card style={{ marginBottom: 12, padding: 13 }}>
+            <details>
+              <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 800, color: C.bleu, listStyle: "none" }}>🔎 Diagnostic du classement (vérifier l'attribution des points)</summary>
+              <div style={{ marginTop: 8, background: C.fond, border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 10 }}>
+                <div style={{ fontSize: 11.5, color: C.encre, fontWeight: 700, marginBottom: 6 }}>
+                  {diagGeneral.nbEquipes} équipes · {diagGeneral.total} rencontres au planning
+                </div>
+                <div style={{ fontSize: 11, color: C.gris, marginBottom: 6, lineHeight: 1.5 }}>
+                  Scores saisis : {diagGeneral.saisis} · Comptées en forfait (3-0) : {diagGeneral.forfaitsM} · En attente (0 point) : {diagGeneral.attente}{diagGeneral.exclus > 0 ? ` · Non comptées : ${diagGeneral.exclus}` : ""}
+                </div>
+                {diagGeneral.forfaits.length > 0 && (
+                  <div style={{ fontSize: 11, color: C.rouge, fontWeight: 700, marginBottom: 6 }}>Équipes en forfait : {diagGeneral.forfaits.join(", ")}</div>
+                )}
+                {diagGeneral.forfaitsHorsPlan.length > 0 && (
+                  <div style={{ fontSize: 11, color: C.jauneFonce || C.jaune, fontWeight: 700, marginBottom: 6, lineHeight: 1.5 }}>Forfait absent du planning (comptée quand même, 3-0 pour toutes les autres) : {diagGeneral.forfaitsHorsPlan.join(", ")}</div>
+                )}
+                {diagGeneral.nbEquipes === 0 && (
+                  <div style={{ fontSize: 11, color: C.rouge, fontWeight: 700, marginBottom: 6 }}>Aucun planning généré : lancez « Organiser le planning » pour obtenir un classement.</div>
+                )}
+                {diagGeneral.exclus > 0 && (
+                  <div style={{ fontSize: 11, color: C.rouge, fontWeight: 700, marginBottom: 6, lineHeight: 1.5 }}>Attention : {diagGeneral.exclus} rencontre(s) ne sont pas comptées (adversaire manquant ou équipe absente de la liste du planning). Régénérez le planning avec « Organiser le planning ».</div>
+                )}
+                <div style={{ maxHeight: 220, overflowY: "auto" }}>
+                  {diagGeneral.lignes.map((l) => (
+                    <div key={l.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11, padding: "4px 0", borderTop: `1px solid ${C.grisClair}` }}>
+                      <span style={{ color: C.encre, flex: 1, minWidth: 0 }}>{l.a} contre {l.b}</span>
+                      <span style={{ fontWeight: 800, color: l.etat === "saisi" ? C.vert : l.etat === "forfait" ? C.jaune : l.etat === "exclu" ? C.rouge : C.gris, flex: "0 0 auto", textAlign: "right" }}>
+                        {l.etat === "saisi" ? l.score : l.etat === "forfait" ? "Forfait : " + l.score : l.etat === "exclu" ? "Non comptée : " + l.score : "En attente"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => { try { navigator.clipboard.writeText(diagGeneral.dump); setMsgSave("Diagnostic copié. Collez-le dans le message."); setTimeout(() => setMsgSave(null), 5000); } catch (e) { setMsgSave("Copie impossible sur ce navigateur."); } }}
+                  style={{ marginTop: 10, border: "none", cursor: "pointer", borderRadius: 9, padding: "8px 12px", fontSize: 12, fontWeight: 800, background: C.bleu, color: "#fff" }}
+                >Copier le diagnostic</button>
+              </div>
+            </details>
           </Card>
         )}
 
@@ -18955,16 +19172,21 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
 
               {(p.matchs || []).length > 0 && (
                 <div style={{ display: "grid", gap: 7, marginBottom: 12 }}>
-                  {p.matchs.map((m) => (
-                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                      <div style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.aId)}</div>
+                  {p.matchs.map((m) => {
+                    const ffA = (org.equipes.find((e) => e.id === m.aId) || {}).forfait;
+                    const ffB = (org.equipes.find((e) => e.id === m.bId) || {}).forfait;
+                    const badge = <span style={{ fontSize: 9.5, fontWeight: 800, color: "#8A6D00", background: "#FFF3DA", borderRadius: 5, padding: "1px 5px", marginLeft: 4 }}>forfait</span>;
+                    return (
+                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 7, background: (ffA || ffB) ? "#FFFBF0" : "transparent", borderRadius: 8, padding: (ffA || ffB) ? "3px 4px" : 0 }}>
+                      <div style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.aId)}{ffA ? badge : null}</div>
                       <input type="number" value={m.sa} onChange={(e) => majMatchPoule(p.id, m.id, { sa: e.target.value })} style={styleInputScore} />
                       <span style={{ color: C.gris, fontWeight: 800 }}>-</span>
                       <input type="number" value={m.sb} onChange={(e) => majMatchPoule(p.id, m.id, { sb: e.target.value })} style={styleInputScore} />
-                      <div style={{ flex: 1, fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.bId)}</div>
+                      <div style={{ flex: 1, fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.bId)}{ffB ? badge : null}</div>
                       <button onClick={() => suppMatchPoule(p.id, m.id)} style={{ border: "none", background: "transparent", color: C.gris, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={15} /></button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
