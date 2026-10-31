@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.08";
+const APP_VERSION = "16.19.09";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -3956,7 +3956,7 @@ export default function App() {
   const mesNotifsPlanning = useMemo(() => {
     const pl = planningClub || {};
     const mc = catsPlanning || [];
-    const list = (pl.notifs || []).filter((n) => n && ((n.pour && monNom && n.pour === monNom) || (n.pourCat && mc.includes(n.pourCat)) || (n.pourRole && monRole && n.pourRole === monRole)));
+    const list = (pl.notifs || []).filter((n) => n && ((n.pour && monNom && n.pour === monNom) || (n.pourCat && mc.includes(n.pourCat)) || (n.pourRole && monRole && n.pourRole === monRole) || (n.genre === "transport" && n.cat && mc.includes(n.cat))));
     list.sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""));
     return list;
   }, [planningClub, monNom, monRole, catsPlanning]);
