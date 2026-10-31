@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.18.98";
+const APP_VERSION = "16.19.0";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -18211,13 +18211,21 @@ function exporterPlateauPDF(jsPDF, titre, org) {
     }
   }
 
-  // Classement général (à partir du planning)
-  const teamsPlanBrut = org.planningTeams || [];
-  const ffLivePDF = new Set((org.equipes || []).filter((e) => e && e.forfait).map((e) => e.id));
-  const teamsPlan = teamsPlanBrut.map((t) => ({ ...t, forfait: ffLivePDF.has(t.id) }));
+  // Classement général (à partir du planning) : meme logique robuste que l'ecran.
+  const rawMatchsPDF = [];
+  (org.planning || []).forEach((s) => { if (s.repas) return; (s.matchs || []).forEach((m) => rawMatchsPDF.push(m)); });
+  const refAp = (m) => m.aId || m.a, refBp = (m) => m.bId || m.b;
+  let teamsPlanBrut = (org.planningTeams || []).filter((t) => t && t.id);
+  if (!teamsPlanBrut.length) {
+    const vus = new Map();
+    rawMatchsPDF.forEach((m) => { const ia = refAp(m), ib = refBp(m); if (ia && !vus.has(ia)) vus.set(ia, m.a || ia); if (ib && !vus.has(ib)) vus.set(ib, m.b || ib); });
+    teamsPlanBrut = [...vus.entries()].map(([id, nom]) => ({ id, nom }));
+  }
+  const ffIdPDF = new Set((org.equipes || []).filter((e) => e && e.forfait).map((e) => e.id));
+  const ffNomPDF = new Set((org.equipes || []).filter((e) => e && e.forfait).map((e) => e.nom));
+  const teamsPlan = teamsPlanBrut.map((t) => ({ ...t, forfait: ffIdPDF.has(t.id) || ffNomPDF.has(t.nom) }));
   if (teamsPlan.length) {
-    const matchsPlan = [];
-    (org.planning || []).forEach((s) => (s.matchs || []).forEach((m) => { if (m.aId && m.bId) matchsPlan.push(m); }));
+    const matchsPlan = rawMatchsPDF.filter((m) => refAp(m) && refBp(m)).map((m) => ({ ...m, aId: refAp(m), bId: refBp(m) }));
     const cg = classementPoule(teamsPlan.map((t) => t.id), matchsPlan, teamsPlan, regle);
     const nomTeam = (id) => { const t = teamsPlan.find((x) => x.id === id); return t ? t.nom : "?"; };
     if (cg.length) {
@@ -18653,14 +18661,29 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
     commit({ ...org, planning: slots });
   }
   const classementGeneral = (() => {
-    const teams = org.planningTeams || [];
+    // Rencontres du planning (hors pauses repas).
+    const rawMatchs = [];
+    (org.planning || []).forEach((s) => { if (s.repas) return; (s.matchs || []).forEach((m) => rawMatchs.push(m)); });
+    // Identifiant de reference d'une equipe dans une rencontre : aId sinon le nom (anciens plannings).
+    const refA = (m) => m.aId || m.a, refB = (m) => m.bId || m.b;
+    // Liste des equipes : planningTeams si presente, sinon DEDUITE des rencontres (robuste aux anciens plannings).
+    let teams = (org.planningTeams || []).filter((t) => t && t.id);
+    if (!teams.length) {
+      const vus = new Map();
+      rawMatchs.forEach((m) => {
+        const ia = refA(m), ib = refB(m);
+        if (ia && !vus.has(ia)) vus.set(ia, m.a || ia);
+        if (ib && !vus.has(ib)) vus.set(ib, m.b || ib);
+      });
+      teams = [...vus.entries()].map(([id, nom]) => ({ id, nom }));
+    }
     if (!teams.length) return [];
-    // On rapatrie le statut forfait vivant (org.equipes) sur les equipes du planning,
-    // pour que les points de forfait soient attribues meme si le planning n'a pas ete refige.
-    const ffLive = new Set((org.equipes || []).filter((e) => e && e.forfait).map((e) => e.id));
-    const teamsFF = teams.map((t) => ({ ...t, forfait: ffLive.has(t.id) }));
-    const matchs = [];
-    (org.planning || []).forEach((s) => (s.matchs || []).forEach((m) => { if (m.aId && m.bId) matchs.push(m); }));
+    // Statut forfait vivant (org.equipes), reconnu par identifiant OU par nom.
+    const ffId = new Set((org.equipes || []).filter((e) => e && e.forfait).map((e) => e.id));
+    const ffNom = new Set((org.equipes || []).filter((e) => e && e.forfait).map((e) => e.nom));
+    const teamsFF = teams.map((t) => ({ ...t, forfait: ffId.has(t.id) || ffNom.has(t.nom) }));
+    // On garde les rencontres a deux equipes et on normalise l'identifiant utilise.
+    const matchs = rawMatchs.filter((m) => refA(m) && refB(m)).map((m) => ({ ...m, aId: refA(m), bId: refB(m) }));
     return classementPoule(teamsFF.map((t) => t.id), matchs, teamsFF, org.regle);
   })();
   const nomTeamPlan = (id) => { const t = (org.planningTeams || []).find((x) => x.id === id); return t ? t.nom : id; };
@@ -18668,15 +18691,15 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
   const diagGeneral = (() => {
     const teams = org.planningTeams || [];
     const ffLive = new Set((org.equipes || []).filter((e) => e && e.forfait).map((e) => e.id));
-    const idsTeams = new Set(teams.map((t) => t.id));
+    const ffNomD = new Set((org.equipes || []).filter((e) => e && e.forfait).map((e) => e.nom));
     const lignes = [];
     (org.planning || []).forEach((s) => { if (s.repas) return; (s.matchs || []).forEach((m) => {
       const vide = m.sa === "" || m.sa == null || m.sb === "" || m.sb == null;
-      const aFF = ffLive.has(m.aId), bFF = ffLive.has(m.bId);
-      // Une rencontre ne compte au classement que si ses deux equipes sont identifiees ET presentes dans la liste du planning.
-      const exclu = !m.aId || !m.bId || !idsTeams.has(m.aId) || !idsTeams.has(m.bId);
+      const aFF = ffLive.has(m.aId) || ffNomD.has(m.a), bFF = ffLive.has(m.bId) || ffNomD.has(m.b);
+      // Une rencontre ne compte au classement que si elle a bien deux equipes (identifiant ou nom).
+      const exclu = !(m.aId || m.a) || !(m.bId || m.b);
       let etat, score;
-      if (exclu) { etat = "exclu"; score = !m.aId || !m.bId ? "adversaire manquant" : "equipe hors liste"; }
+      if (exclu) { etat = "exclu"; score = "adversaire manquant"; }
       else if (!vide) { etat = "saisi"; score = `${m.sa} - ${m.sb}`; }
       else if (aFF || bFF) { etat = "forfait"; score = aFF && bFF ? "0 - 0" : (aFF ? `0 - 3 pour ${nomTeamPlan(m.bId)}` : `3 - 0 pour ${nomTeamPlan(m.aId)}`); }
       else { etat = "attente"; score = "non joue"; }
@@ -18701,6 +18724,9 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
       lignes, dump,
     };
   })();
+  // On fait remonter l'etat du classement du tournoi dans le traceur global (bouton Diag),
+  // pour pouvoir le copier depuis le panneau habituel.
+  useEffect(() => { try { trace("tournoi " + (tournoi.nom || tournoi.titre || tournoi.adversaire || ""), diagGeneral.dump); } catch (e) {} }, [diagGeneral.dump]);
 
   // estimation en temps réel (durée des matchs et heure de fin) selon les réglages
   const estim = (() => {
