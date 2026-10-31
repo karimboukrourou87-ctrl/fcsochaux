@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.07";
+const APP_VERSION = "16.19.08";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -4389,7 +4389,7 @@ export default function App() {
   const notifTransport = (dem, statut, raison) => majPlanningClub((d) => {
     d.notifs = d.notifs || [];
     d.notifs.push({
-      id: uid(), genre: "transport", pour: dem.demandeur || "", statut, raison: raison || "",
+      id: uid(), genre: "transport", pour: dem.demandeur || "", pourCat: dem.cat || "", statut, raison: raison || "",
       resume: resumeTransport(dem), destination: dem.destination || "", date: dem.date || "", cat: dem.cat || "",
       creeLe: new Date().toISOString(),
     });
