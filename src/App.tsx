@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.18.94";
+const APP_VERSION = "16.18.95";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -18375,35 +18375,40 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
     const planTR = (org.planningTeams || []).map((t) => t.id === id ? { ...t, nom: n } : t);
     commit({ ...org, equipes: org.equipes.map((e) => e.id === id ? { ...e, nom: n } : e), planning: planR, planningTeams: planTR });
   }
-  // CAS 1 — l'équipe quitte PENDANT le tournoi : on garde toutes ses rencontres mais on les met
-  // en « forfait » : l'adversaire gagne (3-0). L'équipe reste affichée, marquée « Forfait ».
+  // Forfait d'équipe = l'équipe quitte PENDANT le tournoi : l'adversaire gagne (3-0) dans TOUTES ses
+  // rencontres. On recalcule de façon déterministe à chaque changement pour que poules, phases finales
+  // ET planning restent toujours synchronisés, quels que soient les allers-retours (activer/annuler).
   const FORFAIT_BUTS = 3;
-  function forfaitEquipe(id) {
-    const majMatchs = (arr) => (arr || []).map((m) => {
-      if (m.aId === id) return { ...m, sa: 0, sb: FORFAIT_BUTS, forfait: true };
-      if (m.bId === id) return { ...m, sa: FORFAIT_BUTS, sb: 0, forfait: true };
+  // Recalcule toutes les rencontres en fonction des équipes actuellement en forfait.
+  // Marqueur dédié `forfaitEq` (différent du forfait manuel d'une rencontre de finale), pour pouvoir
+  // le poser et le retirer sans toucher aux scores saisis à la main.
+  function appliquerForfaits(baseOrg) {
+    const ff = new Set((baseOrg.equipes || []).filter((e) => e.forfait).map((e) => e.id));
+    const maj = (arr) => (arr || []).map((m) => {
+      const aFF = ff.has(m.aId), bFF = ff.has(m.bId);
+      if (aFF && !bFF) return { ...m, sa: 0, sb: FORFAIT_BUTS, forfaitEq: true };
+      if (bFF && !aFF) return { ...m, sa: FORFAIT_BUTS, sb: 0, forfaitEq: true };
+      if (aFF && bFF) return { ...m, sa: 0, sb: 0, forfaitEq: true };
+      // plus aucune équipe en forfait sur ce match : si on l'avait mis en forfait d'équipe, on le vide.
+      // (m.forfait : ancien marqueur, migré ici ; m.forfaitManuel d'une finale n'est PAS touché.)
+      if (m.forfaitEq || m.forfait) return { ...m, sa: "", sb: "", forfaitEq: false, forfait: false };
       return m;
     });
-    commit({
-      ...org,
-      equipes: org.equipes.map((e) => e.id === id ? { ...e, forfait: true } : e),
-      poules: org.poules.map((p) => ({ ...p, matchs: majMatchs(p.matchs) })),
-      finales: org.finales.map((f) => ({ ...f, matchs: majMatchs(f.matchs) })),
-      planning: (org.planning || []).map((s) => s.matchs ? { ...s, matchs: majMatchs(s.matchs) } : s),
-    });
+    return {
+      ...baseOrg,
+      poules: (baseOrg.poules || []).map((p) => ({ ...p, matchs: maj(p.matchs) })),
+      finales: (baseOrg.finales || []).map((f) => ({ ...f, matchs: maj(f.matchs) })),
+      planning: (baseOrg.planning || []).map((s) => s.matchs ? { ...s, matchs: maj(s.matchs) } : s),
+    };
   }
-  // Annuler un forfait fait par erreur : on enlève le marquage « forfait » de l'équipe et on remet à vide
-  // les rencontres qui avaient été scellées en forfait (pour ressaisir les vrais scores si besoin).
+  function forfaitEquipe(id) {
+    const next = { ...org, equipes: org.equipes.map((e) => e.id === id ? { ...e, forfait: true } : e) };
+    commit(appliquerForfaits(next));
+  }
   function annulerForfaitEquipe(id) {
-    const nettoie = (arr) => (arr || []).map((m) => (m.forfait && (m.aId === id || m.bId === id)) ? { ...m, sa: "", sb: "", forfait: false } : m);
-    commit({
-      ...org,
-      equipes: org.equipes.map((e) => e.id === id ? { ...e, forfait: false } : e),
-      poules: org.poules.map((p) => ({ ...p, matchs: nettoie(p.matchs) })),
-      finales: org.finales.map((f) => ({ ...f, matchs: nettoie(f.matchs) })),
-      planning: (org.planning || []).map((s) => s.matchs ? { ...s, matchs: nettoie(s.matchs) } : s),
-    });
-    setMsgSave("Forfait annulé. Les rencontres concernées sont remises à zéro."); setTimeout(() => setMsgSave(null), 3500);
+    const next = { ...org, equipes: org.equipes.map((e) => e.id === id ? { ...e, forfait: false } : e) };
+    commit(appliquerForfaits(next));
+    setMsgSave("Forfait annulé. Poules, phases finales et planning remis à jour."); setTimeout(() => setMsgSave(null), 3500);
   }
   // CAS 2 — l'équipe est absente AU DÉPART : on la retire complètement et on réorganise le planning
   // en fonction des équipes réellement présentes.
@@ -18540,7 +18545,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
   }
   // Forfait sur une rencontre de phase finale : l'équipe du côté choisi déclare forfait, l'adversaire gagne.
   function forfaitMatchFinale(fid, mid, cote) {
-    majMatchFinale(fid, mid, cote === "a" ? { sa: 0, sb: FORFAIT_BUTS, forfait: true } : { sa: FORFAIT_BUTS, sb: 0, forfait: true });
+    majMatchFinale(fid, mid, cote === "a" ? { sa: 0, sb: FORFAIT_BUTS, forfaitManuel: true } : { sa: FORFAIT_BUTS, sb: 0, forfaitManuel: true });
     setMsgSave("Forfait enregistré : l'adversaire remporte la rencontre."); setTimeout(() => setMsgSave(null), 3000);
   }
 
@@ -18591,7 +18596,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
     });
     const totalMin = Math.max(0, elapsed - pause);
     const finPrevue = addMinutesHM(conf.debut, totalMin);
-    commit({ ...src, planningConf: { ...conf, nbEquipes: nb, duree }, planning: slots, planningTeams: teams });
+    commit(appliquerForfaits({ ...src, planningConf: { ...conf, nbEquipes: nb, duree }, planning: slots, planningTeams: teams }));
     let msg = msgCalc ? msgCalc + " " : `Durée ${duree} min par match. `;
     msg += `Fin estimée vers ${finPrevue}.`;
     if (conf.fin && (toMin(conf.debut) + totalMin) > toMin(conf.fin)) msg += " Attention : cela dépasse l'heure de fin prévue, réduisez la durée ou ajoutez un terrain.";
