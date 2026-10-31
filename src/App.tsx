@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.18.74";
+const APP_VERSION = "16.18.80";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -4340,6 +4340,16 @@ export default function App() {
     });
     return d;
   });
+  // La direction autorise un coach à corriger un match/tournoi scellé : une alarme part vers la catégorie.
+  // Message volontairement court pour la bannière : nom de l'équipe ou du tournoi + date.
+  const notifierCorrection = (info) => majPlanningClub((d) => {
+    d.notifs = d.notifs || [];
+    d.notifs.push({
+      id: uid(), genre: "correction", pour: "", pourCat: info.cat || "", accuseCat: info.cat || "",
+      statut: "info", nomRencontre: info.nom || "", date: info.date || "", creeLe: new Date().toISOString(),
+    });
+    return d;
+  });
   // Circuit blessure entre le coach et l'équipe médicale : trois alarmes (signalement, diagnostic, retour terrain)
   const pousserNotifBlessure = (champs) => majPlanningClub((d) => {
     d.notifs = d.notifs || [];
@@ -4535,7 +4545,7 @@ export default function App() {
         {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => { setShowTransport(true); if (rafraichirTransport) rafraichirTransport(); }} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowSauvegarde(true)) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowAcces(true)) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => demanderDeverrouillageAdmin(() => setShowDocs(true))} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onArrets={() => setShowArrets(true)} onMessagerie={ouvrirMessagerie} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} msgVuLe={msgVuLe} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} peutValider={peutValider} demo={demo} adminUnlock={adminUnlock} onDemanderDeverrouillage={demanderDeverrouillageAdmin} auteur={{ nom: monNom, role: monRole }} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
-        {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} />}
+        {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} onNotifierCorrection={notifierCorrection} />}
         {tab === "entrainements" && <Entrainements players={players} cat={cat} db={db} mutate={mutate} estMedical={estMedical} onSignalerBlessure={signalerBlessure} initialSous={entSous} onConsumeSous={() => setEntSous(null)} />}
         {tab === "detection" && <Detection cat={cat} db={db} mutate={mutate} />}
         <div style={{ display: "flex", justifyContent: "center", padding: "10px 16px 26px" }}>
@@ -4970,16 +4980,19 @@ function ScoresWeekend({ onClose, localDb }) {
                   {joue ? <Pastille bg={bg} color={col}>{res}</Pastille> : <Pastille bg={C.jaune} color={C.bleuNuit}>À venir</Pastille>}
                 </div>
                 <div style={{ display: "grid", gap: 3 }}>
-                  <div style={{ display: "flex", alignItems: "center" }}>
-                    <span style={{ width: 34, flex: "0 0 auto" }} />
-                    <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: 800, fontSize: 15, padding: "0 6px" }}>{CLUB}</span>
-                    <span style={{ width: 34, flex: "0 0 auto", textAlign: "right", fontWeight: 900, fontSize: 18, color: C.bleu }}>{joue ? r.score_pour : ""}</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center" }}>
-                    <span style={{ width: 34, flex: "0 0 auto" }} />
-                    <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: 800, fontSize: 15, padding: "0 6px" }}>{r.adversaire || "Adversaire"}</span>
-                    <span style={{ width: 34, flex: "0 0 auto", textAlign: "right", fontWeight: 900, fontSize: 18, color: C.bleu }}>{joue ? r.score_contre : ""}</span>
-                  </div>
+                  {(() => {
+                    // À l'extérieur, l'équipe qui reçoit (adversaire) est affichée en haut, FC Sochaux en dessous.
+                    const lFcsm = { nom: CLUB, score: joue ? r.score_pour : "" };
+                    const lAdv = { nom: r.adversaire || "Adversaire", score: joue ? r.score_contre : "" };
+                    const lignes = r.lieu === "Extérieur" ? [lAdv, lFcsm] : [lFcsm, lAdv];
+                    return lignes.map((lg, idx) => (
+                      <div key={idx} style={{ display: "flex", alignItems: "center" }}>
+                        <span style={{ width: 34, flex: "0 0 auto" }} />
+                        <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: lg.nom === CLUB ? 900 : 800, fontSize: 15, padding: "0 6px", color: lg.nom === CLUB ? C.bleu : C.encre }}>{lg.nom}</span>
+                        <span style={{ width: 34, flex: "0 0 auto", textAlign: "right", fontWeight: 900, fontSize: 18, color: C.bleu }}>{lg.score}</span>
+                      </div>
+                    ));
+                  })()}
                 </div>
               </Card>
             );
@@ -5386,30 +5399,35 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
             const estTransport = n.genre === "transport";
             const estJoueur = n.genre === "joueur";
             const estBlessure = n.genre === "blessure";
+            const estCorrection = n.genre === "correction";
             const label = n.typeLieu === "vestiaires" ? "vestiaire" : "terrain";
             const horaire = n.fin && n.fin !== n.debut ? `${n.debut} à ${n.fin}` : n.debut;
-            const titre = estBlessure
+            const titre = estCorrection
+              ? "Correction autorisée par la direction"
+              : estBlessure
               ? (n.sous === "signalement" ? "Nouveau joueur blessé signalé" : n.sous === "diagnostic" ? "Diagnostic médical reçu" : "Joueur rétabli, de retour sur le terrain")
               : estJoueur
                 ? (valide ? "Votre demande de joueur a été acceptée" : annule ? "Une demande de joueur a été annulée" : "Votre demande de joueur a été refusée")
                 : estTransport
                   ? (modifie ? "Votre demande de transport a été modifiée" : valide ? "Votre demande de transport a été validée" : "Votre demande de transport a été refusée")
                   : (valide ? "Votre demande de créneau a été validée" : "Votre demande de créneau a été refusée");
-            const detail = estBlessure
+            const detail = estCorrection
+              ? `${n.nomRencontre || "Rencontre"}${n.cat ? " (" + n.cat + ")" : ""}${n.date ? " · le " + jjmm(n.date) : ""}`
+              : estBlessure
               ? `${n.joueurNom || "Joueur"}${n.cat ? " (" + n.cat + ")" : ""}${n.sous === "diagnostic" && n.diagnostic ? " · " + n.diagnostic : ""}${n.sous === "diagnostic" && n.datePEC ? " · pris en charge le " + jjmm(n.datePEC) : ""}${n.sous === "signalement" && n.raison ? " · " + texteCirconstance(n.raison) : ""}${n.sous === "signalement" && n.date ? " · le " + jjmm(n.date) : ""}`
               : estJoueur
                 ? `${n.joueurNom || "Joueur"}${n.joueurCat ? " (" + n.joueurCat + ")" : ""}${n.date ? " · pour le " + jjmm(n.date) : ""}`
                 : estTransport
                   ? `${n.cat ? n.cat + " · " : ""}${n.resume || "Transport"}${n.destination ? " · " + n.destination : ""}${n.date ? " · le " + jjmm(n.date) : ""}`
                   : `${n.cat ? n.cat + " · " : ""}${label} ${n.col} · le ${jjmm(n.date)} · ${horaire}`;
-            const bg = estBlessure ? "#EAF0F7" : valide ? "#E2F4E9" : annule ? "#FBEAD9" : "#FBE3E3";
-            const bord = estBlessure ? "#C6D5E8" : valide ? "#BFE3CD" : annule ? "#EBD3AE" : "#F0C4C4";
-            const coulTitre = estBlessure ? C.bleu : valide ? "#2F6D43" : annule ? "#B87A2B" : C.rouge;
-            const coulBouton = estBlessure ? C.bleu : valide ? C.vert : annule ? "#B87A2B" : C.rouge;
+            const bg = estCorrection ? "#FFF7E6" : estBlessure ? "#EAF0F7" : valide ? "#E2F4E9" : annule ? "#FBEAD9" : "#FBE3E3";
+            const bord = estCorrection ? "#F0DBA8" : estBlessure ? "#C6D5E8" : valide ? "#BFE3CD" : annule ? "#EBD3AE" : "#F0C4C4";
+            const coulTitre = estCorrection ? "#8A6D00" : estBlessure ? C.bleu : valide ? "#2F6D43" : annule ? "#B87A2B" : C.rouge;
+            const coulBouton = estCorrection ? "#B87A2B" : estBlessure ? C.bleu : valide ? C.vert : annule ? "#B87A2B" : C.rouge;
             return (
               <div key={n.id} style={{ background: bg, border: `1px solid ${bord}`, borderRadius: 14, padding: "12px 14px" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
-                  {estBlessure ? <HeartPulse size={17} color={C.bleu} style={{ flex: "0 0 auto", marginTop: 1 }} /> : valide ? <Check size={17} color={C.vert} style={{ flex: "0 0 auto", marginTop: 1 }} /> : <ShieldAlert size={17} color={annule ? "#B87A2B" : C.rouge} style={{ flex: "0 0 auto", marginTop: 1 }} />}
+                  {estCorrection ? <ShieldAlert size={17} color="#B87A2B" style={{ flex: "0 0 auto", marginTop: 1 }} /> : estBlessure ? <HeartPulse size={17} color={C.bleu} style={{ flex: "0 0 auto", marginTop: 1 }} /> : valide ? <Check size={17} color={C.vert} style={{ flex: "0 0 auto", marginTop: 1 }} /> : <ShieldAlert size={17} color={annule ? "#B87A2B" : C.rouge} style={{ flex: "0 0 auto", marginTop: 1 }} />}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 800, fontSize: 13.5, color: coulTitre }}>
                       {titre}
@@ -9917,7 +9935,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
 /* ============================================================
    Matchs : calendrier, score, rapport, notes
    ============================================================ */
-function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }) {
+function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil, onNotifierCorrection }) {
   const [edit, setEdit] = useState(null);
   const [open, setOpen] = useState(null);
   const [filtre, setFiltre] = useState("Tous");
@@ -10134,7 +10152,7 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }
         setEdit(null);
       }} />}
 
-      {open && <RapportMatch demo={demo} match={open} players={players} db={db} mutate={mutate} peutValider={peutValider} profil={profil}
+      {open && <RapportMatch demo={demo} match={open} players={players} db={db} mutate={mutate} peutValider={peutValider} profil={profil} onNotifierCorrection={onNotifierCorrection}
         onClose={() => setOpen(null)}
         onEdit={() => { setEdit(open); setOpen(null); }}
         onDelete={() => { mutate((d) => { const m = (d.matches || []).find((x) => x.id === open.id); ajouterCorbeille(d, m, "match", cat); d.matches = d.matches.filter((x) => x.id !== open.id); return d; }); setOpen(null); }} />}
@@ -12293,7 +12311,7 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
   );
 }
 
-function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDelete, peutValider, profil }) {
+function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDelete, peutValider, profil, onNotifierCorrection }) {
   const [noteFor, setNoteFor] = useState(null);
   const [evalEssaiFor, setEvalEssaiFor] = useState(null); // joueur à l'essai dont on saisit l'évaluation détection
   const [orga, setOrga] = useState(false);
@@ -12522,6 +12540,13 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
   function autoriserCorrectionCoach(v) {
     if (!peutValider) return; // seule la direction ouvre ou referme l'autorisation
     mutate((d) => { const m = d.matches.find((x) => x.id === match.id); if (m) { if (v) m.modifCoachAutorisee = true; else delete m.modifCoachAutorisee; } return d; });
+    // À l'ouverture de l'autorisation, on alerte le(s) coach(s) de la catégorie (message court pour la bannière).
+    if (v && typeof onNotifierCorrection === "function") {
+      const nom = (cur.type === "Tournoi" || cur.type === "Plateau")
+        ? (cur.nomTournoi || cur.type)
+        : (cur.adversaire || "Match");
+      onNotifierCorrection({ cat: match.cat, nom, date: cur.date || "" });
+    }
   }
   function terminerCorrectionCoach() {
     // Le coach referme lui-même l'autorisation quand il a fini de corriger : le match se re-scelle.
@@ -12781,11 +12806,13 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
         </Card>
       )}
 
-      {estTournoiCat && (
+      {cur.type === "Tournoi" && !estCategorieSimple(match.cat) && (
         <Card style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: cur.officiel ? "#EAF0F7" : "#fff" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, color: C.encre, display: "inline-flex", alignItems: "center", gap: 6 }}><Award size={16} color={C.bleu} /> Tournoi officiel (FFF / Ligue / District)</div>
-            <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.45 }}>{cur.officiel ? "Tournoi officiel : les cartons sont activés et comptent pour la discipline." : "Active cette option pour un tournoi officiel afin de pouvoir saisir les cartons. Sinon (tournoi amical), aucun carton."}</div>
+            <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.45 }}>{categorieCartons(match.cat)
+              ? (cur.officiel ? "Tournoi officiel : les cartons sont activés et comptent pour la discipline." : "Active cette option pour un tournoi officiel afin de pouvoir saisir les cartons. Sinon (tournoi amical), aucun carton.")
+              : (cur.officiel ? "Tournoi officiel (FFF / Ligue / District)." : "Marque ce tournoi comme officiel, sinon il est considéré comme tournoi amical.")}</div>
           </div>
           <Btn variant={cur.officiel ? "accent" : "ghost"} size="sm" onClick={toggleOfficiel}>{cur.officiel ? "Officiel ✓" : "Activer officiel"}</Btn>
         </Card>
@@ -12855,14 +12882,25 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
                 <div style={{ fontWeight: 800, color: "#1E7A46", display: "inline-flex", alignItems: "center", gap: 6 }}><Check size={16} /> {estTournoiPlateau ? "Participation certifiée" : "Match certifié joué"}</div>
                 <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.45 }}>
                   {estTournoiPlateau
-                    ? (peutValider ? `${cur.type} scellé : compté dans le bilan. Pour corriger, annule la certification.` : `${cur.type} scellé : consultable mais non modifiable. Seule la direction peut rouvrir.`)
+                    ? (autoriseCoach
+                      ? (peutValider ? "Correction autorisée : le coach peut ressaisir les détails du tournoi (classement, vainqueur...). Referme quand c'est corrigé." : `La direction t'autorise à corriger ce ${motEvt} si tu as fait une erreur. Modifie via « Modifier », puis clique sur « Terminer la correction ».`)
+                      : (peutValider ? `${cur.type} scellé : compté dans le bilan. Pour corriger, annule la certification, ou autorise une correction au coach.` : `${cur.type} scellé : consultable mais non modifiable. Demande à la direction d'autoriser une correction si erreur.`))
                     : (peutValider
                       ? "Score scellé : consultable mais figé. Pour le corriger, annule la certification, modifie, puis re-certifie."
                       : "Score scellé : consultable mais non modifiable. Seule la direction peut autoriser une correction.")}
                 </div>
               </div>
-              {peutValider
-                ? <Btn variant="ghost" size="sm" onClick={() => certifierMatch(false)}>Annuler la certification</Btn>
+              {peutValider ? (
+                estTournoiPlateau ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: "0 0 auto", alignItems: "stretch" }}>
+                    <Btn variant="ghost" size="sm" onClick={() => certifierMatch(false)}>Annuler la certification</Btn>
+                    <Btn variant={autoriseCoach ? "accent" : "ghost"} size="sm" onClick={() => autoriserCorrectionCoach(!autoriseCoach)}>{autoriseCoach ? "Refermer (re-sceller)" : "Autoriser une correction"}</Btn>
+                  </div>
+                ) : (
+                  <Btn variant="ghost" size="sm" onClick={() => certifierMatch(false)}>Annuler la certification</Btn>
+                )
+              ) : (estTournoiPlateau && autoriseCoach)
+                ? <Btn variant="accent" size="sm" onClick={terminerCorrectionCoach}><Check size={15} /> Terminer la correction</Btn>
                 : <div style={{ fontSize: 11.5, fontWeight: 800, color: "#1E7A46", display: "inline-flex", alignItems: "center", gap: 5, flex: "0 0 auto" }}><Lock size={14} /> Scellé</div>}
             </div>
           ) : remis ? (
@@ -13638,8 +13676,8 @@ function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessur
           <div style={{ marginBottom: 12 }}><Corbeille db={db} mutate={mutate} cat={cat} types={["seance"]} libelle="Récupérer une séance supprimée" onMsg={setImportMsg} /></div>
           {players.length > 0 && (
             <Card style={{ marginBottom: 12, padding: 13, background: "#F4F8FD", borderColor: "#D7E3F2" }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2 }}>Responsables matériel (ballons + chasubles)</div>
-              <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>{avantDemarrage ? "Premier passage : d" : "D"}u lundi {dtW.debut} au vendredi {dtW.fin} · deux responsables, chacun un sac de ballons et des chasubles · le binôme suivant s'affiche le dimanche (pour prévenir les parents), responsabilité du lundi au vendredi, absents exclus</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4, textAlign: "center" }}>Responsables matériel</div>
+              <div style={{ fontSize: 15.5, fontWeight: 800, color: C.encre, marginBottom: 12, textAlign: "center" }}>{avantDemarrage ? "Premier passage · " : ""}Du lundi {dtW.debut} au vendredi {dtW.fin}</div>
               {!rouleActif ? (
                 <div style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "12px 11px", marginBottom: 8, fontSize: 13, color: C.encre, lineHeight: 1.5 }}>
                   Le roulement démarrera le <strong>lundi {semaineMatDates(startW).debut}</strong> (du lundi {semaineMatDates(startW).debut} au vendredi {semaineMatDates(startW).fin}). Les deux premiers joueurs de l'ordre alphabétique seront désignés automatiquement à la première séance du lundi.
@@ -13658,9 +13696,10 @@ function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessur
               ) : null}
               {[["ball", "Responsable 1", ballP, ballIndispo, recW && recW.oubliBall], ["chas", "Responsable 2", chasP, chasIndispo, recW && recW.oubliChas]].map(([role, lib, p, indispo, oubli]) => (
                 <div key={role} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", borderRadius: 10, border: `1px solid ${C.grisClair}`, padding: "9px 11px", marginBottom: 8 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3 }}>{lib} · ballons + chasubles</div>
-                    <div style={{ fontWeight: 800, fontSize: 14.5, marginTop: 2 }}>{p ? `${p.prenom} ${p.nom}` : "—"}{p && surclassesAjoutes.some((s) => s.id === p.id) ? <span style={{ fontSize: 10.5, fontWeight: 800, color: C.bleu, background: "#EAF0F7", borderRadius: 6, padding: "1px 6px", marginLeft: 6 }}>Surclassé {p.cat || ""}</span> : null}{p ? <span style={{ fontSize: 11.5, color: C.gris, fontWeight: 600 }}> · {passagesMat(db.config || {}, cat, p.id)} passage{passagesMat(db.config || {}, cat, p.id) > 1 ? "s" : ""}</span> : null}</div>
+                  <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3 }}>{lib}</div>
+                    <div style={{ fontWeight: 800, fontSize: 14.5, marginTop: 2 }}>{p ? `${p.prenom} ${p.nom}` : "—"}{p && surclassesAjoutes.some((s) => s.id === p.id) ? <span style={{ fontSize: 10.5, fontWeight: 800, color: C.bleu, background: "#EAF0F7", borderRadius: 6, padding: "1px 6px", marginLeft: 6 }}>Surclassé {p.cat || ""}</span> : null}</div>
+                    {p ? <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 600, marginTop: 1 }}>{passagesMat(db.config || {}, cat, p.id)} passage{passagesMat(db.config || {}, cat, p.id) > 1 ? "s" : ""}</div> : null}
                     {indispo ? <div style={{ fontSize: 11, color: C.rouge, fontWeight: 700, marginTop: 2 }}>Absent cette semaine, pense à réajuster</div> : null}
                   </div>
                   {p && <button onClick={() => toggleOubli(role)} style={{ border: "none", cursor: "pointer", borderRadius: 9, padding: "7px 10px", fontSize: 12, fontWeight: 800, background: oubli ? C.rouge : C.grisClair, color: oubli ? "#fff" : C.gris, flex: "0 0 auto" }}>{oubli ? "Oubli noté" : "Noter un oubli"}</button>}
