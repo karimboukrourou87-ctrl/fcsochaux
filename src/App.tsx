@@ -358,13 +358,13 @@ function AttribuerTransport({ dem, encadrement, majEncadrement, onClose, onConfi
   // Plusieurs formules possibles en même temps (ex. minibus club + voitures des parents).
   const [modes, setModes] = useState((dem.modes && dem.modes.length) ? dem.modes : (dem.mode ? [dem.mode] : ["Minibus club"]));
   const [chauffeursSup, setChauffeursSup] = useState(Array.isArray(dem.chauffeursSup) ? dem.chauffeursSup : []);
-  const [minibus, setMinibus] = useState(dem.minibus || []);
+  const [minibus, setMinibus] = useState(normMinis(dem.minibus));
   const [loueur, setLoueur] = useState(dem.loueur || "");
   const [nbVoitures, setNbVoitures] = useState(dem.nbVoitures || "");
   const [parents, setParents] = useState(dem.parents || "");
   // Chauffeur de chaque voiture de parent, modifiable individuellement (texte libre).
   const [voitures, setVoitures] = useState(() => Array.isArray(dem.voitures) ? dem.voitures : (dem.parents || "").split(",").map((s) => s.trim()).filter(Boolean));
-  const [conducteurs, setConducteurs] = useState(dem.conducteurs || {});
+  const [conducteurs, setConducteurs] = useState(normConduct(dem.conducteurs));
   const [nbLocation, setNbLocation] = useState(dem.nbLocation || "");
   const [locations, setLocations] = useState(dem.locations || []);
   // Le besoin (demande) reste modifiable par la direction ; tout ce qui n'est pas touché est conservé.
@@ -600,7 +600,7 @@ function resumeTransport(x) {
   }
   const parts = [];
   actifs.forEach((mode) => {
-    if (mode === "Minibus club") { const p = (x.minibus || []).map((b) => { const c = (x.conducteurs || {})[b]; return c ? `${b} (${c})` : b; }); parts.push(`Minibus ${p.join(", ") || "à préciser"}`); }
+    if (mode === "Minibus club") { const cond = normConduct(x.conducteurs); const p = normMinis(x.minibus).map((b) => { const c = cond[b]; return c ? `${b} (${c})` : b; }); parts.push(`Minibus ${p.join(", ") || "à préciser"}`); }
     else if (mode === "Bus en location") {
       const locs = (x.locations || []).filter((l) => l && (l.immat || l.conducteur));
       const detail = locs.length ? " · " + locs.map((l) => `${l.immat || "?"}${l.conducteur ? " (" + l.conducteur + ")" : ""}`).join(", ") : (x.conducteurBus ? " · conduit par " + x.conducteurBus : "");
@@ -619,7 +619,7 @@ function attributionLignes(x) {
   const actifs = modesActifs(x);
   const lignes = [];
   actifs.forEach((mode) => {
-    if (mode === "Minibus club") (x.minibus || []).forEach((b) => lignes.push({ vehicule: b, chauffeur: (x.conducteurs || {})[b] || "" }));
+    if (mode === "Minibus club") { const cond = normConduct(x.conducteurs); normMinis(x.minibus).forEach((b) => lignes.push({ vehicule: b, chauffeur: cond[b] || "" })); }
     else if (mode === "Bus en location") {
       const locs = (x.locations || []).filter((l) => l && (l.immat || l.conducteur));
       if (locs.length) locs.forEach((l, i) => lignes.push({ vehicule: l.immat ? l.immat : `${x.loueur || "Location"} n°${i + 1}`, chauffeur: l.conducteur || "" }));
@@ -744,7 +744,7 @@ function Transports({ store, maj, chargement, peutValider, profil, cat, encadrem
           <div style={{ display: "grid", gap: 8 }}>
             {transportsMatchs.map((m) => {
               const t = m.transport || {};
-              const mini = (t.minibus && t.minibus.length) ? ` (${t.minibus.join("/")})` : "";
+              const mini = (t.minibus && t.minibus.length) ? ` (${normMinis(t.minibus).join("/")})` : "";
               return (
                 <div key={m.id} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "9px 11px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.06";
+const APP_VERSION = "16.19.07";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -1798,7 +1798,11 @@ const PARCOURS_TOURNOI = ["Phase de poule", "1/4 de finale", "1/2 finale", "Fina
 const SOUS_TYPES_PLATEAU = ["Plateau District", "Plateau Futsal District", "Plateau régional", "Autre plateau"];
 const SOUS_TYPES_TOURNOI = ["Tournoi régional", "Tournoi national", "Tournoi international", "Autre tournoi"];
 
-const MINIBUS = ["T2", "T3", "T4", "T5", "ADJ FCSM"];
+const MINIBUS = ["T2", "T3", "T4", "T5", "T6"];
+// Ancien nom "ADJ FCSM" renomme en "T6" : on normalise les anciennes donnees pour qu'elles s'affichent et se sauvent en T6.
+const normMini = (b) => (b === "ADJ FCSM" ? "T6" : b);
+const normMinis = (arr) => (arr || []).map(normMini);
+const normConduct = (c) => { if (!c || c["ADJ FCSM"] == null) return c || {}; const n = { ...c }; if (n["T6"] == null) n["T6"] = n["ADJ FCSM"]; delete n["ADJ FCSM"]; return n; };
 const MODES_TRANSPORT = ["Minibus club", "Bus en location", "Bus de voyage des pros", "Voitures des parents"];
 const LOUEURS = ["ADJ", "Hertz"];
 const ROLES_ENCADREMENT = ["Éducateur", "Coach des gardiens", "Préparateur physique", "Dirigeant", "Délégué", "Arbitre"];
@@ -3975,7 +3979,7 @@ export default function App() {
     try {
       const all = (transportClub && transportClub.demandes) || [];
       trace(`Demandes transport (${all.length})`, all.map((t) => {
-        const mini = (t.minibus && t.minibus.length) ? t.minibus.join("/") : "";
+        const mini = (t.minibus && t.minibus.length) ? normMinis(t.minibus).join("/") : "";
         return `${t.cat || "?"} | date=${t.date || "sans date"} | statut=${t.statut || "?"} | mode=${t.mode || "?"}${mini ? " (" + mini + ")" : ""} | dest=${t.destination || "-"} | par=${t.demandeur || "?"} | créé=${(t.creeLe || "").slice(0, 10)} | id=${t.id || "?"}`;
       }));
     } catch (e) {}
@@ -11313,7 +11317,7 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
     majReservation({ [champ]: arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v] });
   }
   function toggleMinibus(b) {
-    const arr = t.minibus || [];
+    const arr = normMinis(t.minibus);
     majTransport({ minibus: arr.includes(b) ? arr.filter((x) => x !== b) : [...arr, b] });
   }
   function repondre(accepte) {
@@ -11435,7 +11439,7 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
             <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Minibus du club (plusieurs possibles)</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {MINIBUS.map((b) => {
-                const on = (t.minibus || []).includes(b);
+                const on = normMinis(t.minibus).includes(b);
                 return (
                   <button key={b} onClick={() => toggleMinibus(b)} style={{
                     flex: "1 1 60px", whiteSpace: "nowrap", border: `1px solid ${on ? C.jaune : C.grisClair}`, cursor: "pointer", borderRadius: 10, padding: "10px 6px", fontWeight: 900, fontSize: 14,
@@ -11448,11 +11452,11 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
               <div style={{ marginTop: 10 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Dirigeant qui conduit</div>
                 <div style={{ display: "grid", gap: 8 }}>
-                  {(t.minibus || []).map((b) => (
+                  {normMinis(t.minibus).map((b) => (
                     <div key={b} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ width: 66, flex: "0 0 auto", fontWeight: 900, color: C.bleu, fontSize: 13, whiteSpace: "nowrap" }}>{b}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <Sel value={(t.conducteurs || {})[b] || ""} onChange={(ev) => setConducteurMinibus(b, ev.target.value)}>
+                        <Sel value={normConduct(t.conducteurs)[b] || ""} onChange={(ev) => setConducteurMinibus(b, ev.target.value)}>
                           <option value="">Choisir le conducteur</option>
                           {conducteursDispo.map((n) => <option key={n} value={n}>{n}</option>)}
                         </Sel>
@@ -15868,7 +15872,7 @@ function exporterProgrammePDF(jsPDF, matchs, lundi, dim) {
     try { doc.addImage(LOGO_CLUB, "PNG", M, 3, lw, lh); } catch (e) {}
   }
 
-  const transportTxt = (m) => { const t = m.transport || {}; if (!t.mode) return ""; if (t.mode === "Minibus club" && t.minibus && t.minibus.length) return `Minibus ${t.minibus.join("/")}`; if (t.mode === "Bus en location" && t.loueur) return `Bus ${t.loueur}`; return t.mode; };
+  const transportTxt = (m) => { const t = m.transport || {}; if (!t.mode) return ""; if (t.mode === "Minibus club" && t.minibus && t.minibus.length) return `Minibus ${normMinis(t.minibus).join("/")}`; if (t.mode === "Bus en location" && t.loueur) return `Bus ${t.loueur}`; return t.mode; };
   const intendanceRouge = (txt) => /repas|pas de go|arbitr/i.test(txt || "");
 
   const cellules = (m) => {
@@ -16022,7 +16026,7 @@ function EditLignePlanning({ match, cats, encadrement, onClose, onSave }) {
     else if (v === "__autre__") { setTerrainAutre(true); }
     else { setTerrainAutre(false); setF((p) => ({ ...p, lieu: "Domicile", lieuMatch: v })); }
   };
-  const transInit = (() => { const t = match.transport || {}; if (!t.mode) return ""; if (t.mode === "Minibus club" && t.minibus && t.minibus.length) return `Minibus ${t.minibus.join("/")}`; if (t.mode === "Bus en location" && t.loueur) return `Bus ${t.loueur}`; return t.mode; })();
+  const transInit = (() => { const t = match.transport || {}; if (!t.mode) return ""; if (t.mode === "Minibus club" && t.minibus && t.minibus.length) return `Minibus ${normMinis(t.minibus).join("/")}`; if (t.mode === "Bus en location" && t.loueur) return `Bus ${t.loueur}`; return t.mode; })();
   const [transInput, setTransInput] = useState(transInit);
   const enregistrer = () => { const maj = { ...f }; maj.transport = transInput.trim() ? { mode: transInput.trim() } : null; onSave(maj); };
   const listeCats = cats && cats.length ? cats : CATEGORIES.map((c) => c.id);
@@ -16118,7 +16122,7 @@ function ProgrammeSemaine({ db, localDb, peutValider, userId, encadrement, cats,
       const avecTransport = (tousMatchs || []).filter((m) => m && m.transport && (m.transport.mode || m.transport.statut));
       trace(`Transports sur les matchs (${avecTransport.length})`, avecTransport.map((m) => {
         const t = m.transport || {};
-        const mini = (t.minibus && t.minibus.length) ? t.minibus.join("/") : "";
+        const mini = (t.minibus && t.minibus.length) ? normMinis(t.minibus).join("/") : "";
         return `${m.cat || "?"} | ${m.date || "sans date"} vs ${m.adversaire || "?"} | mode=${t.mode || "-"}${mini ? " (" + mini + ")" : ""} | statut=${t.statut || "-"}${t.cause ? " (" + t.cause + ")" : ""} | id=${m.id || "?"}`;
       }));
     } catch (e) {}
@@ -16171,7 +16175,7 @@ function ProgrammeSemaine({ db, localDb, peutValider, userId, encadrement, cats,
     const actifs = (t.modes && t.modes.length) ? t.modes : (t.mode ? [t.mode] : []);
     if (!actifs.length) return "";
     const parts = actifs.map((mode) => {
-      if (mode === "Minibus club" && t.minibus && t.minibus.length) return `Minibus ${t.minibus.join("/")}`;
+      if (mode === "Minibus club" && t.minibus && t.minibus.length) return `Minibus ${normMinis(t.minibus).join("/")}`;
       if (mode === "Bus en location") return `Bus ${t.loueur || "location"}${Number(t.nbLocation) > 1 ? " ×" + t.nbLocation : ""}`;
       if (mode === "Voitures des parents") return `Voitures parents${t.nbVoitures ? " (" + t.nbVoitures + ")" : ""}`;
       return mode;
