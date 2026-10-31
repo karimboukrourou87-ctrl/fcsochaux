@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.09";
+const APP_VERSION = "16.19.10";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -4048,7 +4048,10 @@ export default function App() {
         const cats = role === "direction" ? CATEGORIES.map((c) => c.id) : role === "medical" ? catsMedical : affCats;
         const catsModif = role === "direction" ? CATEGORIES.map((c) => c.id) : role === "medical" ? catsMedical : affCats;
         setProfil({ role, nom: prof && prof.nom, cats, catsModif });
-        setCat((prev) => (prev && cats.includes(prev) ? prev : (cats[0] || null)));
+        // On NE change PAS la catégorie déjà sélectionnée : un rafraîchissement du jeton (ou autre
+        // réévaluation de session) ne doit jamais faire sauter l'utilisateur vers une autre catégorie.
+        // On ne choisit une catégorie par défaut que lors du tout premier chargement (aucune sélection).
+        setCat((prev) => (prev ? prev : (cats[0] || null)));
       } catch (e) { if (!annule) setProfil({ role: "educateur", cats: [] }); }
     })();
     return () => { annule = true; };
