@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.10";
+const APP_VERSION = "16.19.11";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -4050,12 +4050,20 @@ export default function App() {
         setProfil({ role, nom: prof && prof.nom, cats, catsModif });
         // On NE change PAS la catégorie déjà sélectionnée : un rafraîchissement du jeton (ou autre
         // réévaluation de session) ne doit jamais faire sauter l'utilisateur vers une autre catégorie.
-        // On ne choisit une catégorie par défaut que lors du tout premier chargement (aucune sélection).
-        setCat((prev) => (prev ? prev : (cats[0] || null)));
+        // Au tout premier chargement (ou après un rechargement complet de la page), on restaure la
+        // dernière catégorie choisie si l'utilisateur y a encore accès, sinon la première de sa liste.
+        setCat((prev) => {
+          if (prev) return prev;
+          let saved = null; try { saved = localStorage.getItem("fcsm_cat"); } catch (e) {}
+          return (saved && cats.includes(saved)) ? saved : (cats[0] || null);
+        });
       } catch (e) { if (!annule) setProfil({ role: "educateur", cats: [] }); }
     })();
     return () => { annule = true; };
   }, [session]);
+
+  // On mémorise la dernière catégorie choisie pour la restaurer après un rechargement complet de la page.
+  useEffect(() => { if (cat) { try { localStorage.setItem("fcsm_cat", cat); } catch (e) {} } }, [cat]);
 
   useEffect(() => {
     if (demo || !session || !cat) return;
