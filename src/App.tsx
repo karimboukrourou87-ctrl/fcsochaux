@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.18.85";
+const APP_VERSION = "16.18.86";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -18589,6 +18589,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Équipes, poules, phases finales et classement</div>
         </div>
         <button onClick={enregistrerManuel} style={{ border: "none", background: C.jaune, color: C.bleuNuit, borderRadius: 10, padding: "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 800, flex: "0 0 auto" }}><Save size={16} /> Enregistrer</button>
+        <button onClick={() => { try { enregistrerManuel(); } catch (e) {} onClose(); }} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={20} /></button>
       </header>
       {msgSave && <div style={{ background: "#E2F4E9", color: C.vert, fontWeight: 700, fontSize: 13, textAlign: "center", padding: "8px 12px" }}>{msgSave}</div>}
 
