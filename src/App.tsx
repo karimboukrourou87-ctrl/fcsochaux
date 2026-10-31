@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.18.83";
+const APP_VERSION = "16.18.84";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -18299,6 +18299,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
   const defaut = { regle: { v: 3, n: 1, d: 0 }, equipes: [], poules: [], finales: [], planningConf: { nbEquipes: "", nbTerrains: 2, debut: "09:00", fin: "", duree: 10, pause: 2, repas: 0, retour: false, auto: false, terrains: "" }, planning: [], qualifConf: { nbFinale: 2 }, format: "simple" };
   const [org, setOrg] = useState(() => ({ ...defaut, ...(tournoi.organisation || {}), regle: { ...defaut.regle, ...((tournoi.organisation || {}).regle || {}) }, planningConf: { ...defaut.planningConf, ...((tournoi.organisation || {}).planningConf || {}) }, qualifConf: { ...defaut.qualifConf, ...((tournoi.organisation || {}).qualifConf || {}) } }));
   const [nomEquipe, setNomEquipe] = useState("");
+  const [editEquipe, setEditEquipe] = useState({ id: null, nom: "" });
   const [importMsg, setImportMsg] = useState(null);
   const [coller, setColler] = useState(false);
   const [texteColle, setTexteColle] = useState("");
@@ -18353,6 +18354,11 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
     reader.onload = () => traiterImportEquipes(reader.result);
     reader.onerror = () => setImportMsg("Lecture du fichier impossible.");
     reader.readAsText(f);
+  }
+  function renommerEquipe(id, nouveauNom) {
+    const n = String(nouveauNom || "").trim();
+    if (!n) return;
+    commit({ ...org, equipes: org.equipes.map((e) => e.id === id ? { ...e, nom: n } : e) });
   }
   function suppEquipe(id) {
     commit({
@@ -18611,10 +18617,20 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
         ) : (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 6 }}>
             {org.equipes.map((e) => (
-              <span key={e.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 20, padding: "6px 10px", fontSize: 13, fontWeight: 700 }}>
-                {e.nom}
-                <button onClick={() => suppEquipe(e.id)} style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", display: "grid", placeItems: "center", padding: 0 }}><X size={14} /></button>
-              </span>
+              editEquipe.id === e.id ? (
+                <span key={e.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", border: `1px solid ${C.bleu}`, borderRadius: 20, padding: "4px 8px" }}>
+                  <input autoFocus value={editEquipe.nom} onChange={(ev) => setEditEquipe({ id: e.id, nom: ev.target.value })}
+                    onKeyDown={(ev) => { if (ev.key === "Enter") { renommerEquipe(e.id, editEquipe.nom); setEditEquipe({ id: null, nom: "" }); } if (ev.key === "Escape") setEditEquipe({ id: null, nom: "" }); }}
+                    style={{ border: "none", outline: "none", fontSize: 13, fontWeight: 700, width: Math.max(90, (editEquipe.nom.length + 2) * 8), background: "transparent", color: C.encre }} />
+                  <button onClick={() => { renommerEquipe(e.id, editEquipe.nom); setEditEquipe({ id: null, nom: "" }); }} title="Valider" style={{ border: "none", background: "transparent", color: C.vert, cursor: "pointer", display: "grid", placeItems: "center", padding: 0 }}><Check size={15} /></button>
+                </span>
+              ) : (
+                <span key={e.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 20, padding: "6px 10px", fontSize: 13, fontWeight: 700 }}>
+                  {e.nom}
+                  <button onClick={() => setEditEquipe({ id: e.id, nom: e.nom })} title="Modifier le nom" style={{ border: "none", background: "transparent", color: C.bleu, cursor: "pointer", display: "grid", placeItems: "center", padding: 0 }}><Edit3 size={13} /></button>
+                  <button onClick={() => suppEquipe(e.id)} title="Retirer" style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", display: "grid", placeItems: "center", padding: 0 }}><X size={14} /></button>
+                </span>
+              )
             ))}
           </div>
         )}
