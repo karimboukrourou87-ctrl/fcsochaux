@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.18.84";
+const APP_VERSION = "16.18.85";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -18300,6 +18300,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
   const [org, setOrg] = useState(() => ({ ...defaut, ...(tournoi.organisation || {}), regle: { ...defaut.regle, ...((tournoi.organisation || {}).regle || {}) }, planningConf: { ...defaut.planningConf, ...((tournoi.organisation || {}).planningConf || {}) }, qualifConf: { ...defaut.qualifConf, ...((tournoi.organisation || {}).qualifConf || {}) } }));
   const [nomEquipe, setNomEquipe] = useState("");
   const [editEquipe, setEditEquipe] = useState({ id: null, nom: "" });
+  const [suppEquipeId, setSuppEquipeId] = useState(null);
   const [importMsg, setImportMsg] = useState(null);
   const [coller, setColler] = useState(false);
   const [texteColle, setTexteColle] = useState("");
@@ -18624,11 +18625,17 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
                     style={{ border: "none", outline: "none", fontSize: 13, fontWeight: 700, width: Math.max(90, (editEquipe.nom.length + 2) * 8), background: "transparent", color: C.encre }} />
                   <button onClick={() => { renommerEquipe(e.id, editEquipe.nom); setEditEquipe({ id: null, nom: "" }); }} title="Valider" style={{ border: "none", background: "transparent", color: C.vert, cursor: "pointer", display: "grid", placeItems: "center", padding: 0 }}><Check size={15} /></button>
                 </span>
+              ) : suppEquipeId === e.id ? (
+                <span key={e.id} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#FBE3E3", border: `1px solid ${C.rouge}`, borderRadius: 20, padding: "6px 10px", fontSize: 12.5, fontWeight: 800, color: C.rouge }}>
+                  Retirer {e.nom} ?
+                  <button onClick={() => { suppEquipe(e.id); setSuppEquipeId(null); }} title="Confirmer le retrait" style={{ border: "none", background: C.rouge, color: "#fff", cursor: "pointer", borderRadius: 8, padding: "3px 9px", fontSize: 12, fontWeight: 800 }}>Oui</button>
+                  <button onClick={() => setSuppEquipeId(null)} title="Annuler" style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.gris, cursor: "pointer", borderRadius: 8, padding: "3px 9px", fontSize: 12, fontWeight: 800 }}>Non</button>
+                </span>
               ) : (
                 <span key={e.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 20, padding: "6px 10px", fontSize: 13, fontWeight: 700 }}>
                   {e.nom}
                   <button onClick={() => setEditEquipe({ id: e.id, nom: e.nom })} title="Modifier le nom" style={{ border: "none", background: "transparent", color: C.bleu, cursor: "pointer", display: "grid", placeItems: "center", padding: 0 }}><Edit3 size={13} /></button>
-                  <button onClick={() => suppEquipe(e.id)} title="Retirer" style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", display: "grid", placeItems: "center", padding: 0 }}><X size={14} /></button>
+                  <button onClick={() => setSuppEquipeId(e.id)} title="Retirer" style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", display: "grid", placeItems: "center", padding: 0 }}><X size={14} /></button>
                 </span>
               )
             ))}
