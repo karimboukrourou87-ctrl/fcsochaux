@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.18.93";
+const APP_VERSION = "16.18.94";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -18392,6 +18392,19 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
       planning: (org.planning || []).map((s) => s.matchs ? { ...s, matchs: majMatchs(s.matchs) } : s),
     });
   }
+  // Annuler un forfait fait par erreur : on enlève le marquage « forfait » de l'équipe et on remet à vide
+  // les rencontres qui avaient été scellées en forfait (pour ressaisir les vrais scores si besoin).
+  function annulerForfaitEquipe(id) {
+    const nettoie = (arr) => (arr || []).map((m) => (m.forfait && (m.aId === id || m.bId === id)) ? { ...m, sa: "", sb: "", forfait: false } : m);
+    commit({
+      ...org,
+      equipes: org.equipes.map((e) => e.id === id ? { ...e, forfait: false } : e),
+      poules: org.poules.map((p) => ({ ...p, matchs: nettoie(p.matchs) })),
+      finales: org.finales.map((f) => ({ ...f, matchs: nettoie(f.matchs) })),
+      planning: (org.planning || []).map((s) => s.matchs ? { ...s, matchs: nettoie(s.matchs) } : s),
+    });
+    setMsgSave("Forfait annulé. Les rencontres concernées sont remises à zéro."); setTimeout(() => setMsgSave(null), 3500);
+  }
   // CAS 2 — l'équipe est absente AU DÉPART : on la retire complètement et on réorganise le planning
   // en fonction des équipes réellement présentes.
   function retirerReorganiser(id) {
@@ -18711,13 +18724,18 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
                 </span>
               ) : suppEquipeId === e.id ? (
                 <span key={e.id} style={{ flexBasis: "100%", width: "100%", background: "#FFF6F6", border: `1px solid ${C.rouge}`, borderRadius: 14, padding: "10px 12px" }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 800, color: C.rouge, marginBottom: 8 }}>{e.nom} ne joue plus. Que faire ?</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: C.rouge, marginBottom: 8 }}>{e.nom} {e.forfait ? "est en forfait." : "ne joue plus. Que faire ?"}</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    <button onClick={() => { forfaitEquipe(e.id); setSuppEquipeId(null); }} style={{ border: "none", background: "#8A6D00", color: "#fff", cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Forfait (tournoi commencé)</button>
+                    {e.forfait && (
+                      <button onClick={() => { annulerForfaitEquipe(e.id); setSuppEquipeId(null); }} style={{ border: "none", background: C.vert, color: "#fff", cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Annuler le forfait (revenir en arrière)</button>
+                    )}
+                    {!e.forfait && (
+                      <button onClick={() => { forfaitEquipe(e.id); setSuppEquipeId(null); }} style={{ border: "none", background: "#8A6D00", color: "#fff", cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Forfait (tournoi commencé)</button>
+                    )}
                     <button onClick={() => { retirerReorganiser(e.id); setSuppEquipeId(null); }} style={{ border: "none", background: C.bleu, color: "#fff", cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Retirer et réorganiser (absente au départ)</button>
                     <button onClick={() => setSuppEquipeId(null)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.gris, cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Annuler</button>
                   </div>
-                  <div style={{ fontSize: 11, color: C.gris, marginTop: 7, lineHeight: 1.45 }}>Forfait : l'équipe reste au classement mais toutes ses rencontres sont gagnées par l'adversaire ({FORFAIT_BUTS}-0). Réorganiser : l'équipe est retirée et le planning est recalculé avec les équipes présentes.</div>
+                  <div style={{ fontSize: 11, color: C.gris, marginTop: 7, lineHeight: 1.45 }}>{e.forfait ? "Annuler le forfait : l'équipe reprend sa place normale et ses rencontres forfait sont remises à zéro (tu ressaisis les vrais scores)." : `Forfait : l'équipe reste au classement mais toutes ses rencontres sont gagnées par l'adversaire (${FORFAIT_BUTS}-0). Réorganiser : l'équipe est retirée et le planning est recalculé avec les équipes présentes.`}</div>
                 </span>
               ) : (
                 <span key={e.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", border: `1px solid ${e.forfait ? "#EBD3AE" : C.grisClair}`, borderRadius: 20, padding: "6px 10px", fontSize: 13, fontWeight: 700 }}>
@@ -18955,16 +18973,21 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
 
               {(p.matchs || []).length > 0 && (
                 <div style={{ display: "grid", gap: 7, marginBottom: 12 }}>
-                  {p.matchs.map((m) => (
-                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                      <div style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.aId)}</div>
+                  {p.matchs.map((m) => {
+                    const ffA = (org.equipes.find((e) => e.id === m.aId) || {}).forfait;
+                    const ffB = (org.equipes.find((e) => e.id === m.bId) || {}).forfait;
+                    const badge = <span style={{ fontSize: 9.5, fontWeight: 800, color: "#8A6D00", background: "#FFF3DA", borderRadius: 5, padding: "1px 5px", marginLeft: 4 }}>forfait</span>;
+                    return (
+                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 7, background: (ffA || ffB) ? "#FFFBF0" : "transparent", borderRadius: 8, padding: (ffA || ffB) ? "3px 4px" : 0 }}>
+                      <div style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.aId)}{ffA ? badge : null}</div>
                       <input type="number" value={m.sa} onChange={(e) => majMatchPoule(p.id, m.id, { sa: e.target.value })} style={styleInputScore} />
                       <span style={{ color: C.gris, fontWeight: 800 }}>-</span>
                       <input type="number" value={m.sb} onChange={(e) => majMatchPoule(p.id, m.id, { sb: e.target.value })} style={styleInputScore} />
-                      <div style={{ flex: 1, fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.bId)}</div>
+                      <div style={{ flex: 1, fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.bId)}{ffB ? badge : null}</div>
                       <button onClick={() => suppMatchPoule(p.id, m.id)} style={{ border: "none", background: "transparent", color: C.gris, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={15} /></button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
