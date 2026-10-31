@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.18.87";
+const APP_VERSION = "16.18.88";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -18526,8 +18526,12 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
     setTimeout(() => setMsgSave(null), 6000);
   }
   function effacerPlanning() { commit({ ...org, planning: [], planningTeams: [] }); }
-  const nomsTerrains = (Array.isArray(org.planningConf.terrains) ? org.planningConf.terrains : String(org.planningConf.terrains || "").split(",")).map((s) => String(s || "").trim());
-  const nomTerrain = (k) => nomsTerrains[k - 1] || `Terrain ${k}`;
+  // On NE trim PAS les valeurs en cours de saisie (sinon la touche espace semble ne pas marcher).
+  // Le nettoyage se fait seulement à l'usage (nomTerrain) et pour l'ancien format en texte séparé par des virgules.
+  const nomsTerrains = Array.isArray(org.planningConf.terrains)
+    ? org.planningConf.terrains.map((s) => String(s || ""))
+    : String(org.planningConf.terrains || "").split(",").map((s) => String(s || "").trim());
+  const nomTerrain = (k) => (nomsTerrains[k - 1] || "").trim() || `Terrain ${k}`;
   function setNomTerrain(i, val) {
     const nbT = Math.max(1, Number(org.planningConf.nbTerrains) || 1);
     const a = [...nomsTerrains];
