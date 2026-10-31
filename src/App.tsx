@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.18.95";
+const APP_VERSION = "16.18.97";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -18046,6 +18046,20 @@ function couleurRang(place) {
 function classementPoule(equipeIds, matchs, equipes, regle) {
   const st = {};
   (equipeIds || []).forEach((id) => { st[id] = { id, j: 0, g: 0, n: 0, p: 0, bp: 0, bc: 0, pts: 0 }; });
+  // Filet de securite forfait : si une equipe est declaree forfait et que le score
+  // du match n'a pas encore ete fige dans le planning, on applique 3-0 au calcul.
+  const ff = new Set((equipes || []).filter((e) => e && e.forfait).map((e) => e.id));
+  const PTS_FORF = 3;
+  const avecForfait = (matchs || []).map((m) => {
+    const vide = m.sa === "" || m.sa == null || m.sb === "" || m.sb == null;
+    if (!vide) return m;
+    const aFF = ff.has(m.aId), bFF = ff.has(m.bId);
+    if (aFF && !bFF) return { ...m, sa: 0, sb: PTS_FORF };
+    if (bFF && !aFF) return { ...m, sa: PTS_FORF, sb: 0 };
+    if (aFF && bFF) return { ...m, sa: 0, sb: 0 };
+    return m;
+  });
+  matchs = avecForfait;
   (matchs || []).forEach((m) => {
     const sa = m.sa === "" || m.sa == null ? null : Number(m.sa);
     const sb = m.sb === "" || m.sb == null ? null : Number(m.sb);
@@ -18198,7 +18212,9 @@ function exporterPlateauPDF(jsPDF, titre, org) {
   }
 
   // Classement général (à partir du planning)
-  const teamsPlan = org.planningTeams || [];
+  const teamsPlanBrut = org.planningTeams || [];
+  const ffLivePDF = new Set((org.equipes || []).filter((e) => e && e.forfait).map((e) => e.id));
+  const teamsPlan = teamsPlanBrut.map((t) => ({ ...t, forfait: ffLivePDF.has(t.id) }));
   if (teamsPlan.length) {
     const matchsPlan = [];
     (org.planning || []).forEach((s) => (s.matchs || []).forEach((m) => { if (m.aId && m.bId) matchsPlan.push(m); }));
@@ -18639,11 +18655,40 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
   const classementGeneral = (() => {
     const teams = org.planningTeams || [];
     if (!teams.length) return [];
+    // On rapatrie le statut forfait vivant (org.equipes) sur les equipes du planning,
+    // pour que les points de forfait soient attribues meme si le planning n'a pas ete refige.
+    const ffLive = new Set((org.equipes || []).filter((e) => e && e.forfait).map((e) => e.id));
+    const teamsFF = teams.map((t) => ({ ...t, forfait: ffLive.has(t.id) }));
     const matchs = [];
     (org.planning || []).forEach((s) => (s.matchs || []).forEach((m) => { if (m.aId && m.bId) matchs.push(m); }));
-    return classementPoule(teams.map((t) => t.id), matchs, teams, org.regle);
+    return classementPoule(teamsFF.map((t) => t.id), matchs, teamsFF, org.regle);
   })();
   const nomTeamPlan = (id) => { const t = (org.planningTeams || []).find((x) => x.id === id); return t ? t.nom : id; };
+  // Diagnostic du classement general : comment chaque rencontre du planning est comptee.
+  const diagGeneral = (() => {
+    const teams = org.planningTeams || [];
+    const ffLive = new Set((org.equipes || []).filter((e) => e && e.forfait).map((e) => e.id));
+    const lignes = [];
+    (org.planning || []).forEach((s) => (s.matchs || []).forEach((m) => {
+      if (!m.aId || !m.bId) return;
+      const vide = m.sa === "" || m.sa == null || m.sb === "" || m.sb == null;
+      const aFF = ffLive.has(m.aId), bFF = ffLive.has(m.bId);
+      let etat, score;
+      if (!vide) { etat = "saisi"; score = `${m.sa} - ${m.sb}`; }
+      else if (aFF || bFF) { etat = "forfait"; score = aFF && bFF ? "0 - 0" : (aFF ? `0 - 3 pour ${nomTeamPlan(m.bId)}` : `3 - 0 pour ${nomTeamPlan(m.aId)}`); }
+      else { etat = "attente"; score = "non joue"; }
+      lignes.push({ id: m.id, a: nomTeamPlan(m.aId), b: nomTeamPlan(m.bId), etat, score });
+    }));
+    return {
+      nbEquipes: teams.length,
+      forfaits: (org.equipes || []).filter((e) => e && e.forfait).map((e) => e.nom),
+      total: lignes.length,
+      saisis: lignes.filter((l) => l.etat === "saisi").length,
+      forfaitsM: lignes.filter((l) => l.etat === "forfait").length,
+      attente: lignes.filter((l) => l.etat === "attente").length,
+      lignes,
+    };
+  })();
 
   // estimation en temps réel (durée des matchs et heure de fin) selon les réglages
   const estim = (() => {
@@ -18939,7 +18984,34 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
                 </tbody>
               </table>
             </div>
-            <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Ce classement se calcule tout seul à partir des scores saisis sur le planning ci-dessus.</div>
+            <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Ce classement se calcule tout seul à partir des scores saisis sur le planning ci-dessus. Les équipes en forfait font gagner 3-0 à chacun de leurs adversaires, même si le match n'est pas encore saisi.</div>
+            <details style={{ marginTop: 10 }}>
+              <summary style={{ cursor: "pointer", fontSize: 11.5, fontWeight: 800, color: C.bleu, listStyle: "none" }}>🔎 Diagnostic du classement (vérifier l'attribution des points)</summary>
+              <div style={{ marginTop: 8, background: C.fond, border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 10 }}>
+                <div style={{ fontSize: 11.5, color: C.encre, fontWeight: 700, marginBottom: 6 }}>
+                  {diagGeneral.nbEquipes} équipes · {diagGeneral.total} rencontres au planning
+                </div>
+                <div style={{ fontSize: 11, color: C.gris, marginBottom: 6, lineHeight: 1.5 }}>
+                  Scores saisis : {diagGeneral.saisis} · Comptées en forfait (3-0) : {diagGeneral.forfaitsM} · En attente (0 point) : {diagGeneral.attente}
+                </div>
+                {diagGeneral.forfaits.length > 0 && (
+                  <div style={{ fontSize: 11, color: C.rouge, fontWeight: 700, marginBottom: 6 }}>Équipes en forfait : {diagGeneral.forfaits.join(", ")}</div>
+                )}
+                {diagGeneral.nbEquipes === 0 && (
+                  <div style={{ fontSize: 11, color: C.rouge, fontWeight: 700, marginBottom: 6 }}>Aucun planning généré : lancez « Organiser le planning » pour obtenir un classement.</div>
+                )}
+                <div style={{ maxHeight: 220, overflowY: "auto" }}>
+                  {diagGeneral.lignes.map((l) => (
+                    <div key={l.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11, padding: "4px 0", borderTop: `1px solid ${C.grisClair}` }}>
+                      <span style={{ color: C.encre, flex: 1, minWidth: 0 }}>{l.a} contre {l.b}</span>
+                      <span style={{ fontWeight: 800, color: l.etat === "saisi" ? C.vert : l.etat === "forfait" ? C.jaune : C.gris, flex: "0 0 auto" }}>
+                        {l.etat === "saisi" ? l.score : l.etat === "forfait" ? "Forfait : " + l.score : "En attente"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </details>
           </Card>
         )}
 
