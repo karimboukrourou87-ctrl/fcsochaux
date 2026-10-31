@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.18.81";
+const APP_VERSION = "16.18.82";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -9285,7 +9285,8 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
   const [convocCompo, setConvocCompo] = useState(false);
   const key = matchSel || cat;
   // Encadrement du match (liste commune du club) : coach, coach adjoint, dirigeant, délégué
-  const [listeEncCompo] = useEncadrementClub(demo, db, mutate);
+  const [listeEncCompo, majEncCompo] = useEncadrementClub(demo, db, mutate);
+  const [gererStaff, setGererStaff] = useState(false);
   const matchCourant = (db.matches || []).find((m) => m.id === matchSel);
   const dateMatchCompo = (matchCourant && matchCourant.date) || null;
   // Match officiel (championnat, coupe, tournoi officiel) : la suspension s'applique et bloque la compo.
@@ -9662,6 +9663,9 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
         <div style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
           <div style={{ fontWeight: 800, marginBottom: 4, display: "flex", alignItems: "center", gap: 7 }}><Users size={16} color={C.bleu} /> Encadrement du match</div>
           <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Coach, coach adjoint, dirigeant et délégué (liste commune du club).</div>
+          {!compoScellee && (
+            <Btn variant="ghost" size="sm" full style={{ marginBottom: 10 }} onClick={() => setGererStaff(true)}><Plus size={15} /> Staff (ajouter un membre à la liste du club)</Btn>
+          )}
           {compoScellee && <div style={{ fontSize: 12, color: "#1E7A46", background: "#E2F4E9", border: "1px solid #BFE3CC", borderRadius: 10, padding: "8px 11px", marginBottom: 10, display: "flex", alignItems: "center", gap: 6, lineHeight: 1.4 }}><Lock size={14} style={{ flex: "0 0 auto" }} /> Encadrement scellé (match certifié joué). Seule la direction peut le modifier.</div>}
           {!compoScellee && dernierEncadrement && (
             <Btn variant="ghost" size="sm" full style={{ marginBottom: 10 }} onClick={reprendreEncadrement}><RefreshCw size={15} /> Reprendre le même encadrement{dernierEncadrement.date ? ` (${fmtDate(dernierEncadrement.date)})` : ""}</Btn>
@@ -9678,6 +9682,8 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
           ))}
         </div>
       )}
+
+      {gererStaff && <GestionDirigeants liste={listeEncCompo} maj={majEncCompo} onClose={() => setGererStaff(false)} />}
 
       {!compoScellee && formats.length > 1 && (
         <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
