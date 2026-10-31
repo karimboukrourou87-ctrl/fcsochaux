@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.18.82";
+const APP_VERSION = "16.18.83";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -19816,15 +19816,38 @@ function EditEssai({ fiche, db, onClose, onSave, onArchiver, onIntegrer, onDelet
     try { const jsPDF = await chargerJsPDF(); exporterEssaiPDF(jsPDF, f, db); setPdfMsg(null); }
     catch (err) { setPdfMsg("Module d'impression indisponible. Réessaie."); }
   }
+  // Périodes d'essai : historique des essais précédents. La période en cours = essaiDebut/essaiFin.
+  const periodesPrec = Array.isArray(f.periodes) ? f.periodes : [];
+  const numPeriode = periodesPrec.length + 1;
+  // Le joueur revient pour un nouvel essai : on archive la période actuelle dans l'historique
+  // et on repart sur une nouvelle période (statut actif, dates à renseigner).
+  function nouvellePeriode() {
+    setF((p) => {
+      const hist = Array.isArray(p.periodes) ? [...p.periodes] : [];
+      if (p.essaiDebut || p.essaiFin) hist.push({ debut: p.essaiDebut || "", fin: p.essaiFin || "" });
+      return { ...p, periodes: hist, essaiDebut: hoyISO(), essaiFin: "", statut: "actif" };
+    });
+  }
   return (
     <Modal title={existe ? (nomComplet || "Joueur à l'essai") : "Nouveau joueur à l'essai"} onClose={onClose}
-      footer={<>
-        <Btn variant="accent" full disabled={!valide || periodeInvalide} onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>
-        {existe && <Btn variant="primary" full onClick={exporterPDF}><FileDown size={16} /> Rapport PDF</Btn>}
-        {existe && onIntegrer && <Btn variant="ghost" full onClick={onIntegrer}><Plus size={16} /> Intégrer à l'effectif</Btn>}
-        {existe && onArchiver && <Btn variant="ghost" full onClick={() => onArchiver(!archive)}>{archive ? "Réactiver l'essai" : "Archiver l'essai"}</Btn>}
-        {existe && onDelete && <BtnSuppr nom={"l'essai de " + (nomComplet || "ce joueur")} onConfirm={onDelete} />}
-      </>}>
+      footer={
+        <div style={{ width: "100%", display: "grid", gap: 8 }}>
+          <Btn variant="accent" full disabled={!valide || periodeInvalide} onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>
+          {existe && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <Btn variant="primary" full onClick={exporterPDF}><FileDown size={15} /> Rapport PDF</Btn>
+                {onIntegrer && <Btn variant="ghost" full onClick={onIntegrer}><Plus size={15} /> Intégrer à l'effectif</Btn>}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <Btn variant="ghost" full onClick={nouvellePeriode}><Plus size={15} /> Nouvelle période d'essai</Btn>
+                {onArchiver && <Btn variant="ghost" full onClick={() => onArchiver(!archive)}>{archive ? <><RefreshCw size={15} /> Réactiver l'essai</> : "Archiver l'essai"}</Btn>}
+              </div>
+              {onDelete && <BtnSuppr nom={"l'essai de " + (nomComplet || "ce joueur")} onConfirm={onDelete} full />}
+            </>
+          )}
+        </div>
+      }>
       {existe && (
         <div style={{ fontSize: 12.5, fontWeight: 800, color: archive ? C.gris : (essaiEnCours(f) ? "#1E7A46" : "#B87A2B"), background: archive ? "#F1F4F8" : (essaiEnCours(f) ? "#E2F4E9" : "#FFF3DA"), border: `1px solid ${archive ? C.grisClair : (essaiEnCours(f) ? "#BFE3CC" : "#EBD3AE")}`, borderRadius: 10, padding: "8px 11px", marginBottom: 10 }}>{essaiStatutLabel(f)}{min > 0 ? ` · ${min} min de jeu à l'essai` : ""}</div>
       )}
@@ -19866,11 +19889,22 @@ function EditEssai({ fiche, db, onClose, onSave, onArchiver, onIntegrer, onDelet
         <Field label="Taille (cm)"><Inp type="number" inputMode="numeric" value={f.taille ?? ""} onChange={(e) => set("taille", e.target.value)} placeholder="0" /></Field>
         <Field label="Poids (kg)"><Inp type="number" inputMode="numeric" value={f.poids ?? ""} onChange={(e) => set("poids", e.target.value)} placeholder="0" /></Field>
       </div>
+      {existe && numPeriode > 1 && (
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: C.bleu, background: "#EAF0F7", border: "1px solid #D4E2F5", borderRadius: 10, padding: "8px 11px", marginBottom: 8, display: "inline-flex", alignItems: "center", gap: 6 }}><RefreshCw size={14} /> Période d'essai n°{numPeriode}</div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        <Field label="Début de l'essai"><Inp type="date" value={f.essaiDebut || ""} onChange={(e) => set("essaiDebut", e.target.value)} /></Field>
-        <Field label="Fin de l'essai"><Inp type="date" value={f.essaiFin || ""} onChange={(e) => set("essaiFin", e.target.value)} /></Field>
+        <Field label={numPeriode > 1 ? `Début (période n°${numPeriode})` : "Début de l'essai"}><Inp type="date" value={f.essaiDebut || ""} onChange={(e) => set("essaiDebut", e.target.value)} /></Field>
+        <Field label={numPeriode > 1 ? `Fin (période n°${numPeriode})` : "Fin de l'essai"}><Inp type="date" value={f.essaiFin || ""} onChange={(e) => set("essaiFin", e.target.value)} /></Field>
       </div>
       {periodeInvalide && <div style={{ fontSize: 11.5, color: C.rouge, fontWeight: 700, marginTop: -4, marginBottom: 8 }}>La fin de l'essai doit être après le début.</div>}
+      {periodesPrec.length > 0 && (
+        <div style={{ background: "#F7F9FC", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "8px 11px", marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 4 }}>Périodes d'essai précédentes</div>
+          {periodesPrec.map((pp, i) => (
+            <div key={i} style={{ fontSize: 12.5, color: C.encre }}>Période n°{i + 1} : {pp.debut ? new Date(pp.debut + "T00:00:00").toLocaleDateString("fr-FR") : "?"}{pp.fin ? ` au ${new Date(pp.fin + "T00:00:00").toLocaleDateString("fr-FR")}` : ""}</div>
+          ))}
+        </div>
+      )}
 
       <div style={{ fontSize: 11.5, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3, margin: "6px 0 6px" }}>Test jonglage</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
