@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.18.80";
+const APP_VERSION = "16.18.81";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -9367,6 +9367,9 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cat, essaisActifs.length]);
   const trouve = (id) => pool.find((x) => x.id === id);
+  // Remplaçants réellement affichables (dont le joueur existe encore dans la catégorie) :
+  // un identifiant « fantôme » (joueur supprimé/déplacé) ne doit pas gonfler le compteur.
+  const remplacantsValides = (remplacants || []).filter((pid) => trouve(pid));
   const numeroDe = (p) => { if (!p) return ""; const o = lineup.numeros && lineup.numeros[p.id]; return (o != null && o !== "") ? o : (p.numero ?? ""); };
   const GK_COL = "#2FA36B"; // couleur distincte du gardien
   const [pick, setPick] = useState(null);       // index de slot à remplir
@@ -9524,7 +9527,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
     mutate((d) => { if (d.config && d.config.compoTypes && d.config.compoTypes[cat]) d.config.compoTypes[cat] = d.config.compoTypes[cat].filter((t) => t.nom !== nom); return d; });
   }
   const used = Object.values(lineup.slots || {});
-  const convoques = used.length + remplacants.length;
+  const convoques = used.length + remplacantsValides.length;
   const benchDispo = players.filter((p) => !used.includes(p.id) && !remplacants.includes(p.id));
   // Les joueurs à l'essai sont placés en TÊTE de la liste de sélection, avant l'effectif et les surclassés.
   const benchDispoTous = [...essaisActifs.filter((p) => !used.includes(p.id) && !remplacants.includes(p.id)), ...benchDispo, ...surclasses.filter((p) => !used.includes(p.id) && !remplacants.includes(p.id))];
@@ -9768,7 +9771,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
 
       {/* Remplaçants */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}><ArrowRightLeft size={17} color={C.bleu} /> Remplaçants ({remplacants.length}/{maxRempl})</div>
+        <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}><ArrowRightLeft size={17} color={C.bleu} /> Remplaçants ({remplacantsValides.length}/{maxRempl})</div>
         <div style={{ display: "flex", gap: 8, flex: "0 0 auto" }}>
           {!compoScellee && remplacants.length < maxRempl && <Btn variant="accent" size="sm" onClick={() => setPickRempl(true)}><Plus size={15} /> Ajouter</Btn>}
           <Btn variant="ghost" size="sm" onClick={() => setPickRempl(true)}><Users size={15} /> Effectif restant ({benchDispo.length})</Btn>
