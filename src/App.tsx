@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.18.97";
+const APP_VERSION = "16.18.98";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -18668,25 +18668,37 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
   const diagGeneral = (() => {
     const teams = org.planningTeams || [];
     const ffLive = new Set((org.equipes || []).filter((e) => e && e.forfait).map((e) => e.id));
+    const idsTeams = new Set(teams.map((t) => t.id));
     const lignes = [];
-    (org.planning || []).forEach((s) => (s.matchs || []).forEach((m) => {
-      if (!m.aId || !m.bId) return;
+    (org.planning || []).forEach((s) => { if (s.repas) return; (s.matchs || []).forEach((m) => {
       const vide = m.sa === "" || m.sa == null || m.sb === "" || m.sb == null;
       const aFF = ffLive.has(m.aId), bFF = ffLive.has(m.bId);
+      // Une rencontre ne compte au classement que si ses deux equipes sont identifiees ET presentes dans la liste du planning.
+      const exclu = !m.aId || !m.bId || !idsTeams.has(m.aId) || !idsTeams.has(m.bId);
       let etat, score;
-      if (!vide) { etat = "saisi"; score = `${m.sa} - ${m.sb}`; }
+      if (exclu) { etat = "exclu"; score = !m.aId || !m.bId ? "adversaire manquant" : "equipe hors liste"; }
+      else if (!vide) { etat = "saisi"; score = `${m.sa} - ${m.sb}`; }
       else if (aFF || bFF) { etat = "forfait"; score = aFF && bFF ? "0 - 0" : (aFF ? `0 - 3 pour ${nomTeamPlan(m.bId)}` : `3 - 0 pour ${nomTeamPlan(m.aId)}`); }
       else { etat = "attente"; score = "non joue"; }
-      lignes.push({ id: m.id, a: nomTeamPlan(m.aId), b: nomTeamPlan(m.bId), etat, score });
-    }));
+      lignes.push({ id: m.id, aId: m.aId, bId: m.bId, a: m.a || nomTeamPlan(m.aId), b: m.b || nomTeamPlan(m.bId), sa: m.sa, sb: m.sb, forfaitEq: !!m.forfaitEq, etat, score });
+    }); });
+    const forfaits = (org.equipes || []).filter((e) => e && e.forfait);
+    const dump = [
+      `APP ${APP_VERSION} · format=${org.format || "(simple)"} · equipes=${(org.equipes || []).length} · planningTeams=${teams.length}`,
+      `Forfaits: ${forfaits.length ? forfaits.map((e) => `${e.nom}(${e.id})`).join(", ") : "aucun"}`,
+      `planningTeams: ${teams.map((t) => `${t.nom}(${t.id})`).join(", ") || "vide"}`,
+      `Rencontres (${lignes.length}):`,
+      ...lignes.map((l) => `  ${l.a}[${l.aId || "?"}] vs ${l.b}[${l.bId || "?"}] sa=${l.sa === "" || l.sa == null ? "vide" : l.sa} sb=${l.sb === "" || l.sb == null ? "vide" : l.sb} forfaitEq=${l.forfaitEq} -> ${l.etat}`),
+    ].join("\n");
     return {
       nbEquipes: teams.length,
-      forfaits: (org.equipes || []).filter((e) => e && e.forfait).map((e) => e.nom),
+      forfaits: forfaits.map((e) => e.nom),
       total: lignes.length,
       saisis: lignes.filter((l) => l.etat === "saisi").length,
       forfaitsM: lignes.filter((l) => l.etat === "forfait").length,
       attente: lignes.filter((l) => l.etat === "attente").length,
-      lignes,
+      exclus: lignes.filter((l) => l.etat === "exclu").length,
+      lignes, dump,
     };
   })();
 
@@ -18985,14 +18997,19 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
               </table>
             </div>
             <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Ce classement se calcule tout seul à partir des scores saisis sur le planning ci-dessus. Les équipes en forfait font gagner 3-0 à chacun de leurs adversaires, même si le match n'est pas encore saisi.</div>
-            <details style={{ marginTop: 10 }}>
-              <summary style={{ cursor: "pointer", fontSize: 11.5, fontWeight: 800, color: C.bleu, listStyle: "none" }}>🔎 Diagnostic du classement (vérifier l'attribution des points)</summary>
+          </Card>
+        )}
+
+        {(org.planning || []).length > 0 && (
+          <Card style={{ marginBottom: 12, padding: 13 }}>
+            <details>
+              <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 800, color: C.bleu, listStyle: "none" }}>🔎 Diagnostic du classement (vérifier l'attribution des points)</summary>
               <div style={{ marginTop: 8, background: C.fond, border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 10 }}>
                 <div style={{ fontSize: 11.5, color: C.encre, fontWeight: 700, marginBottom: 6 }}>
                   {diagGeneral.nbEquipes} équipes · {diagGeneral.total} rencontres au planning
                 </div>
                 <div style={{ fontSize: 11, color: C.gris, marginBottom: 6, lineHeight: 1.5 }}>
-                  Scores saisis : {diagGeneral.saisis} · Comptées en forfait (3-0) : {diagGeneral.forfaitsM} · En attente (0 point) : {diagGeneral.attente}
+                  Scores saisis : {diagGeneral.saisis} · Comptées en forfait (3-0) : {diagGeneral.forfaitsM} · En attente (0 point) : {diagGeneral.attente}{diagGeneral.exclus > 0 ? ` · Non comptées : ${diagGeneral.exclus}` : ""}
                 </div>
                 {diagGeneral.forfaits.length > 0 && (
                   <div style={{ fontSize: 11, color: C.rouge, fontWeight: 700, marginBottom: 6 }}>Équipes en forfait : {diagGeneral.forfaits.join(", ")}</div>
@@ -19000,16 +19017,23 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
                 {diagGeneral.nbEquipes === 0 && (
                   <div style={{ fontSize: 11, color: C.rouge, fontWeight: 700, marginBottom: 6 }}>Aucun planning généré : lancez « Organiser le planning » pour obtenir un classement.</div>
                 )}
+                {diagGeneral.exclus > 0 && (
+                  <div style={{ fontSize: 11, color: C.rouge, fontWeight: 700, marginBottom: 6, lineHeight: 1.5 }}>Attention : {diagGeneral.exclus} rencontre(s) ne sont pas comptées (adversaire manquant ou équipe absente de la liste du planning). Régénérez le planning avec « Organiser le planning ».</div>
+                )}
                 <div style={{ maxHeight: 220, overflowY: "auto" }}>
                   {diagGeneral.lignes.map((l) => (
                     <div key={l.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11, padding: "4px 0", borderTop: `1px solid ${C.grisClair}` }}>
                       <span style={{ color: C.encre, flex: 1, minWidth: 0 }}>{l.a} contre {l.b}</span>
-                      <span style={{ fontWeight: 800, color: l.etat === "saisi" ? C.vert : l.etat === "forfait" ? C.jaune : C.gris, flex: "0 0 auto" }}>
-                        {l.etat === "saisi" ? l.score : l.etat === "forfait" ? "Forfait : " + l.score : "En attente"}
+                      <span style={{ fontWeight: 800, color: l.etat === "saisi" ? C.vert : l.etat === "forfait" ? C.jaune : l.etat === "exclu" ? C.rouge : C.gris, flex: "0 0 auto", textAlign: "right" }}>
+                        {l.etat === "saisi" ? l.score : l.etat === "forfait" ? "Forfait : " + l.score : l.etat === "exclu" ? "Non comptée : " + l.score : "En attente"}
                       </span>
                     </div>
                   ))}
                 </div>
+                <button
+                  onClick={() => { try { navigator.clipboard.writeText(diagGeneral.dump); setMsgSave("Diagnostic copié. Collez-le dans le message."); setTimeout(() => setMsgSave(null), 5000); } catch (e) { setMsgSave("Copie impossible sur ce navigateur."); } }}
+                  style={{ marginTop: 10, border: "none", cursor: "pointer", borderRadius: 9, padding: "8px 12px", fontSize: 12, fontWeight: 800, background: C.bleu, color: "#fff" }}
+                >Copier le diagnostic</button>
               </div>
             </details>
           </Card>
