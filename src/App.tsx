@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.03";
+const APP_VERSION = "16.19.04";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -18605,6 +18605,8 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
     if (!nb || nb < 2) nb = src.equipes.length;
     // Réorganisation : si on régénère après un départ, on cale sur le nombre d'équipes réellement présentes.
     if (baseOrg) nb = src.equipes.length;
+    // On n'exclut JAMAIS une équipe réellement inscrite : le planning inclut au moins toutes les équipes présentes.
+    if (src.equipes.length > nb) nb = src.equipes.length;
     if (!nb || nb < 2) { commit({ ...src, planning: [] }); return; }
     const teams = [];
     for (let i = 0; i < nb; i++) teams.push(src.equipes[i] ? { id: src.equipes[i].id, nom: src.equipes[i].nom } : { id: "g" + (i + 1), nom: `Équipe ${i + 1}` });
@@ -18978,8 +18980,19 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
               );
             })}
           </div>
-          <Btn variant="accent" full onClick={genererPlanning}><ListOrdered size={16} /> Organiser le planning des rencontres</Btn>
-          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Toutes les équipes se rencontrent. Les matchs sont répartis sur les terrains, avec les horaires calculés, de façon qu'une même équipe ne joue jamais deux matchs en même temps.</div>
+          {(() => {
+            const manquantes = (org.equipes || []).filter((e) => e && !((org.planningTeams || []).some((t) => t.id === e.id)));
+            if (!(org.planning || []).length || !manquantes.length) return null;
+            return (
+              <div style={{ marginBottom: 10, background: "#FFF3E0", border: "1px solid #F0C98A", borderRadius: 10, padding: "10px 12px" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: C.jauneFonce, marginBottom: 4 }}>Équipe(s) absente(s) du planning</div>
+                <div style={{ fontSize: 11.5, color: C.encre, lineHeight: 1.5, marginBottom: 8 }}>{manquantes.map((e) => e.nom).join(", ")} ne figure(nt) pas dans les rencontres ci-dessous. Régénérez le planning pour l'ajouter (les scores déjà saisis seront remis à zéro).</div>
+                <Btn variant="accent" full size="sm" onClick={() => genererPlanning()}><ListOrdered size={15} /> Régénérer le planning avec toutes les équipes</Btn>
+              </div>
+            );
+          })()}
+          <Btn variant="accent" full onClick={() => genererPlanning()}><ListOrdered size={16} /> Organiser le planning des rencontres</Btn>
+          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Toutes les équipes se rencontrent, y compris une équipe en forfait (ses rencontres sont perdues 3-0). Les matchs sont répartis sur les terrains, avec les horaires calculés, de façon qu'une même équipe ne joue jamais deux matchs en même temps.</div>
         </Card>
 
         {/* ESTIMATION EN TEMPS RÉEL */}
