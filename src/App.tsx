@@ -1357,7 +1357,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.11";
+const APP_VERSION = "16.19.13";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -4406,10 +4406,48 @@ export default function App() {
     });
     return d;
   });
+  // Lien demande <-> match : quand une demande rattachée à un match (matchId) est validée, on recopie
+  // le transport attribué dans l'encart transport de ce match, pour qu'il apparaisse dans la préparation
+  // du match (comme la compo). On écrit dans la catégorie du match, même si la direction valide depuis
+  // une autre catégorie.
+  const lierTransportAuMatch = (dem, attribution) => {
+    if (!dem || !dem.matchId || !dem.cat) return;
+    const src = { ...dem, ...(attribution || {}) };
+    const tr = {
+      mode: src.mode || (Array.isArray(src.modes) && src.modes[0]) || "",
+      modes: Array.isArray(src.modes) ? src.modes : (src.mode ? [src.mode] : []),
+      minibus: src.minibus || [],
+      loueur: src.loueur || "",
+      nbVoitures: src.nbVoitures || "",
+      voitures: src.voitures || [],
+      parents: src.parents || "",
+      conducteurs: src.conducteurs || {},
+      nbLocation: src.nbLocation || "",
+      locations: src.locations || [],
+      chauffeursSup: src.chauffeursSup || [],
+      statut: "acceptee",
+      origineDemande: dem.id,
+    };
+    const appliquer = (d) => {
+      const m = (d.matches || []).find((x) => String(x.id) === String(dem.matchId));
+      if (m) m.transport = { ...(m.transport || {}), ...tr };
+      return d;
+    };
+    if (demo || dem.cat === cat) { mutate(appliquer); return; }
+    (async () => {
+      try {
+        const uid2 = session ? session.user.id : null;
+        const d = await loadCat(dem.cat);
+        await saveCat(dem.cat, appliquer(d), uid2);
+        if (_invaliderCacheCategorie) _invaliderCacheCategorie(dem.cat);
+      } catch (e) {}
+    })();
+  };
   const validerTransport = (dem, attribution) => {
     const dejaAcceptee = dem && dem.statut === "acceptee";
     majTransportClub((s) => { const x = (s.demandes || []).find((y) => y.id === dem.id); if (x) { if (attribution) Object.assign(x, attribution); x.statut = "acceptee"; x.cause = ""; x.traiteLe = new Date().toISOString(); } return s; });
     notifTransport({ ...dem, ...(attribution || {}) }, dejaAcceptee ? "modifie" : "valide", "");
+    lierTransportAuMatch(dem, attribution);
     ajouterEntreeJournal({ action: dejaAcceptee ? "transport_modif" : "transport_valide", cat: dem.cat || "", detail: resumeTransport({ ...dem, ...(attribution || {}) }), date: dem.date || "", destination: dem.destination || "", demandeur: dem.demandeur || "", auteur: monNom, role: monRole });
   };
   const refuserTransport = (dem, cause) => {
@@ -11431,8 +11469,11 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
 
       {exterieur && (<>
       <div style={{ fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 7 }}><MapPin size={17} color={C.bleu} /> Transport</div>
-      <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Match à l'extérieur : choisis le transport.</div>
-      <div style={{ marginBottom: 18 }}>
+      <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>{peutValider ? "Match à l'extérieur : choisis le transport." : "Transport du match, attribué par la direction."}</div>
+      {t && t.origineDemande && (
+        <div style={{ fontSize: 11.5, color: "#2F6D43", background: "#E2F4E9", border: "1px solid #BFE3CD", borderRadius: 9, padding: "8px 10px", marginBottom: 10, lineHeight: 1.45, fontWeight: 700 }}>Transport repris automatiquement de la demande validée depuis l'accueil.{peutValider ? " Tu peux l'ajuster ici si besoin." : ""}</div>
+      )}
+      {peutValider ? (<div style={{ marginBottom: 18 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Mode de transport</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
           {MODES_TRANSPORT.map((m) => {
@@ -11551,7 +11592,23 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
             <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6, lineHeight: 1.4 }}>Efface le transport attaché à ce match, même s'il a déjà reçu une réponse (acceptée ou refusée). Un nouveau pourra être créé ensuite si besoin.</div>
           </div>
         )}
-      </div>
+      </div>) : (
+        <div style={{ marginBottom: 18 }}>
+          {t.mode ? (
+            <>
+              <div style={{ fontSize: 13.5, color: C.encre, fontWeight: 700, lineHeight: 1.5 }}>{resumeTransport(t)}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                <span style={{ fontSize: 12.5, color: C.gris, fontWeight: 700 }}>Réponse :</span>
+                {t.statut === "acceptee" ? <Pastille bg="#E2F4E9" color={C.vert}>Acceptée</Pastille> : t.statut === "refusee" ? <Pastille bg="#FBE3E3" color={C.rouge}>Refusée</Pastille> : <Pastille bg={C.jaune} color={C.bleuNuit}>En attente</Pastille>}
+              </div>
+              {t.statut === "refusee" && t.cause ? <div style={{ fontSize: 13, color: C.rouge, marginTop: 6 }}>Cause : {t.cause}</div> : null}
+            </>
+          ) : (
+            <div style={{ fontSize: 13, color: C.gris }}>Aucun transport attribué pour l'instant. La direction s'en charge.</div>
+          )}
+          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 10, lineHeight: 1.45 }}>Seule la direction peut attribuer ou modifier le transport.</div>
+        </div>
+      )}
       </>)}
 
       <div style={{ fontWeight: 800, marginBottom: 6, display: "flex", alignItems: "center", gap: 7 }}><ShieldAlert size={17} color={C.bleu} /> Encadrement</div>
