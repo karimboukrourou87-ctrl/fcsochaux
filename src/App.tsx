@@ -1362,7 +1362,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.23";
+const APP_VERSION = "16.19.24";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -15545,7 +15545,8 @@ function Planning({ planning, majPlanning, chargement, erreur, cats, profil, peu
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
-        <div style={{ fontWeight: 800, fontSize: 16 }}>Planning des {type === "vestiaires" ? "vestiaires" : "terrains"}</div>
+        <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Planning des {type === "vestiaires" ? "vestiaires" : "terrains"}</div>
+        <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto" }}><X size={17} /> Fermer</button>
       </header>
 
       <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10, borderBottom: `1px solid ${C.grisClair}`, background: "#fff" }}>
