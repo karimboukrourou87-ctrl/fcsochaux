@@ -1362,7 +1362,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.24";
+const APP_VERSION = "16.19.25";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -15156,6 +15156,7 @@ function PlanningSemaine({ planning, cat, type, onClose }) {
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>{typeLabel} · semaine · {cat}</div>
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto", marginLeft: "auto" }}><X size={17} /> Fermer</button>
       </header>
       <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.grisClair}`, background: "#fff", display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -15899,6 +15900,7 @@ function AccesSecteurs({ db, mutate, estAdmin, onClose }) {
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Droits d'accès</div>
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto", marginLeft: "auto" }}><X size={17} /> Fermer</button>
       </header>
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
@@ -16383,6 +16385,7 @@ function ProgrammeSemaine({ db, localDb, peutValider, userId, encadrement, cats,
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Programme de la semaine</div>
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto", marginLeft: "auto" }}><X size={17} /> Fermer</button>
       </header>
 
       <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.grisClair}`, background: "#fff", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -16580,6 +16583,7 @@ function SuiviMedical({ db, mutate, cat, estMedical, onSignalerBlessure, onClose
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Suivi médical · {cat}</div>
         <BoutonSauver size="sm" />
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto" }}><X size={17} /> Fermer</button>
       </header>
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
         <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 14, lineHeight: 1.5 }}>Rubrique de l'équipe médicale : joueurs pris en charge par le club, en réathlétisation ou convalescence. {sousType === "pro" ? "Catégorie professionnelle." : sousType === "formation" ? "Centre de formation." : "Cette catégorie est normalement suivie par les parents ; un joueur n'apparaît ici que si le coach a choisi une prise en charge par le club."}{!estMedical ? " Consultation seule : seule l'équipe médicale peut renseigner ce dossier." : ""}</div>
@@ -16629,6 +16633,7 @@ function PlanningHebdo({ onClose }) {
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Planning hebdomadaire des entraînements</div>
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto", marginLeft: "auto" }}><X size={17} /> Fermer</button>
       </header>
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
         <div style={{ fontSize: 12, color: C.gris, marginBottom: 12, lineHeight: 1.5, background: "#EAF0F7", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "9px 12px" }}>Créneaux d'entraînement attribués pour la saison. Synthé centre correspond au synthétique plein air, Dôme au synthétique du dôme. Ces séances sont automatiquement reportées dans le planning des terrains, verrouillées et répétées chaque semaine.</div>
@@ -16842,6 +16847,7 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onRafra
             <RefreshCw size={16} style={{ animation: majMsg ? "spin 0.6s linear infinite" : "none" }} /> {majMsg ? "..." : "Actualiser"}
           </button>
         )}
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto" }}><X size={17} /> Fermer</button>
       </header>
       <style>{"@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}"}</style>
 
@@ -17093,6 +17099,7 @@ function DocumentsAdmin({ players, cat, db, mutate, lectureSeule, demo, adminUnl
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Documents administratifs · {cat}</div>
         <BoutonSauver size="sm" />
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto" }}><X size={17} /> Fermer</button>
       </header>
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
@@ -17955,6 +17962,7 @@ function BilanEquipe({ db, players, cat, mutate, onClose, onTournois }) {
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Bilan de saison · {catSel}</div>
         <BoutonSauver size="sm" />
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto" }}><X size={17} /> Fermer</button>
       </header>
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
@@ -19577,6 +19585,7 @@ function Tournois({ db, mutate, cat, onClose }) {
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Tournois · {cat}</div>
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto", marginLeft: "auto" }}><X size={17} /> Fermer</button>
       </header>
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
@@ -19781,6 +19790,7 @@ function Reunions({ db, mutate, erreur, onClose, majEncadrement }) {
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={() => (sel ? setSelId(null) : onClose())} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>{sel ? "Détail de la réunion" : "Réunions"}</div>
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto", marginLeft: "auto" }}><X size={17} /> Fermer</button>
       </header>
 
       {!sel ? (
@@ -19952,6 +19962,7 @@ function Calendrier({ db, mutate, mutateReunions, peutValider, onClose, majEncad
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Calendrier du club</div>
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto", marginLeft: "auto" }}><X size={17} /> Fermer</button>
       </header>
 
       <div style={{ padding: "12px 14px", background: "#fff", borderBottom: `1px solid ${C.grisClair}`, display: "flex", flexDirection: "column", gap: 10 }}>
