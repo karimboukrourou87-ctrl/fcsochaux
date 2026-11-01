@@ -300,6 +300,7 @@ function FormTransport({ onSubmit, onClose, matchs }) {
   const [nbJoueurs, setNbJoueurs] = useState("");
   const [nbStaff, setNbStaff] = useState("");
   const [note, setNote] = useState("");
+  const [objetSortie, setObjetSortie] = useState("");
   const choisirMatch = (id) => {
     setMatchId(id);
     const m = (matchs || []).find((x) => String(x.id) === String(id));
@@ -310,6 +311,7 @@ function FormTransport({ onSubmit, onClose, matchs }) {
   const envoyer = () => onSubmit({
     date,
     destination: mode === "destination" ? destination : "",
+    objetSortie: mode === "destination" ? objetSortie : "",
     adversaire: mode === "match" ? adversaire : "",
     matchId: mode === "match" ? matchId : "",
     nbMinibus, nbJoueurs, nbStaff, note,
@@ -338,6 +340,7 @@ function FormTransport({ onSubmit, onClose, matchs }) {
       ) : (
         <>
           <Field label="Destination"><Inp value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Lieu, tournoi, plateau..." /></Field>
+          <Field label="Nature de la sortie"><Inp value={objetSortie} onChange={(e) => setObjetSortie(e.target.value)} placeholder="Ex : piscine, musée, journée cohésion, tournoi en salle..." /></Field>
           <Field label="Date de la sortie, tournoi ou plateau"><Inp type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
         </>
       )}
@@ -441,7 +444,7 @@ function AttribuerTransport({ dem, encadrement, majEncadrement, onClose, onConfi
         </div>
         {!editBesoin ? (
           <>
-            <div style={{ fontWeight: 800, marginTop: 3 }}>Besoin : {nbMinibus ? nbMinibus + " minibus" : "minibus non précisé"}{(nbJoueurs || nbStaff) ? ` · ${nbJoueurs || 0} joueurs + ${nbStaff || 0} staff` : ""}</div>
+            <div style={{ fontWeight: 800, marginTop: 3 }}>Besoin : {nbMinibus ? nbMinibus + " minibus" : "minibus non précisé"}{(nbJoueurs || nbStaff) ? ` · ${nbJoueurs || 0} joueurs + ${nbStaff || 0} staff` : ""}{dem.objetSortie ? ` · Sortie : ${dem.objetSortie}` : ""}</div>
             {dem.demandeur ? <div style={{ fontSize: 12, color: C.gris, marginTop: 2 }}>Demandé par {dem.demandeur}</div> : null}
             {note ? <div style={{ fontSize: 12.5, color: C.gris, marginTop: 2 }}>{note}</div> : null}
           </>
@@ -679,8 +682,10 @@ function Transports({ store, maj, chargement, peutValider, profil, cat, encadrem
       : filtre === "refusees" ? liste.filter((x) => x.statut === "refusee")
         : liste;
   // Transports saisis directement dans l'organisation d'un match (m.transport), toutes catégories confondues.
+  // On exclut ceux qui proviennent d'une demande validée (origineDemande) : ils figurent déjà dans le
+  // tableau des demandes ci-dessous, inutile de les afficher une seconde fois ici.
   const transportsMatchs = ((db && db.matches) || [])
-    .filter((m) => m && m.transport && (m.transport.mode || m.transport.statut || (m.transport.minibus || []).length || m.transport.loueur || m.transport.nbVoitures))
+    .filter((m) => m && m.transport && !m.transport.origineDemande && (m.transport.mode || m.transport.statut || (m.transport.minibus || []).length || m.transport.loueur || m.transport.nbVoitures))
     .slice()
     .sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
   function supprimerTransportMatch(id) {
@@ -737,7 +742,7 @@ function Transports({ store, maj, chargement, peutValider, profil, cat, encadrem
           <Btn variant="ghost" size="sm" onClick={() => setOffsetSemaine(offsetSemaine + 1)}>Suivant <ChevronLeft size={15} style={{ transform: "rotate(180deg)" }} /></Btn>
         </div>
       )}
-      {peutValider && transportsMatchs.length > 0 && (
+      {false && peutValider && transportsMatchs.length > 0 && (
         <div style={{ marginBottom: 16, background: "#FFF8EC", border: `1px solid ${C.jaune}`, borderRadius: 12, padding: "12px 13px" }}>
           <div style={{ fontWeight: 800, color: C.bleuNuit, marginBottom: 4, display: "flex", alignItems: "center", gap: 7 }}><Bus size={16} color={C.bleu} /> Transports attachés à un match ({transportsMatchs.length})</div>
           <div style={{ fontSize: 12, color: C.gris, marginBottom: 10, lineHeight: 1.45 }}>Ces transports ont été saisis directement dans l'organisation d'un match, ils ne passent pas par les demandes ci-dessous. Tu vois ici la catégorie et le match concernés, et tu peux les supprimer directement sans chercher.</div>
@@ -810,7 +815,7 @@ function Transports({ store, maj, chargement, peutValider, profil, cat, encadrem
                     <tr key={x.id} style={{ background: bgLigne }}>
                       <td style={{ ...cellStyle, fontWeight: 800, color: C.bleu, whiteSpace: "nowrap" }}>{x.cat || "?"}</td>
                       <td style={{ ...cellStyle, whiteSpace: "nowrap" }}>{x.date ? fmtDate(x.date) : "À définir"}</td>
-                      <td style={cellStyle}>{x.destination || (x.adversaire ? `vs ${x.adversaire}` : "") || "-"}</td>
+                      <td style={cellStyle}>{x.destination || (x.adversaire ? `vs ${x.adversaire}` : "") || "-"}{x.objetSortie ? ` · Sortie : ${x.objetSortie}` : ""}</td>
                       <td style={cellStyle}>{x.demandeur || "-"}</td>
                       <td style={{ ...cellStyle, whiteSpace: "nowrap" }}>{besoin}</td>
                       <td style={{ ...cellStyle, fontWeight: lignesAttr.length ? 700 : 500, color: lignesAttr.length ? C.encre : C.gris }}>
@@ -848,7 +853,7 @@ function Transports({ store, maj, chargement, peutValider, profil, cat, encadrem
           {listeFiltree.map((x) => (
             <Card key={x.id}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>{x.cat ? x.cat + " · " : ""}{x.date ? fmtDate(x.date) : "Date à définir"}{x.destination ? ` · ${x.destination}` : x.adversaire ? ` · vs ${x.adversaire}` : ""}</span>
+                <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>{x.cat ? x.cat + " · " : ""}{x.date ? fmtDate(x.date) : "Date à définir"}{x.destination ? ` · ${x.destination}` : x.adversaire ? ` · vs ${x.adversaire}` : ""}{x.objetSortie ? ` · Sortie : ${x.objetSortie}` : ""}</span>
                 {x.statut === "acceptee" ? <Pastille bg="#E2F4E9" color={C.vert}>Acceptée</Pastille>
                   : x.statut === "refusee" ? <Pastille bg="#FBE3E3" color={C.rouge}>Refusée</Pastille>
                     : <Pastille bg={C.jaune} color={C.bleuNuit}>En traitement</Pastille>}
@@ -1357,7 +1362,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.13";
+const APP_VERSION = "16.19.19";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -3980,7 +3985,8 @@ export default function App() {
       const all = (transportClub && transportClub.demandes) || [];
       trace(`Demandes transport (${all.length})`, all.map((t) => {
         const mini = (t.minibus && t.minibus.length) ? normMinis(t.minibus).join("/") : "";
-        return `${t.cat || "?"} | date=${t.date || "sans date"} | statut=${t.statut || "?"} | mode=${t.mode || "?"}${mini ? " (" + mini + ")" : ""} | dest=${t.destination || "-"} | par=${t.demandeur || "?"} | créé=${(t.creeLe || "").slice(0, 10)} | id=${t.id || "?"}`;
+        const lienMatch = t.matchId ? `${t.adversaire || "?"} [${t.matchId}]` : "aucun";
+        return `${t.cat || "?"} | date=${t.date || "sans date"} | statut=${t.statut || "?"} | mode=${t.mode || "?"}${mini ? " (" + mini + ")" : ""} | dest=${t.destination || "-"} | match=${lienMatch} | par=${t.demandeur || "?"} | créé=${(t.creeLe || "").slice(0, 10)} | id=${t.id || "?"}`;
       }));
     } catch (e) {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4411,7 +4417,8 @@ export default function App() {
   // du match (comme la compo). On écrit dans la catégorie du match, même si la direction valide depuis
   // une autre catégorie.
   const lierTransportAuMatch = (dem, attribution) => {
-    if (!dem || !dem.matchId || !dem.cat) return;
+    // On relie si on a la catégorie et de quoi retrouver le match (son identifiant, ou au moins une date).
+    if (!dem || !dem.cat || (!dem.matchId && !dem.date)) return;
     const src = { ...dem, ...(attribution || {}) };
     const tr = {
       mode: src.mode || (Array.isArray(src.modes) && src.modes[0]) || "",
@@ -4428,11 +4435,23 @@ export default function App() {
       statut: "acceptee",
       origineDemande: dem.id,
     };
+    // Retrouve le match visé : d'abord par identifiant, sinon par date + adversaire dans la bonne catégorie.
+    const trouverMatch = (matches) => {
+      const list = matches || [];
+      if (dem.matchId) { const m = list.find((x) => String(x.id) === String(dem.matchId)); if (m) return m; }
+      if (!dem.date) return null;
+      const memeDate = list.filter((x) => x.date === dem.date);
+      if (!memeDate.length) return null;
+      const cible = (dem.adversaire || dem.destination || "").trim().toLowerCase();
+      if (cible) { const m = memeDate.find((x) => (x.adversaire || "").trim().toLowerCase() === cible); if (m) return m; }
+      return memeDate.length === 1 ? memeDate[0] : null;
+    };
     const appliquer = (d) => {
-      const m = (d.matches || []).find((x) => String(x.id) === String(dem.matchId));
+      const m = trouverMatch(d.matches);
       if (m) m.transport = { ...(m.transport || {}), ...tr };
       return d;
     };
+    try { trace("transport lie au match " + (dem.destination || dem.adversaire || ""), `matchId=${dem.matchId || "-"} date=${dem.date || "-"} cat=${dem.cat} mode=${tr.mode} minibus=${(tr.minibus || []).join("/") || "-"} statut=${tr.statut} (${demo || dem.cat === cat ? "meme categorie" : "autre categorie"})`); } catch (e) {}
     if (demo || dem.cat === cat) { mutate(appliquer); return; }
     (async () => {
       try {
@@ -4440,7 +4459,8 @@ export default function App() {
         const d = await loadCat(dem.cat);
         await saveCat(dem.cat, appliquer(d), uid2);
         if (_invaliderCacheCategorie) _invaliderCacheCategorie(dem.cat);
-      } catch (e) {}
+        trace("transport ecrit autre categorie " + dem.cat, `matchId=${dem.matchId}`);
+      } catch (e) { try { trace("transport ecriture ECHEC " + dem.cat, (e && e.message) || String(e)); } catch (e2) {} }
     })();
   };
   const validerTransport = (dem, attribution) => {
@@ -11308,6 +11328,10 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
   const r = cur.reservation || {};
   const exterieur = cur.lieu === "Extérieur";
   const domicile = cur.lieu === "Domicile";
+  // Diagnostic transport : on fait remonter l'etat du transport de ce match dans le traceur (bouton Diag),
+  // pour verifier la liaison demande -> match et ce qui a ete attribue.
+  const diagTransport = `match ${cur.date || "?"} ${cur.adversaire || "?"} (${cur.cat || "?"}) lieu=${cur.lieu || "?"} | mode=${t.mode || "aucun"} statut=${t.statut || "-"} minibus=${normMinis(t.minibus).join("/") || "-"} loueur=${t.loueur || "-"} voitures=${t.nbVoitures || "-"} origineDemande=${t.origineDemande || "non"}`;
+  useEffect(() => { try { trace("transport match " + (cur.adversaire || cur.date || ""), diagTransport); } catch (e) {} }, [diagTransport]);
   const [liste, majListe] = useEncadrementClub(demo, db, mutate);
   const [gererDir, setGererDir] = useState(false);
   const conducteursDispo = [...new Set((liste || []).map((x) => (x.nom || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
