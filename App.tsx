@@ -201,6 +201,17 @@ function Sauvegarde({ db, mutate, cat, demo, estAdmin, userId, onClose }) {
 
       {estAdmin && !demo && (
         <div style={{ marginBottom: 18, paddingBottom: 18, borderBottom: `1px solid ${C.grisClair}` }}>
+          <div style={{ fontWeight: 800, marginBottom: 6 }}>Import JSON des matchs et des fiches</div>
+          <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 8, lineHeight: 1.5 }}>Réservé à la direction. Active ce mode pour faire apparaître dans toute l'appli les boutons d'import par fichier / JSON (matchs, fiches joueurs, séances, encadrement, équipes). Désactivé, ils sont tous cachés.</div>
+          <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer", border: `1px solid ${jsonImportActif(db) ? C.jaune : C.grisClair}`, borderRadius: 12, padding: "11px 14px", background: "#fff" }}>
+            <input type="checkbox" checked={jsonImportActif(db)} onChange={(e) => { const v = e.target.checked; mutate((d) => { d.config = d.config || {}; d.config.jsonActif = v; return d; }); }} style={{ width: 20, height: 20, flex: "0 0 auto", cursor: "pointer" }} />
+            <span style={{ fontSize: 13.5, fontWeight: 800, color: C.encre }}>{jsonImportActif(db) ? "Import JSON activé" : "Import JSON désactivé"}</span>
+          </label>
+        </div>
+      )}
+
+      {estAdmin && !demo && (
+        <div style={{ marginBottom: 18, paddingBottom: 18, borderBottom: `1px solid ${C.grisClair}` }}>
           <div style={{ fontWeight: 800, marginBottom: 6 }}>Sauvegarde de tout le club</div>
           <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 8, lineHeight: 1.5 }}>Réservé à la direction. Télécharge toutes les catégories du club en un seul fichier, en une fois.</div>
           <Btn variant="accent" full disabled={busyClub} onClick={exporterClub}><FileDown size={16} /> {busyClub ? "Préparation..." : "Télécharger la sauvegarde complète"}</Btn>
@@ -276,48 +287,198 @@ function Sauvegarde({ db, mutate, cat, demo, estAdmin, userId, onClose }) {
 }
 
 
-function FormTransport({ onSubmit, onClose, encadrement, majEncadrement }) {
-  const [gererDir, setGererDir] = useState(false);
+// DEMANDE (éducateur) : on exprime seulement le besoin. La direction attribue la solution ensuite.
+// Deux modes : « Match » (on choisit la rencontre, qui remplit l'adversaire et la date) ou
+// « Sortie / destination » (saisie libre de la destination et de la date).
+function FormTransport({ onSubmit, onClose, matchs }) {
+  const [mode, setMode] = useState((matchs && matchs.length) ? "match" : "destination");
   const [date, setDate] = useState("");
   const [destination, setDestination] = useState("");
-  const [mode, setMode] = useState("Minibus club");
-  const [minibus, setMinibus] = useState([]);
-  const [loueur, setLoueur] = useState("");
-  const [nbVoitures, setNbVoitures] = useState("");
-  const [parents, setParents] = useState("");
+  const [adversaire, setAdversaire] = useState("");
+  const [matchId, setMatchId] = useState("");
+  const [nbMinibus, setNbMinibus] = useState("");
+  const [nbJoueurs, setNbJoueurs] = useState("");
+  const [nbStaff, setNbStaff] = useState("");
   const [note, setNote] = useState("");
-  const [conducteurs, setConducteurs] = useState({});
-  const [nbLocation, setNbLocation] = useState("");
-  const [locations, setLocations] = useState([]);
-  const toggle = (b) => setMinibus((a) => a.includes(b) ? a.filter((x) => x !== b) : [...a, b]);
+  const [objetSortie, setObjetSortie] = useState("");
+  const choisirMatch = (id) => {
+    setMatchId(id);
+    const m = (matchs || []).find((x) => String(x.id) === String(id));
+    if (m) { setAdversaire(m.adversaire || ""); setDate(m.date || ""); }
+    else { setAdversaire(""); setDate(""); }
+  };
+  const pret = mode === "match" ? (!!matchId && !!date) : !!date;
+  const envoyer = () => onSubmit({
+    date,
+    destination: mode === "destination" ? destination : "",
+    objetSortie: mode === "destination" ? objetSortie : "",
+    adversaire: mode === "match" ? adversaire : "",
+    matchId: mode === "match" ? matchId : "",
+    nbMinibus, nbJoueurs, nbStaff, note,
+  });
+  return (
+    <Modal title="Nouvelle demande de transport" onClose={onClose}
+      footer={<Btn variant="accent" full disabled={!pret} onClick={envoyer}><Send size={16} /> Envoyer la demande</Btn>}>
+      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.45 }}>Tu indiques simplement ton besoin. La direction choisit ensuite la solution : minibus du club, bus de location ou voitures des parents.</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        {[["match", "Compétition"], ["destination", "Sortie"]].map(([v, l]) => {
+          const on = mode === v;
+          return <button key={v} type="button" onClick={() => setMode(v)} style={{ flex: 1, border: `1px solid ${on ? C.bleu : C.grisClair}`, background: on ? C.bleu : "#fff", color: on ? "#fff" : C.encre, fontWeight: 800, fontSize: 13, borderRadius: 10, padding: "10px 8px", cursor: "pointer" }}>{l}</button>;
+        })}
+      </div>
+      {mode === "match" ? (
+        <>
+          <Field label="Choisir la compétition (championnat, coupe, tournoi, plateau...)">
+            <Sel value={matchId} onChange={(e) => choisirMatch(e.target.value)}>
+              <option value="">— Choisir la compétition —</option>
+              {(matchs || []).map((m) => <option key={m.id} value={m.id}>{m.date ? jjmm(m.date) : "date ?"}{m.type ? ` · ${m.type}` : ""} · {m.lieu === "Extérieur" ? "à " : "vs "}{m.adversaire || "adversaire ?"}</option>)}
+            </Sel>
+          </Field>
+          {(!matchs || matchs.length === 0) && <div style={{ fontSize: 11.5, color: "#B87A2B", fontWeight: 600, marginTop: -6, marginBottom: 10, lineHeight: 1.4 }}>Aucune compétition enregistrée pour cette catégorie. Programme-la d'abord dans les matchs, ou utilise l'onglet « Sortie ».</div>}
+          {matchId ? <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Adversaire : <strong style={{ color: C.encre }}>{adversaire || "?"}</strong> · Date : <strong style={{ color: C.encre }}>{date ? fmtDate(date) : "?"}</strong></div> : null}
+        </>
+      ) : (
+        <>
+          <Field label="Destination"><Inp value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Lieu, tournoi, plateau..." /></Field>
+          <Field label="Nature de la sortie"><Inp value={objetSortie} onChange={(e) => setObjetSortie(e.target.value)} placeholder="Ex : piscine, musée, journée cohésion, tournoi en salle..." /></Field>
+          <Field label="Date de la sortie, tournoi ou plateau"><Inp type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+        </>
+      )}
+      <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 10, lineHeight: 1.45 }}>Une fois le transport attribué par la direction, il s'affiche automatiquement sur cette date dans le programme de la semaine.</div>
+      <Field label="Nombre de minibus nécessaires"><Inp type="number" inputMode="numeric" value={nbMinibus} onChange={(e) => setNbMinibus(e.target.value)} placeholder="Ex : 2" /></Field>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1 }}><Field label="Nombre de joueurs"><Inp type="number" inputMode="numeric" value={nbJoueurs} onChange={(e) => setNbJoueurs(e.target.value)} placeholder="Ex : 14" /></Field></div>
+        <div style={{ flex: 1 }}><Field label="Nombre de staff"><Inp type="number" inputMode="numeric" value={nbStaff} onChange={(e) => setNbStaff(e.target.value)} placeholder="Ex : 3" /></Field></div>
+      </div>
+      <Field label="Précision (optionnel)"><Inp value={note} onChange={(e) => setNote(e.target.value)} placeholder="Horaire de départ souhaité..." /></Field>
+    </Modal>
+  );
+}
+
+// ATTRIBUTION (direction) : à partir du besoin exprimé, la direction attribue la solution puis valide.
+function AttribuerTransport({ dem, encadrement, majEncadrement, onClose, onConfirm }) {
+  const [gererDir, setGererDir] = useState(false);
+  // Plusieurs formules possibles en même temps (ex. minibus club + voitures des parents).
+  const [modes, setModes] = useState((dem.modes && dem.modes.length) ? dem.modes : (dem.mode ? [dem.mode] : ["Minibus club"]));
+  const [chauffeursSup, setChauffeursSup] = useState(Array.isArray(dem.chauffeursSup) ? dem.chauffeursSup : []);
+  const [minibus, setMinibus] = useState(normMinis(dem.minibus));
+  const [loueur, setLoueur] = useState(dem.loueur || "");
+  const [nbVoitures, setNbVoitures] = useState(dem.nbVoitures || "");
+  const [parents, setParents] = useState(dem.parents || "");
+  // Chauffeur de chaque voiture de parent, modifiable individuellement (texte libre).
+  const [voitures, setVoitures] = useState(() => Array.isArray(dem.voitures) ? dem.voitures : (dem.parents || "").split(",").map((s) => s.trim()).filter(Boolean));
+  const [conducteurs, setConducteurs] = useState(normConduct(dem.conducteurs));
+  const [nbLocation, setNbLocation] = useState(dem.nbLocation || "");
+  const [locations, setLocations] = useState(dem.locations || []);
+  // Le besoin (demande) reste modifiable par la direction ; tout ce qui n'est pas touché est conservé.
+  const [date, setDate] = useState(dem.date || "");
+  const [destination, setDestination] = useState(dem.destination || "");
+  const [nbMinibus, setNbMinibus] = useState(dem.nbMinibus || "");
+  const [nbJoueurs, setNbJoueurs] = useState(dem.nbJoueurs || "");
+  const [nbStaff, setNbStaff] = useState(dem.nbStaff || "");
+  const [note, setNote] = useState(dem.note || "");
+  const [editBesoin, setEditBesoin] = useState(false);
+  // Mémoire des chauffeurs libérés : quand on retire un minibus, son chauffeur est gardé de côté
+  // et réaffecté automatiquement au prochain minibus ajouté (modifiable à tout moment).
+  const [chauffeursLibres, setChauffeursLibres] = useState([]);
+  const toggle = (b) => {
+    if (minibus.includes(b)) {
+      const libere = (conducteurs || {})[b];
+      setMinibus(minibus.filter((x) => x !== b));
+      if (libere) {
+        setConducteurs((o) => { const n = { ...o }; delete n[b]; return n; });
+        setChauffeursLibres((q) => [...q, libere]);
+      }
+    } else {
+      setMinibus([...minibus, b]);
+      if (!(conducteurs || {})[b] && chauffeursLibres.length) {
+        const premier = chauffeursLibres[0];
+        setConducteurs((o) => ({ ...o, [b]: premier }));
+        setChauffeursLibres((q) => q.slice(1));
+      }
+    }
+  };
   const setConducteur = (b, v) => setConducteurs((o) => ({ ...o, [b]: v }));
+  // Cocher/décocher une formule : en la décochant, ses chauffeurs sont gardés en mémoire (pool)
+  // pour être réaffectés automatiquement aux véhicules d'une autre formule.
+  const toggleMode = (m) => {
+    if (modes.includes(m)) {
+      let liberes = [];
+      if (m === "Minibus club") liberes = minibus.map((b) => conducteurs[b]).filter(Boolean);
+      else if (m === "Bus en location") liberes = (locations || []).map((l) => l && l.conducteur).filter(Boolean);
+      if (liberes.length) setChauffeursLibres((q) => [...q, ...liberes]);
+      setModes(modes.filter((x) => x !== m));
+    } else {
+      setModes([...modes, m]);
+    }
+  };
   const majNbLocation = (v) => {
     const n = Math.max(0, Math.min(10, parseInt(v, 10) || 0));
     setNbLocation(v === "" ? "" : String(n));
-    setLocations((prev) => { const arr = [...prev]; while (arr.length < n) arr.push({ immat: "", conducteur: "" }); arr.length = n; return arr; });
+    let arr = [...locations];
+    let pool = [...chauffeursLibres];
+    if (arr.length < n) {
+      while (arr.length < n) { let cond = ""; if (pool.length) cond = pool.shift(); arr.push({ immat: "", conducteur: cond }); }
+    } else if (arr.length > n) {
+      const retires = arr.slice(n).map((l) => l && l.conducteur).filter(Boolean);
+      arr = arr.slice(0, n);
+      pool = [...pool, ...retires];
+    }
+    setLocations(arr);
+    setChauffeursLibres(pool);
+  };
+  const majNbVoitures = (v) => {
+    const n = Math.max(0, Math.min(20, parseInt(v, 10) || 0));
+    setNbVoitures(v === "" ? "" : String(n));
+    setVoitures((prev) => { const arr = [...prev]; while (arr.length < n) arr.push(""); if (n && arr.length > n) arr.length = n; return arr; });
   };
   const setLoc = (i, k, val) => setLocations((prev) => prev.map((x, j) => j === i ? { ...x, [k]: val } : x));
-  // Dirigeants/encadrants pouvant conduire (liste importée du club)
   const conducteursDispo = [...new Set((encadrement || []).map((e) => (e.nom || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
   return (
-    <Modal title="Nouvelle demande de transport" onClose={onClose}
-      footer={<Btn variant="accent" full disabled={!date} onClick={() => onSubmit({ date, destination, mode, minibus, loueur, nbVoitures, parents, note, conducteurs, nbLocation, locations })}><Send size={16} /> Envoyer la demande</Btn>}>
-      <Field label="Date du match, sortie, tournoi ou plateau"><Inp type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-      <div style={{ fontSize: 11.5, color: C.gris, marginTop: -6, marginBottom: 10, lineHeight: 1.45 }}>Mets la date de l'événement (match, sortie, tournoi, plateau). Une fois la demande acceptée, le transport s'affiche automatiquement sur cette date dans le programme de la semaine.</div>
-      <Field label="Destination ou adversaire (optionnel)"><Inp value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Lieu ou équipe" /></Field>
-      <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Mode de transport</div>
+    <Modal title="Attribuer le transport" onClose={onClose}
+      footer={<Btn variant="accent" full disabled={!modes.length} onClick={() => onConfirm({ date, destination, nbMinibus, nbJoueurs, nbStaff, note, modes, mode: modes[0] || "", minibus, loueur, nbVoitures, voitures, parents: voitures.filter((n) => n && n.trim()).join(", "), conducteurs, nbLocation, locations, chauffeursSup: chauffeursSup.filter((n) => n && n.trim()) })}><Check size={16} /> Attribuer et valider</Btn>}>
+      <div style={{ background: "#F4F5F7", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "10px 12px", marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>{dem.cat ? dem.cat + " · " : ""}{date ? fmtDate(date) : "Date à définir"}{destination ? " · " + destination : dem.adversaire ? " · vs " + dem.adversaire : ""}</div>
+          <button type="button" onClick={() => setEditBesoin((v) => !v)} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12, cursor: "pointer", padding: 0, textDecoration: "underline", flex: "0 0 auto" }}>{editBesoin ? "Terminer" : "Modifier le besoin"}</button>
+        </div>
+        {!editBesoin ? (
+          <>
+            <div style={{ fontWeight: 800, marginTop: 3 }}>Besoin : {nbMinibus ? nbMinibus + " minibus" : "minibus non précisé"}{(nbJoueurs || nbStaff) ? ` · ${nbJoueurs || 0} joueurs + ${nbStaff || 0} staff` : ""}{dem.objetSortie ? ` · Sortie : ${dem.objetSortie}` : ""}</div>
+            {dem.demandeur ? <div style={{ fontSize: 12, color: C.gris, marginTop: 2 }}>Demandé par {dem.demandeur}</div> : null}
+            {note ? <div style={{ fontSize: 12.5, color: C.gris, marginTop: 2 }}>{note}</div> : null}
+          </>
+        ) : (
+          <div style={{ marginTop: 8 }}>
+            <Field label="Date"><Inp type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+            <Field label="Destination ou adversaire"><Inp value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Lieu ou équipe" /></Field>
+            <Field label="Nombre de minibus nécessaires"><Inp type="number" inputMode="numeric" value={nbMinibus} onChange={(e) => setNbMinibus(e.target.value)} placeholder="Ex : 2" /></Field>
+            <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ flex: 1 }}><Field label="Joueurs"><Inp type="number" inputMode="numeric" value={nbJoueurs} onChange={(e) => setNbJoueurs(e.target.value)} placeholder="Ex : 14" /></Field></div>
+              <div style={{ flex: 1 }}><Field label="Staff"><Inp type="number" inputMode="numeric" value={nbStaff} onChange={(e) => setNbStaff(e.target.value)} placeholder="Ex : 3" /></Field></div>
+            </div>
+            <Field label="Précision"><Inp value={note} onChange={(e) => setNote(e.target.value)} placeholder="Horaire de départ..." /></Field>
+          </div>
+        )}
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 2 }}>Solution attribuée</div>
+      <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 6, lineHeight: 1.4 }}>Tu peux cocher plusieurs formules à la fois (ex. 1 minibus de location + 2 voitures des parents).</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
         {MODES_TRANSPORT.map((m) => {
-          const on = mode === m;
+          const on = modes.includes(m);
           return (
-            <button key={m} onClick={() => setMode(m)} style={{
+            <button key={m} onClick={() => toggleMode(m)} style={{
               border: `1px solid ${on ? C.bleu : C.grisClair}`, cursor: "pointer", borderRadius: 11, padding: "11px 13px",
               fontWeight: 800, fontSize: 14, textAlign: "left", background: on ? C.bleu : "#fff", color: on ? "#fff" : C.encre,
-            }}>{m}</button>
+              display: "flex", alignItems: "center", gap: 9,
+            }}><span style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${on ? "#fff" : C.grisClair}`, background: on ? "rgba(255,255,255,0.22)" : "#fff", display: "grid", placeItems: "center", flex: "0 0 auto" }}>{on ? <Check size={13} color="#fff" /> : null}</span>{m}</button>
           );
         })}
       </div>
-      {mode === "Minibus club" && (
+      {chauffeursLibres.length > 0 && (
+        <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 700, marginBottom: 10, background: "#EAF0F7", borderRadius: 9, padding: "7px 10px", lineHeight: 1.4 }}>Chauffeurs gardés en mémoire, réaffectés automatiquement aux nouveaux véhicules : {chauffeursLibres.join(", ")}</div>
+      )}
+      {modes.includes("Minibus club") && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Minibus du club (plusieurs possibles)</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -351,7 +512,7 @@ function FormTransport({ onSubmit, onClose, encadrement, majEncadrement }) {
           )}
         </div>
       )}
-      {mode === "Bus en location" && (
+      {modes.includes("Bus en location") && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 2 }}>Loueur</div>
             <div style={{ fontSize: 11.5, color: "#B87A2B", fontWeight: 600, marginBottom: 6, lineHeight: 1.4 }}>ADJ en priorité (contrat du club). Choisir Hertz seulement si ADJ n'est pas disponible.</div>
@@ -383,87 +544,344 @@ function FormTransport({ onSubmit, onClose, encadrement, majEncadrement }) {
           </div>
         </div>
       )}
-      {mode === "Voitures des parents" && (
+      {modes.includes("Voitures des parents") && (
         <div style={{ marginBottom: 12 }}>
-          <Field label="Nombre de voitures qui accompagnent"><Inp type="number" inputMode="numeric" value={nbVoitures} onChange={(e) => setNbVoitures(e.target.value)} placeholder="Ex : 4" /></Field>
-          <Field label="Noms des parents qui conduisent"><Inp value={parents} onChange={(e) => setParents(e.target.value)} placeholder="Ex : Dupont, Martin, Diallo" /></Field>
+          <Field label="Nombre de voitures qui accompagnent"><Inp type="number" inputMode="numeric" value={nbVoitures} onChange={(e) => majNbVoitures(e.target.value)} placeholder="Ex : 4" /></Field>
+          {(Number(nbVoitures) || voitures.length) > 0 && (
+            <div style={{ marginTop: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Parent qui conduit (modifiable)</div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {Array.from({ length: Math.max(Number(nbVoitures) || 0, voitures.length) }).map((_, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ width: 118, flex: "0 0 auto", fontWeight: 800, color: C.bleu, fontSize: 12.5, whiteSpace: "nowrap" }}>Voiture parent {i + 1}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}><Inp value={voitures[i] || ""} onChange={(e) => setVoitures((a) => { const n = [...a]; n[i] = e.target.value; return n; })} placeholder="Nom du parent" /></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
-      {majEncadrement && (mode === "Minibus club" || mode === "Bus en location") && <button type="button" onClick={() => setGererDir(true)} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline", marginBottom: 10 }}>Gérer les dirigeants (ajouter, renommer, supprimer)</button>}
-      <Field label="Précision (optionnel)"><Inp value={note} onChange={(e) => setNote(e.target.value)} placeholder="Horaire de départ, nombre de places..." /></Field>
+      <div style={{ marginBottom: 12, paddingTop: 10, borderTop: `1px solid ${C.grisClair}` }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Chauffeurs supplémentaires (en plus de ceux des véhicules)</div>
+        <div style={{ display: "grid", gap: 8 }}>
+          {chauffeursSup.map((nom, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Sel value={nom || ""} onChange={(e) => setChauffeursSup((a) => a.map((x, j) => j === i ? e.target.value : x))}>
+                  <option value="">Choisir un chauffeur</option>
+                  {conducteursDispo.map((n) => <option key={n} value={n}>{n}</option>)}
+                </Sel>
+              </div>
+              <button type="button" onClick={() => setChauffeursSup((a) => a.filter((x, j) => j !== i))} style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", padding: 4, display: "inline-flex", flex: "0 0 auto" }}><Trash2 size={16} /></button>
+            </div>
+          ))}
+        </div>
+        <button type="button" onClick={() => setChauffeursSup((a) => [...a, ""])} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: "6px 0 0", textDecoration: "underline" }}>+ Ajouter un chauffeur</button>
+      </div>
+      {majEncadrement && (modes.includes("Minibus club") || modes.includes("Bus en location")) && <button type="button" onClick={() => setGererDir(true)} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline", marginBottom: 10 }}>Gérer les dirigeants (ajouter, renommer, supprimer)</button>}
       {gererDir && <GestionDirigeants liste={encadrement} maj={majEncadrement} onClose={() => setGererDir(false)} />}
     </Modal>
   );
 }
 
+// Formules actives : tableau des modes retenus (nouveau système multi-formules), ou l'ancien mode unique.
+function modesActifs(x) {
+  if (!x) return [];
+  return (x.modes && x.modes.length) ? x.modes : (x.mode ? [x.mode] : []);
+}
 function resumeTransport(x) {
-  if (x.mode === "Minibus club") { const parts = (x.minibus || []).map((b) => { const c = (x.conducteurs || {})[b]; return c ? `${b} (${c})` : b; }); return `Minibus ${parts.join(", ") || "à préciser"}`; }
-  if (x.mode === "Bus en location") {
-    const locs = (x.locations || []).filter((l) => l && (l.immat || l.conducteur));
-    const detail = locs.length ? " · " + locs.map((l) => `${l.immat || "?"}${l.conducteur ? " (" + l.conducteur + ")" : ""}`).join(", ") : (x.conducteurBus ? " · conduit par " + x.conducteurBus : "");
-    return `Bus en location ${x.loueur || ""}${x.nbLocation ? " ×" + x.nbLocation : ""}${detail}`.trim();
+  const actifs = modesActifs(x);
+  if (!actifs.length) {
+    const pers = [];
+    if (x.nbJoueurs) pers.push(`${x.nbJoueurs} joueur${Number(x.nbJoueurs) > 1 ? "s" : ""}`);
+    if (x.nbStaff) pers.push(`${x.nbStaff} staff`);
+    const bits = [];
+    if (x.nbMinibus) bits.push(`${x.nbMinibus} minibus souhaité${Number(x.nbMinibus) > 1 ? "s" : ""}`);
+    if (pers.length) bits.push(pers.join(" + "));
+    return `Besoin de transport${bits.length ? " : " + bits.join(", ") : ""}`;
   }
-  if (x.mode === "Voitures des parents") return `Voitures des parents${x.nbVoitures ? ` (${x.nbVoitures})` : ""}${x.parents ? " : " + x.parents : ""}`;
-  return x.mode || "Transport";
+  const parts = [];
+  actifs.forEach((mode) => {
+    if (mode === "Minibus club") { const cond = normConduct(x.conducteurs); const p = normMinis(x.minibus).map((b) => { const c = cond[b]; return c ? `${b} (${c})` : b; }); parts.push(`Minibus ${p.join(", ") || "à préciser"}`); }
+    else if (mode === "Bus en location") {
+      const locs = (x.locations || []).filter((l) => l && (l.immat || l.conducteur));
+      const detail = locs.length ? " · " + locs.map((l) => `${l.immat || "?"}${l.conducteur ? " (" + l.conducteur + ")" : ""}`).join(", ") : (x.conducteurBus ? " · conduit par " + x.conducteurBus : "");
+      parts.push(`Bus en location ${x.loueur || ""}${x.nbLocation ? " ×" + x.nbLocation : ""}${detail}`.trim());
+    }
+    else if (mode === "Voitures des parents") { const noms = Array.isArray(x.voitures) ? x.voitures.filter((n) => n && n.trim()) : (x.parents || "").split(",").map((s) => s.trim()).filter(Boolean); parts.push(`Voitures des parents${x.nbVoitures ? ` (${x.nbVoitures})` : ""}${noms.length ? " : " + noms.join(", ") : ""}`); }
+    else parts.push(mode);
+  });
+  const sup = (x.chauffeursSup || []).filter((n) => n && n.trim());
+  if (sup.length) parts.push(`Chauffeurs en plus : ${sup.join(", ")}`);
+  return parts.join(" + ") || "Transport";
+}
+// Décompose l'attribution en lignes { vehicule, chauffeur } pour un affichage en deux colonnes séparées.
+function attributionLignes(x) {
+  if (!x) return [];
+  const actifs = modesActifs(x);
+  const lignes = [];
+  actifs.forEach((mode) => {
+    if (mode === "Minibus club") { const cond = normConduct(x.conducteurs); normMinis(x.minibus).forEach((b) => lignes.push({ vehicule: b, chauffeur: cond[b] || "" })); }
+    else if (mode === "Bus en location") {
+      const locs = (x.locations || []).filter((l) => l && (l.immat || l.conducteur));
+      if (locs.length) locs.forEach((l, i) => lignes.push({ vehicule: l.immat ? l.immat : `${x.loueur || "Location"} n°${i + 1}`, chauffeur: l.conducteur || "" }));
+      else { const n = Number(x.nbLocation) || 0; if (n > 1) for (let i = 0; i < n; i++) lignes.push({ vehicule: `${x.loueur || "Location"} n°${i + 1}`, chauffeur: "" }); else lignes.push({ vehicule: `${x.loueur || "Location"}`, chauffeur: x.conducteurBus || "" }); }
+    }
+    else if (mode === "Voitures des parents") {
+      const noms = Array.isArray(x.voitures) ? x.voitures : (x.parents || "").split(",").map((s) => s.trim());
+      const nb = Math.max(Number(x.nbVoitures) || 0, noms.filter(Boolean).length, 1);
+      for (let i = 0; i < nb; i++) lignes.push({ vehicule: `Voiture parent ${i + 1}`, chauffeur: (noms[i] || "").trim() });
+    }
+    else if (mode) lignes.push({ vehicule: mode, chauffeur: "" });
+  });
+  (x.chauffeursSup || []).filter((n) => n && n.trim()).forEach((n) => lignes.push({ vehicule: "Accompagnateur", chauffeur: n }));
+  return lignes;
 }
 
-function Transports({ store, maj, chargement, peutValider, profil, cat, encadrement, majEncadrement, onValiderDem, onRefuserDem, onClose }) {
+function Transports({ store, maj, chargement, peutValider, profil, cat, encadrement, majEncadrement, onValiderDem, onRefuserDem, db, mutate, onRafraichir, onDemanderDeverrouillage, onClose }) {
   const [nouveau, setNouveau] = useState(false);
   const [refus, setRefus] = useState(null);
+  const [attrib, setAttrib] = useState(null);
   const [cause, setCause] = useState("");
+  const [filtre, setFiltre] = useState("toutes");
+  const [confirmSuppr, setConfirmSuppr] = useState(null);
+  const [majMsg, setMajMsg] = useState("");
+  // Navigation par semaine (comme le programme des matchs) pour la vision direction.
+  const [offsetSemaine, setOffsetSemaine] = useState(0);
+  const sem = useMemo(() => {
+    const d = new Date();
+    const isodow = (d.getDay() + 6) % 7;
+    const l = new Date(d); l.setDate(d.getDate() - isodow + offsetSemaine * 7);
+    const di = new Date(l); di.setDate(l.getDate() + 6);
+    const f = (x) => `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
+    const lundi = f(l), dim = f(di);
+    const t = new Date(l); t.setDate(l.getDate() + 3 - ((l.getDay() + 6) % 7)); const w1 = new Date(t.getFullYear(), 0, 4);
+    const numero = 1 + Math.round(((t - w1) / 86400000 - 3 + ((w1.getDay() + 6) % 7)) / 7);
+    return { lundi, dim, numero };
+  }, [offsetSemaine]);
+  async function rafraichirMaintenant() {
+    if (!onRafraichir) return;
+    setMajMsg("Actualisation...");
+    try { await Promise.all([Promise.resolve(onRafraichir(true)), new Promise((r) => setTimeout(r, 650))]); } catch (e) {}
+    setMajMsg("Demandes à jour");
+    setTimeout(() => setMajMsg(""), 2500);
+  }
   const moi = (profil && profil.nom) || "Éducateur";
-  // Planning commun : toutes les catégories voient les demandes de transport du club
-  const liste = ((store && store.demandes) || []).slice().sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""));
+  // Direction : vision globale de toutes les demandes du club (centralisées et archivées).
+  // Coach : ne voit que ses propres demandes (celles qu'il a faites), chacun sa vision.
+  const toutesDemandes = ((store && store.demandes) || []).slice().sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""));
+  // Direction : on n'affiche que les demandes de la semaine sélectionnée (celles sans date restent visibles).
+  const demandesSemaine = toutesDemandes.filter((x) => !x.date || (x.date >= sem.lundi && x.date <= sem.dim));
+  const liste = peutValider ? demandesSemaine : toutesDemandes.filter((x) => (x.demandeur || "") === moi);
+  const nbAttente = liste.filter((x) => x.statut === "en_attente").length;
+  const nbAcceptees = liste.filter((x) => x.statut === "acceptee").length;
+  const nbRefusees = liste.filter((x) => x.statut === "refusee").length;
+  const listeFiltree = filtre === "attente" ? liste.filter((x) => x.statut === "en_attente")
+    : filtre === "acceptees" ? liste.filter((x) => x.statut === "acceptee")
+      : filtre === "refusees" ? liste.filter((x) => x.statut === "refusee")
+        : liste;
+  // Transports saisis directement dans l'organisation d'un match (m.transport), toutes catégories confondues.
+  // On exclut ceux qui proviennent d'une demande validée (origineDemande) : ils figurent déjà dans le
+  // tableau des demandes ci-dessous, inutile de les afficher une seconde fois ici.
+  const transportsMatchs = ((db && db.matches) || [])
+    .filter((m) => m && m.transport && !m.transport.origineDemande && (m.transport.mode || m.transport.statut || (m.transport.minibus || []).length || m.transport.loueur || m.transport.nbVoitures))
+    .slice()
+    .sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
+  function supprimerTransportMatch(id) {
+    if (!mutate) return;
+    const m = ((db && db.matches) || []).find((x) => x.id === id);
+    mutate((d) => { const mm = d.matches.find((x) => x.id === id); if (mm) mm.transport = null; return d; });
+    if (m) ajouterEntreeJournal({ action: "transport_suppr", cat: m.cat || "", detail: m.transport ? resumeTransport(m.transport) : "transport du match", date: m.date || "", destination: m.adversaire || "", demandeur: "", auteur: (profil && profil.nom) || "Direction", role: (profil && profil.role) || "" });
+  }
 
+  const monRoleTr = (profil && profil.role) || "";
+  // Matchs de la catégorie proposés dans la demande (à venir d'abord), pour choisir l'adversaire et la date.
+  const d0Tr = new Date(); const todayTr = `${d0Tr.getFullYear()}-${pad(d0Tr.getMonth() + 1)}-${pad(d0Tr.getDate())}`;
+  const matchsDemande = ((db && db.matches) || [])
+    .filter((m) => m && m.cat === cat && m.lieu === "Extérieur" && m.date && m.date >= todayTr)
+    .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   function creer(f) {
     maj((s) => {
       s.demandes = s.demandes || [];
       s.demandes.push({ ...f, id: uid(), cat, demandeur: moi, statut: "en_attente", cause: "", creeLe: new Date().toISOString() });
       return s;
     });
+    ajouterEntreeJournal({ action: "transport_demande", cat, detail: resumeTransport({ ...f }), date: (f && f.date) || "", destination: (f && f.destination) || "", demandeur: moi, auteur: moi, role: monRoleTr });
     setNouveau(false);
   }
   function supprimer(id) {
+    const x = ((store && store.demandes) || []).find((d) => d.id === id);
     maj((s) => { s.demandes = (s.demandes || []).filter((y) => y.id !== id); return s; });
+    if (x) ajouterEntreeJournal({ action: "transport_suppr", cat: x.cat || "", detail: resumeTransport(x), date: x.date || "", destination: x.destination || "", demandeur: x.demandeur || "", auteur: moi, role: monRoleTr });
+  }
+  // Suppression protégée : côté direction, on demande d'abord le mot de passe administratif
+  // (évite toute suppression par erreur), puis la fenêtre de confirmation s'affiche.
+  function demanderSuppression(x) {
+    if (peutValider && onDemanderDeverrouillage) onDemanderDeverrouillage(() => setConfirmSuppr(x));
+    else setConfirmSuppr(x);
   }
 
   return (
-    <Modal title="Demandes de transport" onClose={onClose}
+    <Modal title="Demandes de transport" onClose={onClose} fullscreen={peutValider}
       footer={<Btn variant="accent" full onClick={() => setNouveau(true)}><Plus size={16} /> Nouvelle demande</Btn>}>
-      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12 }}>Réserve le minibus club, le bus des pros ou un minibus de location (ADJ ou Hertz) à l'avance. {peutValider ? "Tu valides ou refuses les demandes des éducateurs." : "Ta demande sera affichée « en cours de traitement » jusqu'à validation par la direction."}</div>
+      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>L'éducateur exprime son besoin, la direction attribue la solution. {peutValider ? "Touche Attribuer pour choisir le transport, ou Refuser." : "Ta demande sera affichée « en traitement » jusqu'à l'attribution par la direction."}</div>
+      {onRafraichir && (
+        <div style={{ marginBottom: 12 }}>
+          <Btn variant="ghost" size="sm" full disabled={majMsg === "Actualisation..."} onClick={rafraichirMaintenant}><RefreshCw size={15} style={{ animation: majMsg === "Actualisation..." ? "spin 0.6s linear infinite" : "none" }} /> {majMsg === "Actualisation..." ? "Actualisation..." : "Rafraîchir les demandes"}</Btn>
+          {majMsg === "Demandes à jour" && <div style={{ fontSize: 12, color: C.vert, fontWeight: 700, textAlign: "center", marginTop: 6 }}>Demandes à jour</div>}
+        </div>
+      )}
+      {peutValider && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "8px 10px" }}>
+          <Btn variant="ghost" size="sm" onClick={() => setOffsetSemaine(offsetSemaine - 1)}><ChevronLeft size={15} /> Précédent</Btn>
+          <div style={{ textAlign: "center", lineHeight: 1.25 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 900, color: C.bleu }}>Semaine {sem.numero}</div>
+            <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 700 }}>du {jjmm(sem.lundi)} au {jjmm(sem.dim)}</div>
+          </div>
+          <Btn variant="ghost" size="sm" onClick={() => setOffsetSemaine(offsetSemaine + 1)}>Suivant <ChevronLeft size={15} style={{ transform: "rotate(180deg)" }} /></Btn>
+        </div>
+      )}
+      {false && peutValider && transportsMatchs.length > 0 && (
+        <div style={{ marginBottom: 16, background: "#FFF8EC", border: `1px solid ${C.jaune}`, borderRadius: 12, padding: "12px 13px" }}>
+          <div style={{ fontWeight: 800, color: C.bleuNuit, marginBottom: 4, display: "flex", alignItems: "center", gap: 7 }}><Bus size={16} color={C.bleu} /> Transports attachés à un match ({transportsMatchs.length})</div>
+          <div style={{ fontSize: 12, color: C.gris, marginBottom: 10, lineHeight: 1.45 }}>Ces transports ont été saisis directement dans l'organisation d'un match, ils ne passent pas par les demandes ci-dessous. Tu vois ici la catégorie et le match concernés, et tu peux les supprimer directement sans chercher.</div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {transportsMatchs.map((m) => {
+              const t = m.transport || {};
+              const mini = (t.minibus && t.minibus.length) ? ` (${normMinis(t.minibus).join("/")})` : "";
+              return (
+                <div key={m.id} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "9px 11px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 12, color: C.gris, fontWeight: 800 }}>{m.cat || "Catégorie ?"} · {m.date ? fmtDate(m.date) : "Date à définir"}</span>
+                    {t.statut === "acceptee" ? <Pastille bg="#E2F4E9" color={C.vert}>Acceptée</Pastille>
+                      : t.statut === "refusee" ? <Pastille bg="#FBE3E3" color={C.rouge}>Refusée</Pastille>
+                        : <Pastille bg={C.jaune} color={C.bleuNuit}>En attente</Pastille>}
+                  </div>
+                  <div style={{ fontWeight: 800, marginTop: 3 }}>{m.lieu === "Extérieur" ? `${m.adversaire || "Adversaire"} contre ${CLUB}` : `${CLUB} contre ${m.adversaire || "Adversaire"}`}</div>
+                  <div style={{ fontSize: 12.5, color: C.gris, marginTop: 2 }}>{t.mode ? t.mode + mini : "Mode à définir"}{t.loueur ? ` · ${t.loueur}` : ""}{t.statut === "refusee" && t.cause ? ` · Cause : ${t.cause}` : ""}</div>
+                  <div style={{ marginTop: 8 }}>
+                    <Btn variant="danger" size="sm" onClick={() => { const go = () => { if (window.confirm(`Supprimer le transport attaché à ce match (${m.cat || ""} du ${m.date ? fmtDate(m.date) : "date à définir"}) ?`)) supprimerTransportMatch(m.id); }; if (onDemanderDeverrouillage) onDemanderDeverrouillage(go); else go(); }}><Trash2 size={15} /> Supprimer ce transport</Btn>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {peutValider && liste.length > 0 && (() => {
+        const chips = [
+          { k: "toutes", lbl: "Toutes", n: liste.length },
+          { k: "attente", lbl: "En attente", n: nbAttente },
+          { k: "acceptees", lbl: "Acceptées", n: nbAcceptees },
+          { k: "refusees", lbl: "Refusées", n: nbRefusees },
+        ];
+        return (
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
+            {chips.map((c) => {
+              const on = filtre === c.k;
+              return (
+                <button key={c.k} onClick={() => setFiltre(c.k)} style={{
+                  border: `1px solid ${on ? C.bleu : C.grisClair}`, cursor: "pointer", borderRadius: 20, padding: "6px 12px",
+                  fontWeight: 800, fontSize: 12.5, background: on ? C.bleu : "#fff", color: on ? "#fff" : C.gris,
+                }}>{c.lbl} ({c.n})</button>
+              );
+            })}
+          </div>
+        );
+      })()}
       {chargement ? (
         <div style={{ fontSize: 12.5, color: C.gris, fontWeight: 700, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "10px 12px" }}>Chargement des demandes du club...</div>
       ) : liste.length === 0 ? (
-        <Empty icon={<Bus size={24} color={C.gris} />} text="Aucune demande de transport" sub="Touche Nouvelle demande pour réserver" />
+        <Empty icon={<Bus size={24} color={C.gris} />} text={peutValider ? "Aucune demande cette semaine" : "Aucune demande de transport"} sub={peutValider ? "Change de semaine avec Précédent / Suivant, ou touche Nouvelle demande" : "Touche Nouvelle demande pour réserver"} />
+      ) : listeFiltree.length === 0 ? (
+        <Empty icon={<Bus size={24} color={C.gris} />} text="Aucune demande dans ce filtre" sub="Touche Toutes pour voir toutes les demandes" />
+      ) : peutValider ? (
+        <>
+          <div style={{ overflowX: "auto", border: `1px solid ${C.grisClair}`, borderRadius: 12, background: "#fff" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1040 }}>
+              <thead>
+                <tr>{["Catégorie", "Date", "Destination", "Demandé par", "Besoin", "Transport attribué", "Chauffeur", "Statut", "Actions"].map((l) => (
+                  <th key={l} style={{ background: C.bleu, color: "#fff", fontSize: 11.5, fontWeight: 800, padding: "9px 8px", textAlign: "left", borderLeft: "1px solid rgba(255,255,255,0.15)", whiteSpace: "nowrap" }}>{l}</th>
+                ))}</tr>
+              </thead>
+              <tbody>
+                {listeFiltree.map((x) => {
+                  const bgLigne = x.statut === "acceptee" ? "#EAF7EE" : x.statut === "refusee" ? "#FCEBEB" : "#FFF9ED";
+                  const besoin = `${x.nbMinibus || "?"} minibus · ${x.nbJoueurs || 0} j · ${x.nbStaff || 0} staff`;
+                  const cellStyle = { padding: "9px 8px", borderTop: `1px solid ${C.grisClair}`, borderLeft: `1px solid ${C.grisClair}`, fontSize: 12.5, color: C.encre, verticalAlign: "top" };
+                  const lignesAttr = attributionLignes(x);
+                  return (
+                    <tr key={x.id} style={{ background: bgLigne }}>
+                      <td style={{ ...cellStyle, fontWeight: 800, color: C.bleu, whiteSpace: "nowrap" }}>{x.cat || "?"}</td>
+                      <td style={{ ...cellStyle, whiteSpace: "nowrap" }}>{x.date ? fmtDate(x.date) : "À définir"}</td>
+                      <td style={cellStyle}>{x.destination || (x.adversaire ? `vs ${x.adversaire}` : "") || "-"}{x.objetSortie ? ` · Sortie : ${x.objetSortie}` : ""}</td>
+                      <td style={cellStyle}>{x.demandeur || "-"}</td>
+                      <td style={{ ...cellStyle, whiteSpace: "nowrap" }}>{besoin}</td>
+                      <td style={{ ...cellStyle, fontWeight: lignesAttr.length ? 700 : 500, color: lignesAttr.length ? C.encre : C.gris }}>
+                        {lignesAttr.length ? lignesAttr.map((p, i) => <div key={i} style={{ whiteSpace: "nowrap" }}>{p.vehicule}</div>) : "À attribuer"}
+                        {modesActifs(x).includes("Bus en location") && x.loueur ? <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2 }}>Loueur : {x.loueur}</div> : null}
+                        {x.statut === "refusee" && x.cause ? <div style={{ fontSize: 11.5, color: C.rouge, marginTop: 2 }}>Cause : {x.cause}</div> : null}
+                        {x.note ? <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2 }}>{x.note}</div> : null}
+                      </td>
+                      <td style={cellStyle}>{lignesAttr.length ? lignesAttr.map((p, i) => <div key={i} style={{ whiteSpace: "nowrap", fontWeight: 600 }}>{p.chauffeur || "-"}</div>) : "-"}</td>
+                      <td style={{ ...cellStyle, whiteSpace: "nowrap", fontWeight: 900, color: x.statut === "acceptee" ? C.vert : x.statut === "refusee" ? C.rouge : "#B8860B" }}>{x.statut === "acceptee" ? "Acceptée" : x.statut === "refusee" ? "Refusée" : "En attente"}</td>
+                      <td style={{ ...cellStyle, whiteSpace: "nowrap" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                          {x.statut === "en_attente" && (
+                            <>
+                              <button onClick={() => setAttrib(x)} style={{ border: "none", background: C.bleu, color: "#fff", borderRadius: 8, padding: "6px 9px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><Bus size={13} /> Attribuer</button>
+                              <button onClick={() => { setRefus(x); setCause(""); }} style={{ border: `1px solid ${C.rouge}`, background: "#fff", color: C.rouge, borderRadius: 8, padding: "6px 9px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><X size={13} /> Refuser</button>
+                            </>
+                          )}
+                          {x.statut !== "en_attente" && (
+                            <button onClick={() => setAttrib(x)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, borderRadius: 8, padding: "6px 9px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><Edit3 size={13} /> Modifier</button>
+                          )}
+                          <button onClick={() => demanderSuppression(x)} style={{ border: "none", background: "transparent", color: C.rouge, borderRadius: 8, padding: "4px 2px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><Trash2 size={13} /> Supprimer</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 10, lineHeight: 1.5 }}>Lignes vertes : demandes acceptées. Lignes rouges : refusées. Lignes jaunes : en attente d'attribution. Fais défiler sur le côté pour voir toutes les colonnes.</div>
+        </>
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
-          {liste.map((x) => (
+          {listeFiltree.map((x) => (
             <Card key={x.id}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>{x.cat ? x.cat + " · " : ""}{x.date ? fmtDate(x.date) : "Date à définir"}{x.destination ? ` · ${x.destination}` : ""}</span>
+                <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>{x.cat ? x.cat + " · " : ""}{x.date ? fmtDate(x.date) : "Date à définir"}{x.destination ? ` · ${x.destination}` : x.adversaire ? ` · vs ${x.adversaire}` : ""}{x.objetSortie ? ` · Sortie : ${x.objetSortie}` : ""}</span>
                 {x.statut === "acceptee" ? <Pastille bg="#E2F4E9" color={C.vert}>Acceptée</Pastille>
                   : x.statut === "refusee" ? <Pastille bg="#FBE3E3" color={C.rouge}>Refusée</Pastille>
-                    : <Pastille bg={C.jaune} color={C.bleuNuit}>{peutValider ? "En attente" : "En traitement"}</Pastille>}
+                    : <Pastille bg={C.jaune} color={C.bleuNuit}>En traitement</Pastille>}
               </div>
               <div style={{ fontWeight: 800 }}>{resumeTransport(x)}</div>
-              {x.demandeur ? <div style={{ fontSize: 12, color: C.gris, marginTop: 2 }}>Demandé par {x.demandeur}</div> : null}
               {x.note ? <div style={{ fontSize: 13, color: C.gris, marginTop: 3 }}>{x.note}</div> : null}
               {x.statut === "refusee" && x.cause ? <div style={{ fontSize: 13, color: C.rouge, marginTop: 4 }}>Cause : {x.cause}</div> : null}
               <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
-                {peutValider && x.statut === "en_attente" && (
-                  <>
-                    <Btn variant="accent" size="sm" onClick={() => onValiderDem && onValiderDem(x)}><Check size={15} /> Accepter</Btn>
-                    <Btn variant="danger" size="sm" onClick={() => { setRefus(x); setCause(""); }}><X size={15} /> Refuser</Btn>
-                  </>
+                {x.demandeur === moi && (
+                  <Btn variant="ghost" size="sm" style={{ marginLeft: "auto", color: C.rouge }} onClick={() => demanderSuppression(x)}><Trash2 size={15} /> Supprimer</Btn>
                 )}
-                {(peutValider || x.demandeur === moi) && <Trash2 size={16} color={C.gris} style={{ cursor: "pointer", marginLeft: "auto" }} onClick={() => supprimer(x.id)} />}
               </div>
             </Card>
           ))}
         </div>
       )}
 
-      {nouveau && <FormTransport onClose={() => setNouveau(false)} onSubmit={creer} encadrement={encadrement} majEncadrement={majEncadrement} />}
+      {nouveau && <FormTransport onClose={() => setNouveau(false)} onSubmit={creer} matchs={matchsDemande} />}
+
+      {attrib && (
+        <AttribuerTransport
+          dem={attrib}
+          encadrement={encadrement}
+          majEncadrement={majEncadrement}
+          onClose={() => setAttrib(null)}
+          onConfirm={(attribution) => { onValiderDem && onValiderDem(attrib, attribution); setAttrib(null); }}
+        />
+      )}
 
       {refus && (
         <Modal title="Refuser la demande" onClose={() => setRefus(null)}
@@ -472,6 +890,14 @@ function Transports({ store, maj, chargement, peutValider, profil, cat, encadrem
           <Field label="Cause du refus">
             <Inp value={cause} onChange={(e) => setCause(e.target.value)} placeholder="Minibus indisponible, déjà réservé..." />
           </Field>
+        </Modal>
+      )}
+
+      {confirmSuppr && (
+        <Modal title="Supprimer la demande" onClose={() => setConfirmSuppr(null)}
+          footer={<Btn variant="danger" full onClick={() => { supprimer(confirmSuppr.id); setConfirmSuppr(null); }}><Trash2 size={16} /> Oui, supprimer</Btn>}>
+          <div style={{ fontSize: 13, color: C.encre, marginBottom: 6, fontWeight: 700 }}>{confirmSuppr.cat ? confirmSuppr.cat + " · " : ""}{confirmSuppr.date ? fmtDate(confirmSuppr.date) : "Date à définir"}{confirmSuppr.destination ? " · " + confirmSuppr.destination : ""}</div>
+          <div style={{ fontSize: 13, color: C.gris, marginBottom: 10 }}>{resumeTransport(confirmSuppr)}. Cette demande sera définitivement supprimée de la liste du club.</div>
         </Modal>
       )}
     </Modal>
@@ -936,7 +1362,12 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.17.91";
+const APP_VERSION = "16.19.25";
+// Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
+// Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
+const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
+// Proportions réelles du logo FCSM (118 x 142) : largeur = hauteur x ce ratio, pour ne jamais le déformer.
+const LOGO_RATIO = 118 / 142;
 // Seul ce compte (l'administrateur) peut voir et gérer la clé Google. Invisible pour les autres.
 const OWNER_EMAIL = "karimboukrourou@yahoo.fr";
 const LOGO_CLUB = "data:image/png;base64,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";
@@ -993,6 +1424,12 @@ function categorieCartons(cat) {
   const m = /U(\d+)/i.exec(cat);
   if (m) return +m[1] >= 11;
   return true; // collège, séniors, nationale, pro, loisirs : compétitions officielles
+}
+
+/* Catégories à bilan simple : U7 et U8 (pas de championnat, bilan de participation).
+   Même modèle de slide que les autres, mais contenu adapté : plateaux, tournois, amicaux, effectif. */
+function estCategorieSimple(cat) {
+  return cat === "U7" || cat === "U8";
 }
 
 /* Surclassement : catégories du dessous dans lesquelles une catégorie peut piocher un joueur */
@@ -1359,8 +1796,18 @@ function moyennesGroupeBilan(db, cat) {
 const fmtNote = (v) => (v == null ? "-" : (Math.round(v * 10) / 10).toFixed(1));
 
 const TYPES_MATCH = ["Championnat", "Coupe", "Amical", "Plateau", "Tournoi"];
+// Détails tournoi/plateau saisis sur le match (type Tournoi ou Plateau), repris dans le bilan.
+const FORMATS_TOURNOI = ["CHAMPIONS LEAGUE", "EUROPA LEAGUE", "CLASSEMENT"];
+const PARCOURS_TOURNOI = ["Phase de poule", "1/4 de finale", "1/2 finale", "Finale"];
+// Sous-type de participation (surtout U7/U8) : permet de reporter le détail dans le bilan.
+const SOUS_TYPES_PLATEAU = ["Plateau District", "Plateau Futsal District", "Plateau régional", "Autre plateau"];
+const SOUS_TYPES_TOURNOI = ["Tournoi régional", "Tournoi national", "Tournoi international", "Autre tournoi"];
 
-const MINIBUS = ["T2", "T3", "T4", "T5", "ADJ FCSM"];
+const MINIBUS = ["T2", "T3", "T4", "T5", "T6"];
+// Ancien nom "ADJ FCSM" renomme en "T6" : on normalise les anciennes donnees pour qu'elles s'affichent et se sauvent en T6.
+const normMini = (b) => (b === "ADJ FCSM" ? "T6" : b);
+const normMinis = (arr) => (arr || []).map(normMini);
+const normConduct = (c) => { if (!c || c["ADJ FCSM"] == null) return c || {}; const n = { ...c }; if (n["T6"] == null) n["T6"] = n["ADJ FCSM"]; delete n["ADJ FCSM"]; return n; };
 const MODES_TRANSPORT = ["Minibus club", "Bus en location", "Bus de voyage des pros", "Voitures des parents"];
 const LOUEURS = ["ADJ", "Hertz"];
 const ROLES_ENCADREMENT = ["Éducateur", "Coach des gardiens", "Préparateur physique", "Dirigeant", "Délégué", "Arbitre"];
@@ -1497,34 +1944,36 @@ function holidayOf(s, breaks) {
 }
 // Arrêt des compétitions à une date donnée, d'après les vacances scolaires et le réglage partagé des responsables (breaks).
 // Par défaut, toute la période de vacances arrête les compétitions ; "none" = compétitions maintenues ; "s1"/"s2" = une seule semaine.
-function arretCompetition(dateISO, breaks, arretsExc) {
+function arretCompetition(dateISO, breaks, arretsExc, cat) {
   // Arrêts exceptionnels saisis par le club (report, intempéries...) : du début jusqu'à la veille de la reprise.
+  // Si une catégorie est précisée, un arrêt ne compte que s'il vise cette catégorie (ou toutes).
   if (Array.isArray(arretsExc)) {
     for (const a of arretsExc) {
-      if (a && a.debut && a.reprise && dateISO >= a.debut && dateISO < a.reprise) return true;
+      if (a && a.debut && a.reprise && dateISO >= a.debut && dateISO < a.reprise) {
+        if (cat) { const cs = Array.isArray(a.cats) ? a.cats : []; if (cs.length && !cs.includes(cat)) continue; }
+        return true;
+      }
     }
   }
-  // Fermetures complètes (été, pont de l'Ascension) : aucune compétition officielle.
-  for (const h of VACANCES) {
-    if ((h.full || h.court) && dateISO >= h.debut && dateISO < h.reprise) return true;
-  }
+  // Aucune date codée en dur : seuls les arrêts et vacances définis par la direction comptent.
   return false;
 }
 const capit = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const jourLong = (iso) => capit(new Date(iso + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }));
 const jjmm = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
 
-// Un match officiel (championnat/coupe/tournoi officiel, catégorie à cartons) doit être certifié "joué"
-// par le coach pour que son score et son résultat s'affichent. Les autres matchs (amical, plateau,
-// tournoi non officiel, jeunes) restent affichés dès qu'un score est saisi.
-// Rétrocompatibilité : un match officiel plus ancien (sans le drapeau) reste affiché s'il a un score.
+// TOUT match (toutes catégories, tous types, amicaux compris) doit être certifié "joué" pour que
+// son score/résultat soit validé et scellé. Une fois certifié, le score est en lecture seule
+// (consultable mais non modifiable), sauf déverrouillage par la direction.
+// Rétrocompatibilité : un ancien match officiel d'une catégorie à cartons (U11+) sans le drapeau
+// reste considéré comme certifié s'il a déjà un score, pour ne pas perdre l'historique existant.
 function matchCertifieJoue(m) {
   if (!m) return false;
-  const scoreOk = m.scorePour != null && m.scorePour !== "" && m.scoreContre != null && m.scoreContre !== "";
-  if (!matchAutoriseCartons(m)) return scoreOk;
   if (m.joue === true) return true;
   if (m.joue === false) return false;
-  return scoreOk;
+  const scoreOk = m.scorePour != null && m.scorePour !== "" && m.scoreContre != null && m.scoreContre !== "";
+  if (matchAutoriseCartons(m)) return scoreOk; // rétrocompat : U11+ officiel uniquement
+  return false; // U7-U10, amicaux, plateaux, tournois non officiels : certification explicite requise
 }
 
 /* ============================================================
@@ -1839,6 +2288,21 @@ async function saveTransportsClub(store) {
   try { const u = await sb.auth.getUser(); userId = (u && u.data && u.data.user) ? u.data.user.id : null; } catch (e) {}
   await saveCat(CAT_TRANSPORTS, { store }, userId);
 }
+// Fusionne le store serveur (le plus à jour) avec les changements locaux, pour ne jamais écraser
+// une demande saisie par un autre utilisateur entre-temps. Les ajouts et modifications locaux sont
+// conservés ; seules les demandes réellement supprimées en local (présentes avant, absentes après) sont retirées.
+function fusionnerStoresTransport(serveur, avant, apres) {
+  const demServeur = (serveur && serveur.demandes) || [];
+  const demAvant = (avant && avant.demandes) || [];
+  const demApres = (apres && apres.demandes) || [];
+  const idsAvant = new Set(demAvant.map((d) => d && d.id).filter(Boolean));
+  const idsApres = new Set(demApres.map((d) => d && d.id).filter(Boolean));
+  const supprimes = new Set([...idsAvant].filter((id) => !idsApres.has(id)));
+  const parId = new Map();
+  demServeur.forEach((d) => { if (d && d.id && !supprimes.has(d.id)) parId.set(d.id, d); });
+  demApres.forEach((d) => { if (d && d.id) parId.set(d.id, d); });
+  return { ...apres, demandes: [...parId.values()] };
+}
 // Configuration COMMUNE à tout le club (ex : clé Google Maps partagée par tous les éducateurs).
 // Stockée dans la zone d'encadrement, déjà lisible par tous (éducateurs compris), sans écraser la liste.
 async function loadConfigClub() {
@@ -1884,14 +2348,14 @@ function useTransportsClub(demo, db, mutate, cats) {
     })();
     return () => { annule = true; };
   }, [demo, cats]);
-  const rafraichir = useCallback(async () => {
+  const rafraichir = useCallback(async (force) => {
     if (demo) return;
-    if (Date.now() - dernierSaveRef.current < 4000) return;
+    if (!force && Date.now() - dernierSaveRef.current < 4000) return;
     try { const st = await loadTransportsClub(); if (st) { if (!st.demandes) st.demandes = []; setRemote(st); } } catch (e) {}
   }, [demo]);
   useEffect(() => {
     if (demo) return;
-    const id = setInterval(rafraichir, 300000);
+    const id = setInterval(rafraichir, 120000);
     const onVisible = () => { if (document.visibilityState === "visible") rafraichir(); };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", rafraichir);
@@ -1904,7 +2368,19 @@ function useTransportsClub(demo, db, mutate, cats) {
       const base = prev ? JSON.parse(JSON.stringify(prev)) : { demandes: [] };
       const next = fn(base);
       dernierSaveRef.current = Date.now();
-      saveTransportsClub(next).catch(() => {});
+      // Enregistrement sûr : on relit d'abord le serveur et on fusionne, pour ne pas écraser
+      // une demande ajoutée par un autre utilisateur depuis le dernier chargement.
+      (async () => {
+        try {
+          const serveur = await loadTransportsClub();
+          const fusionne = fusionnerStoresTransport(serveur || { demandes: [] }, prev || { demandes: [] }, next);
+          dernierSaveRef.current = Date.now();
+          await saveTransportsClub(fusionne);
+          setRemote(fusionne);
+        } catch (e) {
+          try { await saveTransportsClub(next); } catch (e2) {}
+        }
+      })();
       return next;
     });
   };
@@ -2328,8 +2804,8 @@ function ApercuPDF({ url, nom, onClose }) {
     <div style={{ position: "fixed", inset: 0, background: "rgba(10,20,35,0.82)", zIndex: 2147483000, display: "flex", flexDirection: "column", padding: "10px 10px calc(10px + env(safe-area-inset-bottom))" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#fff", padding: "6px 2px 10px" }}>
         <FileDown size={18} />
-        <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 14.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Aperçu · {nom}</div>
-        <button onClick={onClose} style={{ background: "rgba(255,255,255,0.16)", border: "none", color: "#fff", borderRadius: 9, width: 36, height: 36, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={20} /></button>
+        <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 14.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Aperçu : {nom}</div>
+        <button onClick={onClose} style={{ background: C.jaune, border: "none", color: C.bleuNuit, borderRadius: 10, padding: "9px 16px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 900, fontSize: 14, flex: "0 0 auto" }}><X size={18} /> Fermer</button>
       </div>
       <iframe title="Aperçu du PDF" src={url} style={{ flex: 1, width: "100%", border: "none", borderRadius: 12, background: "#fff" }} />
       <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(255,255,255,0.85)", fontSize: 11.5, padding: "8px 2px 0" }}>
@@ -2337,7 +2813,6 @@ function ApercuPDF({ url, nom, onClose }) {
         <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "#fff", fontWeight: 700, textDecoration: "underline" }}>Ouvrir dans un onglet</a>
       </div>
       <div style={{ display: "flex", gap: 10, paddingTop: 10 }}>
-        <button onClick={onClose} style={{ flex: "0 0 auto", padding: "13px 18px", borderRadius: 12, border: "none", background: "rgba(255,255,255,0.18)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>Fermer</button>
         <button onClick={() => enregistrerFichier(url, nom)} style={{ flex: 1, padding: "13px 18px", borderRadius: 12, border: "none", background: C.jaune, color: C.bleuNuit, fontWeight: 900, fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><FileDown size={18} /> Enregistrer le PDF</button>
       </div>
     </div>
@@ -2400,6 +2875,24 @@ function BtnSuppr({ nom, onConfirm, label, size = "md", full, style }) {
         </Modal>
       )}
     </>
+  );
+}
+
+// Bouton d'enregistrement manuel réutilisable : envoie tout de suite au serveur les
+// modifications en attente (en complément de l'enregistrement automatique et de la
+// sauvegarde à la fermeture de la fenêtre). Rendu uniquement si une fonction de
+// sauvegarde est disponible dans le contexte.
+function BoutonSauver({ size = "md", full, style }) {
+  const { sauver } = useContext(AdminCtx);
+  if (!sauver) return null;
+  const sm = size === "sm";
+  return (
+    <button type="button" onClick={() => { try { sauver(); } catch (e) {} }} style={{
+      background: C.jaune, border: "none", color: C.bleuNuit, borderRadius: sm ? 10 : 11,
+      padding: sm ? "8px 15px" : "11px 20px", cursor: "pointer", display: "inline-flex",
+      alignItems: "center", justifyContent: "center", gap: 7, fontSize: sm ? 13 : 14,
+      fontWeight: 800, whiteSpace: "nowrap", flex: "0 0 auto", width: full ? "100%" : undefined, ...style,
+    }}><Save size={sm ? 15 : 16} /> Enregistrer</button>
   );
 }
 
@@ -2482,15 +2975,16 @@ function SelEncadrement({ value, onChange, liste, label, options = [], lectureSe
   );
 }
 
-function Modal({ title, onClose, children, footer, titleCenter }) {
+function Modal({ title, onClose, children, footer, titleCenter, wide, fullscreen }) {
   return (
     <div onClick={onClose} style={{
       position: "fixed", inset: 0, background: "rgba(6,24,74,0.55)", zIndex: 50,
-      display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 0,
+      display: "flex", alignItems: fullscreen ? "stretch" : "flex-end", justifyContent: "center", padding: 0,
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
-        background: C.fond, width: "100%", maxWidth: 560, maxHeight: "92vh",
-        borderTopLeftRadius: 22, borderTopRightRadius: 22, overflow: "hidden",
+        background: C.fond, width: "100%", maxWidth: fullscreen ? "none" : wide ? "min(1280px, 97vw)" : 560,
+        height: fullscreen ? "100%" : "auto", maxHeight: fullscreen ? "100%" : wide ? "96vh" : "92vh",
+        borderTopLeftRadius: fullscreen ? 0 : 22, borderTopRightRadius: fullscreen ? 0 : 22, overflow: "hidden",
         display: "flex", flexDirection: "column",
       }}>
         <div style={{ background: C.bleu, color: "#fff", padding: "16px 18px", display: "flex", alignItems: "center", justifyContent: titleCenter ? "center" : "space-between", position: "relative" }}>
@@ -2782,6 +3276,29 @@ function chargerJsPDF() {
       const sc = document.createElement("script");
       sc.src = sources[i++];
       sc.onload = () => (window.jspdf && window.jspdf.jsPDF) ? res(window.jspdf.jsPDF) : suivant();
+      sc.onerror = () => suivant();
+      document.body.appendChild(sc);
+    };
+    suivant();
+  });
+}
+
+// Chargement de PptxGenJS (génération de fichiers PowerPoint .pptx), avec sources de secours.
+function chargerPptxGenJS() {
+  return new Promise((res, rej) => {
+    if (window.PptxGenJS) return res(window.PptxGenJS);
+    const sources = [
+      "https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js",
+      "https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js",
+      "https://unpkg.com/pptxgenjs@3.12.0/dist/pptxgen.bundle.js",
+    ];
+    let i = 0;
+    const suivant = () => {
+      if (window.PptxGenJS) return res(window.PptxGenJS);
+      if (i >= sources.length) return rej(new Error("réseau"));
+      const sc = document.createElement("script");
+      sc.src = sources[i++];
+      sc.onload = () => window.PptxGenJS ? res(window.PptxGenJS) : suivant();
       sc.onerror = () => suivant();
       document.body.appendChild(sc);
     };
@@ -3462,7 +3979,7 @@ export default function App() {
   const mesNotifsPlanning = useMemo(() => {
     const pl = planningClub || {};
     const mc = catsPlanning || [];
-    const list = (pl.notifs || []).filter((n) => n && ((n.pour && monNom && n.pour === monNom) || (n.pourCat && mc.includes(n.pourCat)) || (n.pourRole && monRole && n.pourRole === monRole)));
+    const list = (pl.notifs || []).filter((n) => n && ((n.pour && monNom && n.pour === monNom) || (n.pourCat && mc.includes(n.pourCat)) || (n.pourRole && monRole && n.pourRole === monRole) || (n.genre === "transport" && n.cat && mc.includes(n.cat))));
     list.sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""));
     return list;
   }, [planningClub, monNom, monRole, catsPlanning]);
@@ -3485,8 +4002,9 @@ export default function App() {
     try {
       const all = (transportClub && transportClub.demandes) || [];
       trace(`Demandes transport (${all.length})`, all.map((t) => {
-        const mini = (t.minibus && t.minibus.length) ? t.minibus.join("/") : "";
-        return `${t.cat || "?"} | date=${t.date || "sans date"} | statut=${t.statut || "?"} | mode=${t.mode || "?"}${mini ? " (" + mini + ")" : ""} | dest=${t.destination || "-"} | par=${t.demandeur || "?"} | créé=${(t.creeLe || "").slice(0, 10)} | id=${t.id || "?"}`;
+        const mini = (t.minibus && t.minibus.length) ? normMinis(t.minibus).join("/") : "";
+        const lienMatch = t.matchId ? `${t.adversaire || "?"} [${t.matchId}]` : "aucun";
+        return `${t.cat || "?"} | date=${t.date || "sans date"} | statut=${t.statut || "?"} | mode=${t.mode || "?"}${mini ? " (" + mini + ")" : ""} | dest=${t.destination || "-"} | match=${lienMatch} | par=${t.demandeur || "?"} | créé=${(t.creeLe || "").slice(0, 10)} | id=${t.id || "?"}`;
       }));
     } catch (e) {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3495,6 +4013,7 @@ export default function App() {
   const saveQueueRef = useRef(Promise.resolve());
   const savingCountRef = useRef(0);
   const dirtyCatsRef = useRef(new Set());
+  const autoSaveRef = useRef(null);
 
   // Invalidation du cache d'une catégorie après une écriture croisée (carton surclassé) :
   // on vide le cache et, si c'est la catégorie affichée, on recharge tout de suite les données fraîches.
@@ -3553,11 +4072,22 @@ export default function App() {
         const cats = role === "direction" ? CATEGORIES.map((c) => c.id) : role === "medical" ? catsMedical : affCats;
         const catsModif = role === "direction" ? CATEGORIES.map((c) => c.id) : role === "medical" ? catsMedical : affCats;
         setProfil({ role, nom: prof && prof.nom, cats, catsModif });
-        setCat((prev) => (prev && cats.includes(prev) ? prev : (cats[0] || null)));
+        // On NE change PAS la catégorie déjà sélectionnée : un rafraîchissement du jeton (ou autre
+        // réévaluation de session) ne doit jamais faire sauter l'utilisateur vers une autre catégorie.
+        // Au tout premier chargement (ou après un rechargement complet de la page), on restaure la
+        // dernière catégorie choisie si l'utilisateur y a encore accès, sinon la première de sa liste.
+        setCat((prev) => {
+          if (prev) return prev;
+          let saved = null; try { saved = localStorage.getItem("fcsm_cat"); } catch (e) {}
+          return (saved && cats.includes(saved)) ? saved : (cats[0] || null);
+        });
       } catch (e) { if (!annule) setProfil({ role: "educateur", cats: [] }); }
     })();
     return () => { annule = true; };
   }, [session]);
+
+  // On mémorise la dernière catégorie choisie pour la restaurer après un rechargement complet de la page.
+  useEffect(() => { if (cat) { try { localStorage.setItem("fcsm_cat", cat); } catch (e) {} } }, [cat]);
 
   useEffect(() => {
     if (demo || !session || !cat) return;
@@ -3615,9 +4145,13 @@ export default function App() {
 
   useEffect(() => {
     if (demo) return;
-    const h = (e) => { if (dirtyCatsRef.current.size > 0) { e.preventDefault(); e.returnValue = ""; } };
+    const h = (e) => { if (dirtyCatsRef.current.size > 0) { try { enregistrerManuel(); } catch (er) {} e.preventDefault(); e.returnValue = ""; } };
+    // Dès que l'app passe en arrière-plan ou perd le focus, on envoie tout de suite ce qui n'est pas encore enregistré.
+    const onHidden = () => { if (document.visibilityState === "hidden" && dirtyCatsRef.current.size > 0) { try { enregistrerManuel(); } catch (er) {} } };
     window.addEventListener("beforeunload", h);
-    return () => window.removeEventListener("beforeunload", h);
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("pagehide", onHidden);
+    return () => { window.removeEventListener("beforeunload", h); document.removeEventListener("visibilitychange", onHidden); window.removeEventListener("pagehide", onHidden); };
   }, [demo]);
 
   useEffect(() => {
@@ -3692,10 +4226,13 @@ export default function App() {
       return next;
     });
     if (demo || !session || !cat) return;
-    // Enregistrement manuel : la modification reste locale et visible, mais
-    // n'est envoyee au serveur que lorsque l'utilisateur appuie sur "Enregistrer".
+    // La modification apparaît tout de suite ; elle est aussi envoyée au serveur
+    // automatiquement 4 secondes après la dernière saisie (filet de sécurité pour ne jamais
+    // perdre une saisie), en plus du bouton « Enregistrer » qui envoie immédiatement.
     dirtyCatsRef.current.add(cat);
     setDirty(true);
+    if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
+    autoSaveRef.current = setTimeout(() => { autoSaveRef.current = null; try { if (dirtyCatsRef.current.size > 0) enregistrerManuel(); } catch (e) {} }, 4000);
   }
 
   function enregistrerManuel() {
@@ -3842,6 +4379,16 @@ export default function App() {
     });
     return d;
   });
+  // La direction autorise un coach à corriger un match/tournoi scellé : une alarme part vers la catégorie.
+  // Message volontairement court pour la bannière : nom de l'équipe ou du tournoi + date.
+  const notifierCorrection = (info) => majPlanningClub((d) => {
+    d.notifs = d.notifs || [];
+    d.notifs.push({
+      id: uid(), genre: "correction", pour: "", pourCat: info.cat || "", accuseCat: info.cat || "",
+      statut: "info", nomRencontre: info.nom || "", date: info.date || "", creeLe: new Date().toISOString(),
+    });
+    return d;
+  });
   // Circuit blessure entre le coach et l'équipe médicale : trois alarmes (signalement, diagnostic, retour terrain)
   const pousserNotifBlessure = (champs) => majPlanningClub((d) => {
     d.notifs = d.notifs || [];
@@ -3877,19 +4424,74 @@ export default function App() {
   const notifTransport = (dem, statut, raison) => majPlanningClub((d) => {
     d.notifs = d.notifs || [];
     d.notifs.push({
-      id: uid(), genre: "transport", pour: dem.demandeur || "", statut, raison: raison || "",
+      id: uid(), genre: "transport", pour: dem.demandeur || "", pourCat: dem.cat || "", statut, raison: raison || "",
       resume: resumeTransport(dem), destination: dem.destination || "", date: dem.date || "", cat: dem.cat || "",
       creeLe: new Date().toISOString(),
     });
     return d;
   });
-  const validerTransport = (dem) => {
-    majTransportClub((s) => { const x = (s.demandes || []).find((y) => y.id === dem.id); if (x) { x.statut = "acceptee"; x.cause = ""; } return s; });
-    notifTransport(dem, "valide", "");
+  // Lien demande <-> match : quand une demande rattachée à un match (matchId) est validée, on recopie
+  // le transport attribué dans l'encart transport de ce match, pour qu'il apparaisse dans la préparation
+  // du match (comme la compo). On écrit dans la catégorie du match, même si la direction valide depuis
+  // une autre catégorie.
+  const lierTransportAuMatch = (dem, attribution) => {
+    // On relie si on a la catégorie et de quoi retrouver le match (son identifiant, ou au moins une date).
+    if (!dem || !dem.cat || (!dem.matchId && !dem.date)) return;
+    const src = { ...dem, ...(attribution || {}) };
+    const tr = {
+      mode: src.mode || (Array.isArray(src.modes) && src.modes[0]) || "",
+      modes: Array.isArray(src.modes) ? src.modes : (src.mode ? [src.mode] : []),
+      minibus: src.minibus || [],
+      loueur: src.loueur || "",
+      nbVoitures: src.nbVoitures || "",
+      voitures: src.voitures || [],
+      parents: src.parents || "",
+      conducteurs: src.conducteurs || {},
+      nbLocation: src.nbLocation || "",
+      locations: src.locations || [],
+      chauffeursSup: src.chauffeursSup || [],
+      statut: "acceptee",
+      origineDemande: dem.id,
+    };
+    // Retrouve le match visé : d'abord par identifiant, sinon par date + adversaire dans la bonne catégorie.
+    const trouverMatch = (matches) => {
+      const list = matches || [];
+      if (dem.matchId) { const m = list.find((x) => String(x.id) === String(dem.matchId)); if (m) return m; }
+      if (!dem.date) return null;
+      const memeDate = list.filter((x) => x.date === dem.date);
+      if (!memeDate.length) return null;
+      const cible = (dem.adversaire || dem.destination || "").trim().toLowerCase();
+      if (cible) { const m = memeDate.find((x) => (x.adversaire || "").trim().toLowerCase() === cible); if (m) return m; }
+      return memeDate.length === 1 ? memeDate[0] : null;
+    };
+    const appliquer = (d) => {
+      const m = trouverMatch(d.matches);
+      if (m) m.transport = { ...(m.transport || {}), ...tr };
+      return d;
+    };
+    try { trace("transport lie au match " + (dem.destination || dem.adversaire || ""), `matchId=${dem.matchId || "-"} date=${dem.date || "-"} cat=${dem.cat} mode=${tr.mode} minibus=${(tr.minibus || []).join("/") || "-"} statut=${tr.statut} (${demo || dem.cat === cat ? "meme categorie" : "autre categorie"})`); } catch (e) {}
+    if (demo || dem.cat === cat) { mutate(appliquer); return; }
+    (async () => {
+      try {
+        const uid2 = session ? session.user.id : null;
+        const d = await loadCat(dem.cat);
+        await saveCat(dem.cat, appliquer(d), uid2);
+        if (_invaliderCacheCategorie) _invaliderCacheCategorie(dem.cat);
+        trace("transport ecrit autre categorie " + dem.cat, `matchId=${dem.matchId}`);
+      } catch (e) { try { trace("transport ecriture ECHEC " + dem.cat, (e && e.message) || String(e)); } catch (e2) {} }
+    })();
+  };
+  const validerTransport = (dem, attribution) => {
+    const dejaAcceptee = dem && dem.statut === "acceptee";
+    majTransportClub((s) => { const x = (s.demandes || []).find((y) => y.id === dem.id); if (x) { if (attribution) Object.assign(x, attribution); x.statut = "acceptee"; x.cause = ""; x.traiteLe = new Date().toISOString(); } return s; });
+    notifTransport({ ...dem, ...(attribution || {}) }, dejaAcceptee ? "modifie" : "valide", "");
+    lierTransportAuMatch(dem, attribution);
+    ajouterEntreeJournal({ action: dejaAcceptee ? "transport_modif" : "transport_valide", cat: dem.cat || "", detail: resumeTransport({ ...dem, ...(attribution || {}) }), date: dem.date || "", destination: dem.destination || "", demandeur: dem.demandeur || "", auteur: monNom, role: monRole });
   };
   const refuserTransport = (dem, cause) => {
     majTransportClub((s) => { const x = (s.demandes || []).find((y) => y.id === dem.id); if (x) { x.statut = "refusee"; x.cause = cause || ""; } return s; });
     notifTransport(dem, "refus", cause || "");
+    ajouterEntreeJournal({ action: "transport_refus", cat: dem.cat || "", detail: cause || "", date: dem.date || "", destination: dem.destination || "", demandeur: dem.demandeur || "", auteur: monNom, role: monRole });
   };
   const rafraichirTout = () => {
     const taches = [];
@@ -3929,7 +4531,7 @@ export default function App() {
   ];
 
   return (
-    <AdminCtx.Provider value={{ peutValider, adminUnlock, demo, demander: demanderDeverrouillageAdmin }}>
+    <AdminCtx.Provider value={{ peutValider, adminUnlock, demo, demander: demanderDeverrouillageAdmin, sauver: enregistrerManuel }}>
     <VerrouCtx.Provider value={{ ouvert: verrouCartonOuvert, demander: demanderDeverrouillageCarton, auteur: { nom: monNom, role: monRole }, journaliser: ajouterEntreeJournal, demo }}>
     <div style={{ minHeight: "100vh", background: C.fond, color: C.encre, fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: 78 }}>
       <style>{"@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}.fcHeadRow{display:flex;align-items:center;gap:13px}.fcBrand{min-width:0;flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}.fcTitle{font-weight:800;font-size:16px;letter-spacing:0.4px;line-height:1.08;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}.fcSub{font-size:9px;font-weight:700;letter-spacing:1.5px;line-height:1.3;margin-top:7px;color:#C6A24C;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fcVer{display:block;font-size:8.5px;font-weight:800;letter-spacing:1px;line-height:1.3;margin-top:3px;color:#C6A24C;white-space:nowrap}.fcLogo{height:44px;width:auto;flex:0 0 auto}.fcSpacer{flex:0 0 auto;width:44px}.fcActions{display:flex;align-items:center;gap:6px;flex:0 0 auto}.fcBtn{background:rgba(255,255,255,0.09);border:none;color:#fff;border-radius:9px;padding:9px;cursor:pointer;display:flex;align-items:center;justify-content:center}.fcBtn:active{background:rgba(255,255,255,0.2)}@media(max-width:520px){.fcHeadRow{gap:10px}.fcTitle{font-size:13px;letter-spacing:0.2px}.fcSub{font-size:7.8px;letter-spacing:0.7px;margin-top:6px}.fcLogo{height:34px}.fcSpacer{width:34px}.fcActions{gap:4px}.fcBtn{padding:7px}}@media(max-width:360px){.fcTitle{font-size:11.5px}.fcSub{font-size:7px;letter-spacing:0.4px}.fcLogo{height:30px}.fcSpacer{width:30px}.fcBtn{padding:6px}}"}</style>
@@ -4031,10 +4633,10 @@ export default function App() {
             Consultation seule sur cette catégorie. Tu peux tout voir, mais la modification est réservée à son responsable.
           </div>
         )}
-        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => setShowTransport(true)} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowSauvegarde(true)) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowAcces(true)) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => demanderDeverrouillageAdmin(() => setShowDocs(true))} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onArrets={() => setShowArrets(true)} onMessagerie={ouvrirMessagerie} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} msgVuLe={msgVuLe} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
+        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => { setShowTransport(true); if (rafraichirTransport) rafraichirTransport(); }} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowSauvegarde(true)) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowAcces(true)) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => demanderDeverrouillageAdmin(() => setShowDocs(true))} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onArrets={() => setShowArrets(true)} onMessagerie={ouvrirMessagerie} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} msgVuLe={msgVuLe} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} peutValider={peutValider} demo={demo} adminUnlock={adminUnlock} onDemanderDeverrouillage={demanderDeverrouillageAdmin} auteur={{ nom: monNom, role: monRole }} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
-        {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} />}
+        {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} onNotifierCorrection={notifierCorrection} />}
         {tab === "entrainements" && <Entrainements players={players} cat={cat} db={db} mutate={mutate} estMedical={estMedical} onSignalerBlessure={signalerBlessure} initialSous={entSous} onConsumeSous={() => setEntSous(null)} />}
         {tab === "detection" && <Detection cat={cat} db={db} mutate={mutate} />}
         <div style={{ display: "flex", justifyContent: "center", padding: "10px 16px 26px" }}>
@@ -4087,7 +4689,7 @@ export default function App() {
       {showScores && <ScoresWeekend onClose={() => setShowScores(false)} localDb={demo ? db : null} />}
       {showDemandes && <Demandes demo={demo} db={db} mutate={mutate} cat={cat} session={session} onNotifierJoueur={notifierJoueur} onVu={() => setDemTick((t) => t + 1)} onClose={() => { setDemTick((t) => t + 1); setShowDemandes(false); }} />}
       {showClassement && <Classement cat={cat} db={db} mutate={mutate} onClose={() => setShowClassement(false)} />}
-      {showTransport && <Transports store={transportClub} maj={majTransportClub} chargement={chargementTransport} peutValider={peutValider} profil={profil} cat={cat} encadrement={encadrementClub} majEncadrement={majEncadrementClub} onValiderDem={validerTransport} onRefuserDem={refuserTransport} onClose={() => setShowTransport(false)} />}
+      {showTransport && <Transports store={transportClub} maj={majTransportClub} chargement={chargementTransport} peutValider={peutValider} profil={profil} cat={cat} encadrement={encadrementClub} majEncadrement={majEncadrementClub} onValiderDem={validerTransport} onRefuserDem={refuserTransport} db={db} mutate={mutate} onRafraichir={rafraichirTransport} onDemanderDeverrouillage={demanderDeverrouillageAdmin} onClose={() => setShowTransport(false)} />}
       {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
       {apercuPDF && <ApercuPDF url={apercuPDF.url} nom={apercuPDF.nom} onClose={() => { try { URL.revokeObjectURL(apercuPDF.url); } catch (e) {} setApercuPDF(null); }} />}
@@ -4109,7 +4711,7 @@ export default function App() {
       )}
       {showJournal && <JournalDiscipline onClose={() => setShowJournal(false)} />}
       {showSuivi && <SuiviMedical db={db} mutate={mutate} cat={cat} estMedical={estMedical} onSignalerBlessure={signalerBlessure} onClose={() => setShowSuivi(false)} />}
-      {showBilan && <BilanEquipe db={db} players={players} cat={cat} onClose={() => setShowBilan(false)} onTournois={() => setShowTournois(true)} />}
+      {showBilan && <BilanEquipe db={db} players={players} cat={cat} mutate={mutate} onClose={() => setShowBilan(false)} onTournois={() => setShowTournois(true)} />}
       {showTournois && <Tournois db={db} mutate={mutate} cat={cat} onClose={() => setShowTournois(false)} />}
       {showReunions && <Reunions db={{ reunions: reunionsSource, acces: accesSource, encadrement: encadrementClub }} majEncadrement={majEncadrementClub} mutate={mutateReu} erreur={demo ? null : reunionsErr} onClose={() => setShowReunions(false)} />}
       {showMessagerie && <Messagerie liste={messagesSource} maj={mutateMessages} me={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutValider={peutValider} mesCats={cats} encadrement={encadrementClub} onRafraichir={rafraichirMessages} onClose={() => setShowMessagerie(false)} />}
@@ -4156,25 +4758,32 @@ function JournalDiscipline({ onClose }) {
     if (e.action === "matchs_arret_modif") return `${qui} a réglé les matchs officiels des vacances ${e.vacances || ""} sur « ${e.nouveau} »${e.detail ? " — " + e.detail : ""}${e.cat ? ` [${e.cat}]` : ""}`;
     if (e.action === "suspension_modif") return `${qui} a modifié la suspension de ${e.joueur || "?"} (${e.cat || "?"}) : ${e.detail || ""}`;
     if (e.action === "arret_exc_modif") return `${qui} a modifié ${e.arretKind === "vacances" ? "les vacances de compétition" : "un arrêt exceptionnel des compétitions"} (${e.cat || "?"}) : ${e.detail || ""}`;
+    if (e.action === "transport_demande") return `${qui} a fait une demande de transport (${e.cat || "?"})${e.date ? ` du ${dateFrJ(e.date)}` : ""}${e.destination ? ` vers ${e.destination}` : ""}${e.detail ? ` : ${e.detail}` : ""}`;
+    if (e.action === "transport_valide") return `${qui} a attribué le transport (${e.cat || "?"})${e.date ? ` du ${dateFrJ(e.date)}` : ""}${e.destination ? ` vers ${e.destination}` : ""}${e.demandeur ? `, demandé par ${e.demandeur}` : ""}${e.detail ? ` : ${e.detail}` : ""}`;
+    if (e.action === "transport_modif") return `${qui} a modifié le transport (${e.cat || "?"})${e.date ? ` du ${dateFrJ(e.date)}` : ""}${e.destination ? ` vers ${e.destination}` : ""}${e.detail ? ` : ${e.detail}` : ""}`;
+    if (e.action === "transport_refus") return `${qui} a refusé la demande de transport (${e.cat || "?"})${e.date ? ` du ${dateFrJ(e.date)}` : ""}${e.detail ? ` — cause : ${e.detail}` : ""}`;
+    if (e.action === "transport_suppr") return `${qui} a supprimé une demande de transport (${e.cat || "?"})${e.date ? ` du ${dateFrJ(e.date)}` : ""}${e.detail ? ` : ${e.detail}` : ""}`;
     return e.action || "Action";
   };
   const estCarton = (a) => a && (a.indexOf("carton") === 0 || a === "suspension_modif");
   const estVac = (a) => a === "vacances_modif" || a === "arret_exc_modif" || a === "matchs_arret_modif";
+  const estTransport = (a) => a && a.indexOf("transport") === 0;
   const texteRech = (e) => `${describe(e)} ${fmt(e.ts)} ${e.matchDate || ""} ${e.adversaire || ""} ${e.joueur || ""} ${e.vacances || ""}`.toLowerCase();
   const motsQ = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const catsDispo = liste ? Array.from(new Set(liste.flatMap((e) => (e.cat || "").split(/,\s*/)).filter(Boolean))).sort() : [];
   const filtres = liste ? liste.filter((e) => {
     if (filtre === "cartons" && !estCarton(e.action)) return false;
     if (filtre === "vacances" && !estVac(e.action)) return false;
+    if (filtre === "transport" && !estTransport(e.action)) return false;
     if (catFiltre !== "toutes" && !(e.cat || "").split(/,\s*/).includes(catFiltre)) return false;
     if (motsQ.length) { const t = texteRech(e); if (!motsQ.every((m) => t.indexOf(m) >= 0)) return false; }
     return true;
   }) : [];
   return (
     <Modal title="Journal (cartons et vacances)" onClose={onClose} footer={<Btn variant="accent" full onClick={onClose}>Fermer</Btn>}>
-      <div style={{ fontSize: 12.5, color: C.gris, lineHeight: 1.5, marginBottom: 10 }}>Historique non effaçable, partagé par tout le club. Chaque ajout ou retrait de carton, et chaque changement de vacances, est enregistré avec le nom de l'éducateur. Sert à vérifier si un carton a été oublié ou supprimé.</div>
+      <div style={{ fontSize: 12.5, color: C.gris, lineHeight: 1.5, marginBottom: 10 }}>Historique non effaçable, partagé par tout le club. Chaque carton, chaque changement de vacances et chaque demande de transport (attribution, modification, refus, suppression) est enregistré avec le nom de son auteur. Sert à vérifier si quelque chose a été oublié ou supprimé.</div>
       <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-        {[["tous", "Tout"], ["cartons", "Cartons"], ["vacances", "Vacances / Arrêts"]].map(([v, l]) => (
+        {[["tous", "Tout"], ["cartons", "Cartons"], ["vacances", "Vacances / Arrêts"], ["transport", "Transport"]].map(([v, l]) => (
           <button key={v} type="button" onClick={() => setFiltre(v)} style={{ border: `1px solid ${filtre === v ? C.bleu : C.grisClair}`, background: filtre === v ? "#EAF0F7" : "#fff", color: C.encre, fontWeight: 700, fontSize: 12.5, borderRadius: 9, padding: "6px 10px", cursor: "pointer" }}>{l}</button>
         ))}
       </div>
@@ -4199,12 +4808,15 @@ function JournalDiscipline({ onClose }) {
               const retrait = e.action && e.action.indexOf("retrait") >= 0;
               const vac = e.action === "vacances_modif" || e.action === "arret_exc_modif" || e.action === "matchs_arret_modif";
               const suspM = e.action === "suspension_modif";
+              const transp = e.action && e.action.indexOf("transport") === 0;
+              const transpSuppr = e.action === "transport_suppr" || e.action === "transport_refus";
               // Couleurs calquées sur la bannière Accueil de la direction : bleu pour ces périodes, badge VACANCES jaune.
               const estVacances = e.arretKind === "vacances" || e.action === "vacances_modif" || e.action === "matchs_arret_modif";
-              const col = vac ? C.bleu : retrait ? C.rouge : suspM ? "#B8860B" : C.bleu;
+              const col = transp ? (transpSuppr ? C.rouge : C.bleu) : vac ? C.bleu : retrait ? C.rouge : suspM ? "#B8860B" : C.bleu;
               return (
-                <div key={e.id} style={{ borderLeft: `3px solid ${col}`, background: vac ? "#EAF0F7" : "#F8FAFC", borderRadius: 8, padding: "8px 10px" }}>
+                <div key={e.id} style={{ borderLeft: `3px solid ${col}`, background: transp ? "#EAF0F7" : vac ? "#EAF0F7" : "#F8FAFC", borderRadius: 8, padding: "8px 10px" }}>
                   <div style={{ fontSize: 12.5, color: C.encre, lineHeight: 1.45 }}>
+                    {transp && <span style={{ fontSize: 9.5, fontWeight: 800, color: "#fff", background: transpSuppr ? C.rouge : C.bleu, borderRadius: 5, padding: "1px 6px", marginRight: 6 }}>TRANSPORT</span>}
                     {vac && <span style={{ fontSize: 9.5, fontWeight: 800, color: estVacances ? C.jauneFonce : "#fff", background: estVacances ? "#FFF3DA" : C.bleu, borderRadius: 5, padding: "1px 6px", marginRight: 6 }}>{estVacances ? "VACANCES" : "ARRÊT"}</span>}
                     {describe(e)}
                   </div>
@@ -4369,14 +4981,13 @@ function ScoresWeekend({ onClose, localDb }) {
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState(false);
 
-  const { sam, dim } = useMemo(() => {
+  const { debut, fin } = useMemo(() => {
     const d = new Date();
     const isodow = (d.getDay() + 6) % 7; // 0 = lundi
     const lundi = new Date(d); lundi.setDate(d.getDate() - isodow + offset * 7);
-    const sa = new Date(lundi); sa.setDate(lundi.getDate() + 5);
-    const di = new Date(lundi); di.setDate(lundi.getDate() + 6);
+    const di = new Date(lundi); di.setDate(lundi.getDate() + 6); // dimanche
     const f = (x) => `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
-    return { sam: f(sa), dim: f(di) };
+    return { debut: f(lundi), fin: f(di) }; // semaine complète, du lundi au dimanche
   }, [offset]);
 
   useEffect(() => {
@@ -4384,7 +4995,7 @@ function ScoresWeekend({ onClose, localDb }) {
     setRows(null); setErr(false);
     if (localDb) {
       const r = (localDb.matches || [])
-        .filter((m) => m.date && m.date >= sam && m.date <= dim)
+        .filter((m) => m.date && m.date >= debut && m.date <= fin)
         .map((m) => ({
           categorie: m.cat,
           date_match: m.date,
@@ -4400,20 +5011,38 @@ function ScoresWeekend({ onClose, localDb }) {
     (async () => {
       try {
         const sb = await getSupabase();
-        const { data, error } = await sb.rpc("scores_weekend", { debut: sam, fin: dim });
+        // On lit directement les matchs de toutes les catégories et on filtre sur la semaine (lundi -> dimanche).
+        // Autonome : ne dépend pas d'une fonction serveur (qui pouvait ne renvoyer que le week-end).
+        const { data, error } = await sb.from("categorie_data").select("categorie, data");
         if (error) throw error;
-        if (!annule) setRows(data || []);
+        const r = [];
+        (data || []).forEach((row) => {
+          const matches = (row && row.data && Array.isArray(row.data.matches)) ? row.data.matches : [];
+          matches.forEach((m) => {
+            if (!m || !m.date || m.date < debut || m.date > fin) return;
+            r.push({
+              categorie: m.cat || row.categorie,
+              date_match: m.date,
+              adversaire: m.adversaire,
+              lieu: m.lieu,
+              score_pour: (m.scorePour == null || m.scorePour === "") ? null : +m.scorePour,
+              score_contre: (m.scoreContre == null || m.scoreContre === "") ? null : +m.scoreContre,
+            });
+          });
+        });
+        r.sort((a, b) => (a.date_match || "").localeCompare(b.date_match || "") || String(a.categorie || "").localeCompare(String(b.categorie || "")));
+        if (!annule) setRows(r);
       } catch (e) { if (!annule) { setErr(true); setRows([]); } }
     })();
     return () => { annule = true; };
-  }, [sam, dim, localDb]);
+  }, [debut, fin, localDb]);
 
   return (
-    <Modal title="Scores du week-end" onClose={onClose}>
-      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>Résultats de toutes les catégories, visibles par tous les éducateurs.</div>
+    <Modal title="Scores de la semaine" onClose={onClose}>
+      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>Résultats de toutes les catégories (du lundi au dimanche), visibles par tous les éducateurs.</div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <Btn variant="ghost" size="sm" onClick={() => setOffset(offset - 1)}><ChevronLeft size={15} /> Précédent</Btn>
-        <span style={{ fontSize: 12.5, fontWeight: 800, color: C.encre }}>{jjmm(sam)} au {jjmm(dim)}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 800, color: C.encre }}>{jjmm(debut)} au {jjmm(fin)}</span>
         <Btn variant="ghost" size="sm" onClick={() => setOffset(offset + 1)}>Suivant <ChevronLeft size={15} style={{ transform: "rotate(180deg)" }} /></Btn>
       </div>
       {rows === null ? (
@@ -4421,7 +5050,7 @@ function ScoresWeekend({ onClose, localDb }) {
       ) : err ? (
         <Empty icon={<Trophy size={24} color={C.gris} />} text="Scores indisponibles" sub="Vérifie la connexion au club" />
       ) : rows.length === 0 ? (
-        <Empty icon={<Trophy size={24} color={C.gris} />} text="Aucun match ce week-end" />
+        <Empty icon={<Trophy size={24} color={C.gris} />} text="Aucun match cette semaine" />
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
           {rows.map((r, i) => {
@@ -4442,16 +5071,19 @@ function ScoresWeekend({ onClose, localDb }) {
                   {joue ? <Pastille bg={bg} color={col}>{res}</Pastille> : <Pastille bg={C.jaune} color={C.bleuNuit}>À venir</Pastille>}
                 </div>
                 <div style={{ display: "grid", gap: 3 }}>
-                  <div style={{ display: "flex", alignItems: "center" }}>
-                    <span style={{ width: 34, flex: "0 0 auto" }} />
-                    <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: 800, fontSize: 15, padding: "0 6px" }}>{CLUB}</span>
-                    <span style={{ width: 34, flex: "0 0 auto", textAlign: "right", fontWeight: 900, fontSize: 18, color: C.bleu }}>{joue ? r.score_pour : ""}</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center" }}>
-                    <span style={{ width: 34, flex: "0 0 auto" }} />
-                    <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: 800, fontSize: 15, padding: "0 6px" }}>{r.adversaire || "Adversaire"}</span>
-                    <span style={{ width: 34, flex: "0 0 auto", textAlign: "right", fontWeight: 900, fontSize: 18, color: C.bleu }}>{joue ? r.score_contre : ""}</span>
-                  </div>
+                  {(() => {
+                    // À l'extérieur, l'équipe qui reçoit (adversaire) est affichée en haut, FC Sochaux en dessous.
+                    const lFcsm = { nom: CLUB, score: joue ? r.score_pour : "" };
+                    const lAdv = { nom: r.adversaire || "Adversaire", score: joue ? r.score_contre : "" };
+                    const lignes = r.lieu === "Extérieur" ? [lAdv, lFcsm] : [lFcsm, lAdv];
+                    return lignes.map((lg, idx) => (
+                      <div key={idx} style={{ display: "flex", alignItems: "center" }}>
+                        <span style={{ width: 34, flex: "0 0 auto" }} />
+                        <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: lg.nom === CLUB ? 900 : 800, fontSize: 15, padding: "0 6px", color: lg.nom === CLUB ? C.bleu : C.encre }}>{lg.nom}</span>
+                        <span style={{ width: 34, flex: "0 0 auto", textAlign: "right", fontWeight: 900, fontSize: 18, color: C.bleu }}>{lg.score}</span>
+                      </div>
+                    ));
+                  })()}
                 </div>
               </Card>
             );
@@ -4710,7 +5342,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
   const alerteSuivi = priseEnChargeMedicale(cat) !== "parents" ? enSuiviMedical : 0;
 
   const cartes = [
-    { titre: "Scores du week-end", sous: "Résultats de toutes les catégories", icon: Trophy, action: onScores, accent: true },
+    { titre: "Scores de la semaine", sous: "Résultats de toutes les catégories (lundi au dimanche)", icon: Trophy, action: onScores, accent: true },
     { titre: "Demandes de joueurs", sous: "Demander un joueur d'une autre catégorie", icon: ArrowRightLeft, action: onDemandes, badge: alerteDemRecues + alerteDemReponses },
     { titre: "Classement du championnat", sous: "District, Ligue, National et Ligue 2 en direct", icon: ListOrdered, action: onClassement },
     { titre: "Demande de transport", sous: "Minibus, bus en location ou voitures, à l'avance", icon: Bus, action: onTransport, badge: lstDemTransport.length },
@@ -4718,7 +5350,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
     { titre: "Programme de la semaine", sous: "Récapitulatif des matchs à imprimer", icon: ClipboardList, action: onProgramme },
     { titre: "Documents administratifs", sous: "Licences et contrôle médical à surveiller", icon: ShieldAlert, action: peutMsg ? onDocuments : null, badge: peutMsg ? alerteDocs : 0 },
     { titre: "Suivi médical", sous: "Blessés suivis par l'équipe médicale (U17 aux pros)", icon: Activity, action: (estMedical || priseEnChargeMedicale(cat) !== "parents") ? onSuivi : null, badge: (estMedical || priseEnChargeMedicale(cat) !== "parents") ? enSuiviMedical : 0 },
-    { titre: "Bilan de saison de l'équipe", sous: "Résultats, buteurs et passeurs de la saison", icon: Trophy, action: onBilan },
+    { titre: "Bilan de saison de l'équipe", sous: "Collectif, joueurs et bilan du club en PowerPoint", icon: Trophy, action: onBilan },
     { titre: "Messagerie du club", sous: "Adresser un message important aux éducateurs", icon: Bell, action: peutMsg ? onMessagerie : null, badge: msgASuivre },
     { titre: "Réunions", sous: "Programmer les réunions et recueillir les présences", icon: Users, action: onReunions, badge: alerteReunions },
     { titre: "Calendrier du club", sous: "Tous les événements, toutes catégories réunies", icon: CalendarDays, action: onCalendrier },
@@ -4852,35 +5484,41 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
       {lstNotifs.length > 0 && (
         <div style={{ display: "grid", gap: 8, marginBottom: 18 }}>
           {lstNotifs.map((n) => {
-            const valide = n.statut === "valide";
+            const modifie = n.statut === "modifie";
+            const valide = n.statut === "valide" || modifie;
             const annule = n.statut === "annule";
             const estTransport = n.genre === "transport";
             const estJoueur = n.genre === "joueur";
             const estBlessure = n.genre === "blessure";
+            const estCorrection = n.genre === "correction";
             const label = n.typeLieu === "vestiaires" ? "vestiaire" : "terrain";
             const horaire = n.fin && n.fin !== n.debut ? `${n.debut} à ${n.fin}` : n.debut;
-            const titre = estBlessure
+            const titre = estCorrection
+              ? "Correction autorisée par la direction"
+              : estBlessure
               ? (n.sous === "signalement" ? "Nouveau joueur blessé signalé" : n.sous === "diagnostic" ? "Diagnostic médical reçu" : "Joueur rétabli, de retour sur le terrain")
               : estJoueur
                 ? (valide ? "Votre demande de joueur a été acceptée" : annule ? "Une demande de joueur a été annulée" : "Votre demande de joueur a été refusée")
                 : estTransport
-                  ? (valide ? "Votre demande de transport a été validée" : "Votre demande de transport a été refusée")
+                  ? (modifie ? "Votre demande de transport a été modifiée" : valide ? "Votre demande de transport a été validée" : "Votre demande de transport a été refusée")
                   : (valide ? "Votre demande de créneau a été validée" : "Votre demande de créneau a été refusée");
-            const detail = estBlessure
+            const detail = estCorrection
+              ? `${n.nomRencontre || "Rencontre"}${n.cat ? " (" + n.cat + ")" : ""}${n.date ? " · le " + jjmm(n.date) : ""}`
+              : estBlessure
               ? `${n.joueurNom || "Joueur"}${n.cat ? " (" + n.cat + ")" : ""}${n.sous === "diagnostic" && n.diagnostic ? " · " + n.diagnostic : ""}${n.sous === "diagnostic" && n.datePEC ? " · pris en charge le " + jjmm(n.datePEC) : ""}${n.sous === "signalement" && n.raison ? " · " + texteCirconstance(n.raison) : ""}${n.sous === "signalement" && n.date ? " · le " + jjmm(n.date) : ""}`
               : estJoueur
                 ? `${n.joueurNom || "Joueur"}${n.joueurCat ? " (" + n.joueurCat + ")" : ""}${n.date ? " · pour le " + jjmm(n.date) : ""}`
                 : estTransport
                   ? `${n.cat ? n.cat + " · " : ""}${n.resume || "Transport"}${n.destination ? " · " + n.destination : ""}${n.date ? " · le " + jjmm(n.date) : ""}`
                   : `${n.cat ? n.cat + " · " : ""}${label} ${n.col} · le ${jjmm(n.date)} · ${horaire}`;
-            const bg = estBlessure ? "#EAF0F7" : valide ? "#E2F4E9" : annule ? "#FBEAD9" : "#FBE3E3";
-            const bord = estBlessure ? "#C6D5E8" : valide ? "#BFE3CD" : annule ? "#EBD3AE" : "#F0C4C4";
-            const coulTitre = estBlessure ? C.bleu : valide ? "#2F6D43" : annule ? "#B87A2B" : C.rouge;
-            const coulBouton = estBlessure ? C.bleu : valide ? C.vert : annule ? "#B87A2B" : C.rouge;
+            const bg = estCorrection ? "#FFF7E6" : estBlessure ? "#EAF0F7" : valide ? "#E2F4E9" : annule ? "#FBEAD9" : "#FBE3E3";
+            const bord = estCorrection ? "#F0DBA8" : estBlessure ? "#C6D5E8" : valide ? "#BFE3CD" : annule ? "#EBD3AE" : "#F0C4C4";
+            const coulTitre = estCorrection ? "#8A6D00" : estBlessure ? C.bleu : valide ? "#2F6D43" : annule ? "#B87A2B" : C.rouge;
+            const coulBouton = estCorrection ? "#B87A2B" : estBlessure ? C.bleu : valide ? C.vert : annule ? "#B87A2B" : C.rouge;
             return (
               <div key={n.id} style={{ background: bg, border: `1px solid ${bord}`, borderRadius: 14, padding: "12px 14px" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
-                  {estBlessure ? <HeartPulse size={17} color={C.bleu} style={{ flex: "0 0 auto", marginTop: 1 }} /> : valide ? <Check size={17} color={C.vert} style={{ flex: "0 0 auto", marginTop: 1 }} /> : <ShieldAlert size={17} color={annule ? "#B87A2B" : C.rouge} style={{ flex: "0 0 auto", marginTop: 1 }} />}
+                  {estCorrection ? <ShieldAlert size={17} color="#B87A2B" style={{ flex: "0 0 auto", marginTop: 1 }} /> : estBlessure ? <HeartPulse size={17} color={C.bleu} style={{ flex: "0 0 auto", marginTop: 1 }} /> : valide ? <Check size={17} color={C.vert} style={{ flex: "0 0 auto", marginTop: 1 }} /> : <ShieldAlert size={17} color={annule ? "#B87A2B" : C.rouge} style={{ flex: "0 0 auto", marginTop: 1 }} />}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 800, fontSize: 13.5, color: coulTitre }}>
                       {titre}
@@ -4929,7 +5567,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
                   </div>
                   {!enRefus ? (
                     <div style={{ display: "flex", gap: 8, marginTop: 9 }}>
-                      <button onClick={() => onValiderTransport && onValiderTransport(dm)} style={{ flex: 1, border: "none", background: C.vert, color: "#fff", borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Check size={15} /> Valider</button>
+                      <button onClick={() => onTransport && onTransport()} style={{ flex: 1, border: "none", background: C.vert, color: "#fff", borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Bus size={15} /> Attribuer</button>
                       <button onClick={() => { setRefusTrCle(dm.id); setRaisonTr(""); }} style={{ flex: 1, border: `1px solid ${C.rouge}`, background: "#fff", color: C.rouge, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><X size={15} /> Refuser</button>
                     </div>
                   ) : (
@@ -4955,7 +5593,8 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
           </div>
           <div style={{ display: "grid", gap: 7 }}>
             {lstAccuses.map((a) => {
-              const valide = a.statut === "valide";
+              const modifie = a.statut === "modifie";
+              const valide = a.statut === "valide" || modifie;
               const annule = a.statut === "annule";
               const estTransport = a.genre === "transport";
               const estJoueur = a.genre === "joueur";
@@ -4973,7 +5612,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
                     : `${a.cat ? a.cat + " · " : ""}${label} ${a.col} · le ${jjmm(a.date)} · ${horaire}${!valide && a.raison ? " · motif : " + a.raison : ""}`;
               const quoi = estBlessure
                 ? (a.sous === "signalement" ? "le signalement" : a.sous === "diagnostic" ? "le diagnostic" : "le retour sur le terrain")
-                : estJoueur ? (annule ? "votre annulation" : "votre réponse") : (valide ? "la validation" : "le refus");
+                : estJoueur ? (annule ? "votre annulation" : "votre réponse") : (valide ? (modifie ? "la modification" : "la validation") : "le refus");
               return (
                 <div key={a.id} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "9px 11px", display: "flex", alignItems: "flex-start", gap: 9 }}>
                   <Check size={15} color={C.vert} style={{ flex: "0 0 auto", marginTop: 2 }} />
@@ -5484,9 +6123,8 @@ function dateDernierCartonActif(p, db) {
 // + arrêts exceptionnels. Sert à prolonger une suspension qui chevauche une coupure.
 function periodesArret(breaks, arretsExc) {
   const periodes = [];
+  // Uniquement les arrêts et vacances définis par la direction (aucune date codée en dur).
   (arretsExc || []).forEach((a) => { if (a && a.debut && a.reprise) periodes.push({ debut: a.debut, reprise: a.reprise }); });
-  // Fermetures complètes (été, pont de l'Ascension).
-  VACANCES.forEach((h) => { if (h.full || h.court) periodes.push({ debut: h.debut, reprise: h.reprise }); });
   return periodes;
 }
 // Premier samedi de compétition à partir d'une date (saute les week-ends encore en coupure).
@@ -5546,17 +6184,21 @@ function matchAutoriseCartons(m) {
   if (m.type === "Tournoi" && m.officiel === true) return true;
   return false;
 }
-// Règle UNIQUE de comptabilisation des matchs dans les statistiques (fiche joueur, moyennes, bilan).
-// Un match ne compte que s'il est reconnu « certifié joué » :
-//  - catégories à cartons (U11 et +) : match officiel (Championnat, Coupe, Tournoi officiel) ET certifié joué
-//    par la direction (badge vert « Certifié joué »). Un match pas encore certifié ne compte pas.
-//  - catégories sans cartons (jeunes) : match non amical dont le score est renseigné.
-// Les matchs amicaux et les matchs non certifiés ne sont JAMAIS comptabilisés.
+// Règle UNIQUE de comptabilisation des matchs dans le BILAN DE SAISON et les statistiques
+// (fiche joueur, moyennes, résultats V/N/D, buteurs, passeurs). SEULES les compétitions officielles
+// comptent, dans TOUTES les catégories. Ne comptent JAMAIS dans le bilan :
+//  - les matchs amicaux,
+//  - les tournois non officiels (tournoi amical, non marqué FFF/Ligue/District).
+// Un match officiel ne compte qu'une fois reconnu « certifié joué » (score scellé) :
+//  - catégories à cartons (U11 et +) : Championnat, Coupe ou Tournoi officiel, ET certifié joué.
+//  - catégories sans cartons (U7-U10) : Championnat, Coupe, Plateau ou Tournoi officiel, ET certifié joué.
 function matchCompteStats(m) {
   if (!m) return false;
-  if ((m.type || "").toLowerCase().includes("amical")) return false;
+  const t = (m.type || "").toLowerCase();
+  if (t.includes("amical")) return false; // amical : scellé et consultable, mais hors bilan
+  if (m.type === "Tournoi" && m.officiel !== true) return false; // tournoi non officiel : hors bilan
   if (categorieCartons(m.cat)) return matchAutoriseCartons(m) && matchCertifieJoue(m);
-  return m.scorePour != null && m.scorePour !== "" && m.scoreContre != null && m.scoreContre !== "";
+  return matchCertifieJoue(m); // U7-U10 : compétition officielle, comptée une fois certifiée jouée
 }
 // Bucket « temps de jeu NON OFFICIEL » (amical, plateau, tournoi non officiel) réellement joué.
 // Sert à suivre le temps de jeu non officiel À PART, sans jamais l'additionner au temps officiel.
@@ -5574,6 +6216,23 @@ function matchCompteTempsJeu(m) {
 // Même condition que le badge « Certifié joué » : inclut les anciens matchs (score validé, sans clic de certification).
 function matchEstCertifieVert(m) {
   return matchAutoriseCartons(m) && matchCertifieJoue(m);
+}
+// Un match n'a PAS ENCORE ÉTÉ JOUÉ si sa date (et son heure, le jour J) est dans le futur.
+// Dans ce cas : consultation seule, aucune saisie de score ni de cartons possible. Seules les infos
+// du match (date, adversaire, type, lieu, heure) restent modifiables par le coach via « Modifier ».
+function matchPasEncoreJoue(m) {
+  if (!m || !m.date) return false; // sans date, on ne bloque pas la saisie
+  const auj = hoyISO();
+  if (m.date > auj) return true;  // date future : le match n'a pas encore eu lieu
+  if (m.date < auj) return false; // date passée : le match est jouable
+  // Jour J : si une heure est renseignée, on bloque tant que l'heure de coup d'envoi n'est pas passée.
+  const h = String(m.heure || "").replace(/[hH]/, ":");
+  const mm = /^(\d{1,2})(?::(\d{1,2}))?/.exec(h);
+  if (!mm) return false; // jour J sans heure exploitable : jouable
+  const now = new Date();
+  const minNow = now.getHours() * 60 + now.getMinutes();
+  const minKO = (+mm[1] || 0) * 60 + (+mm[2] || 0);
+  return minNow < minKO;
 }
 // Calcul de la période de suspension CONFORME AU RÈGLEMENT : on purge sur les vrais matchs officiels joués
 // par l'équipe après la date du carton (y compris en semaine), en sautant ceux qui tombent dans un arrêt ou des
@@ -6110,10 +6769,12 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
       {!lectureSeule && (
         <>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 7, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "8px 12px", fontWeight: 700, fontSize: 12.5, color: C.encre, background: "#fff" }}>
-              <Upload size={15} /> Importer une fiche (JSON)
-              <input type="file" accept=".json,application/json,text/plain,*/*" onChange={importerFiche} style={{ display: "none" }} />
-            </label>
+            {jsonImportActif(db) && (
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 7, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "8px 12px", fontWeight: 700, fontSize: 12.5, color: C.encre, background: "#fff" }}>
+                <Upload size={15} /> Importer une fiche (JSON)
+                <input type="file" accept=".json,application/json,text/plain,*/*" onChange={importerFiche} style={{ display: "none" }} />
+              </label>
+            )}
             {(orphelins.length > 0 || corbeille.length > 0) && (
               <Btn variant="ghost" size="sm" onClick={() => setRecup(true)}><ArrowRightLeft size={15} /> Récupérer des données supprimées ({orphelins.length + corbeille.length})</Btn>
             )}
@@ -8699,7 +9360,7 @@ async function exporterCompositionPDF(jsPDF, fmt, data) {
   telechargerDoc(doc, nomPdf(data.titre || "Composition", fmt.toUpperCase()));
 }
 
-const FORMATS_MULTI = { U13: [8, 10, 11], "Foot loisirs": [11, 9, 8], "Foot santé": [6, 5] };
+const FORMATS_MULTI = { U9: [8, 9], U10: [8, 9], U11: [8, 9], U12: [8, 9], U13: [8, 9, 10, 11], "Foot loisirs": [11, 9, 8], "Foot santé": [6, 5] };
 function Compo({ demo, players, cat, catInfo, db, mutate }) {
   const matchsCat = (db.matches || []).filter((m) => m.cat === cat).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const aujourdhui = hoyISO();
@@ -8715,7 +9376,8 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
   const [convocCompo, setConvocCompo] = useState(false);
   const key = matchSel || cat;
   // Encadrement du match (liste commune du club) : coach, coach adjoint, dirigeant, délégué
-  const [listeEncCompo] = useEncadrementClub(demo, db, mutate);
+  const [listeEncCompo, majEncCompo] = useEncadrementClub(demo, db, mutate);
+  const [gererStaff, setGererStaff] = useState(false);
   const matchCourant = (db.matches || []).find((m) => m.id === matchSel);
   const dateMatchCompo = (matchCourant && matchCourant.date) || null;
   // Match officiel (championnat, coupe, tournoi officiel) : la suspension s'applique et bloque la compo.
@@ -8797,6 +9459,9 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cat, essaisActifs.length]);
   const trouve = (id) => pool.find((x) => x.id === id);
+  // Remplaçants réellement affichables (dont le joueur existe encore dans la catégorie) :
+  // un identifiant « fantôme » (joueur supprimé/déplacé) ne doit pas gonfler le compteur.
+  const remplacantsValides = (remplacants || []).filter((pid) => trouve(pid));
   const numeroDe = (p) => { if (!p) return ""; const o = lineup.numeros && lineup.numeros[p.id]; return (o != null && o !== "") ? o : (p.numero ?? ""); };
   const GK_COL = "#2FA36B"; // couleur distincte du gardien
   const [pick, setPick] = useState(null);       // index de slot à remplir
@@ -8954,7 +9619,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
     mutate((d) => { if (d.config && d.config.compoTypes && d.config.compoTypes[cat]) d.config.compoTypes[cat] = d.config.compoTypes[cat].filter((t) => t.nom !== nom); return d; });
   }
   const used = Object.values(lineup.slots || {});
-  const convoques = used.length + remplacants.length;
+  const convoques = used.length + remplacantsValides.length;
   const benchDispo = players.filter((p) => !used.includes(p.id) && !remplacants.includes(p.id));
   // Les joueurs à l'essai sont placés en TÊTE de la liste de sélection, avant l'effectif et les surclassés.
   const benchDispoTous = [...essaisActifs.filter((p) => !used.includes(p.id) && !remplacants.includes(p.id)), ...benchDispo, ...surclasses.filter((p) => !used.includes(p.id) && !remplacants.includes(p.id))];
@@ -8976,7 +9641,10 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
 
   return (
     <div>
-      <h2 style={{ margin: "4px 0 12px", fontSize: 20, fontWeight: 900 }}>Composition {cat}</h2>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 12px" }}>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, flex: 1 }}>Composition {cat}</h2>
+        <BoutonSauver size="sm" />
+      </div>
 
       {matchsCat.length > 0 && (
         <div style={{ marginBottom: 12 }}>
@@ -9089,6 +9757,9 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
         <div style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
           <div style={{ fontWeight: 800, marginBottom: 4, display: "flex", alignItems: "center", gap: 7 }}><Users size={16} color={C.bleu} /> Encadrement du match</div>
           <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Coach, coach adjoint, dirigeant et délégué (liste commune du club).</div>
+          {!compoScellee && (
+            <Btn variant="ghost" size="sm" full style={{ marginBottom: 10 }} onClick={() => setGererStaff(true)}><Plus size={15} /> Staff (ajouter un membre à la liste du club)</Btn>
+          )}
           {compoScellee && <div style={{ fontSize: 12, color: "#1E7A46", background: "#E2F4E9", border: "1px solid #BFE3CC", borderRadius: 10, padding: "8px 11px", marginBottom: 10, display: "flex", alignItems: "center", gap: 6, lineHeight: 1.4 }}><Lock size={14} style={{ flex: "0 0 auto" }} /> Encadrement scellé (match certifié joué). Seule la direction peut le modifier.</div>}
           {!compoScellee && dernierEncadrement && (
             <Btn variant="ghost" size="sm" full style={{ marginBottom: 10 }} onClick={reprendreEncadrement}><RefreshCw size={15} /> Reprendre le même encadrement{dernierEncadrement.date ? ` (${fmtDate(dernierEncadrement.date)})` : ""}</Btn>
@@ -9105,6 +9776,8 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
           ))}
         </div>
       )}
+
+      {gererStaff && <GestionDirigeants liste={listeEncCompo} maj={majEncCompo} onClose={() => setGererStaff(false)} />}
 
       {!compoScellee && formats.length > 1 && (
         <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
@@ -9198,7 +9871,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
 
       {/* Remplaçants */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}><ArrowRightLeft size={17} color={C.bleu} /> Remplaçants ({remplacants.length}/{maxRempl})</div>
+        <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}><ArrowRightLeft size={17} color={C.bleu} /> Remplaçants ({remplacantsValides.length}/{maxRempl})</div>
         <div style={{ display: "flex", gap: 8, flex: "0 0 auto" }}>
           {!compoScellee && remplacants.length < maxRempl && <Btn variant="accent" size="sm" onClick={() => setPickRempl(true)}><Plus size={15} /> Ajouter</Btn>}
           <Btn variant="ghost" size="sm" onClick={() => setPickRempl(true)}><Users size={15} /> Effectif restant ({benchDispo.length})</Btn>
@@ -9365,14 +10038,67 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
 /* ============================================================
    Matchs : calendrier, score, rapport, notes
    ============================================================ */
-function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }) {
+function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil, onNotifierCorrection }) {
   const [edit, setEdit] = useState(null);
   const [open, setOpen] = useState(null);
   const [filtre, setFiltre] = useState("Tous");
   const [saisonSel, setSaisonSel] = useState(saisonCourante());
   const [orgaMatch, setOrgaMatch] = useState(null);
+  const [importOuvert, setImportOuvert] = useState(false);
+  const [texteImport, setTexteImport] = useState("");
+  const [importMsg, setImportMsg] = useState(null);
   function enregistrerOrgaMatch(mid, organisation) {
     mutate((d) => { const m = d.matches.find((x) => x.id === mid); if (m) m.organisation = organisation; return d; });
+  }
+  // Import de matchs par fichier/JSON, dans la catégorie affichée. Les doublons sont ignorés.
+  function importerMatchs(texte) {
+    try {
+      let t = String(texte || "").trim();
+      const deb = t.indexOf("{") >= 0 ? t.indexOf("{") : t.indexOf("[");
+      const fin = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
+      if (deb >= 0 && fin > deb) t = t.slice(deb, fin + 1);
+      const parsed = JSON.parse(t);
+      const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.matchs) ? parsed.matchs : (Array.isArray(parsed.matches) ? parsed.matches : null));
+      if (!arr) throw new Error("format");
+      const toISO = (d) => { const s = String(d || "").trim(); if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; const m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/); if (m) { let an = m[3]; if (an.length === 2) an = "20" + an; return `${an}-${pad(+m[2])}-${pad(+m[1])}`; } return ""; };
+      const normLieu = (l) => (String(l || "").toLowerCase().startsWith("ext") ? "Extérieur" : "Domicile");
+      const normType = (ty) => { const s = String(ty || "").trim(); return TYPES_MATCH.find((x) => x.toLowerCase() === s.toLowerCase()) || "Championnat"; };
+      let ajout = 0, ignore = 0;
+      mutate((d) => {
+        arr.forEach((x) => {
+          const date = toISO(x && x.date);
+          const adv = String((x && (x.adversaire || x.adv)) || "").trim().toUpperCase();
+          const type = normType(x && x.type);
+          if (!date && !adv) { ignore++; return; }
+          const doublon = d.matches.some((m) => m.cat === cat && m.date === date && (m.adversaire || "").toLowerCase() === adv.toLowerCase() && (m.type || "Championnat") === type);
+          if (doublon) { ignore++; return; }
+          d.matches.push({
+            id: uid(), cat, date, adversaire: adv, type,
+            lieu: normLieu(x && x.lieu),
+            heure: String((x && x.heure) || "").trim(),
+            competition: String((x && (x.competition || x.nomCompet)) || "").trim(),
+            journee: String((x && (x.journee || x.journeeNum)) || "").trim(),
+            numeroRencontre: String((x && (x.numeroRencontre || x.numeroMatch || x.numero)) || "").trim(),
+            lieuMatch: String((x && (x.lieuMatch || x.terrain)) || "").trim(),
+            intendance: String((x && x.intendance) || "").trim(),
+            buteurs: {}, passeurs: {}, tempsJeu: {}, notes: {},
+            ...(categorieCartons(cat) ? { joue: false } : {}),
+          });
+          ajout++;
+        });
+        return d;
+      });
+      setImportMsg(`${ajout} match(s) importé(s) dans ${cat}.` + (ignore ? ` ${ignore} ignoré(s) (doublon ou vide).` : ""));
+      return ajout > 0;
+    } catch (e) { setImportMsg("Contenu non valide. Vérifie le format JSON."); return false; }
+  }
+  function importerFichierMatchs(ev) {
+    const f = ev.target.files && ev.target.files[0]; ev.target.value = "";
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => { if (importerMatchs(reader.result)) setImportOuvert(false); };
+    reader.onerror = () => setImportMsg("Lecture du fichier impossible.");
+    reader.readAsText(f);
   }
   function nouveauPlateau(type) {
     const id = uid();
@@ -9402,8 +10128,26 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900 }}>Matchs {cat}</h2>
-        <Btn variant="accent" size="sm" onClick={() => setEdit({ cat, lieu: "Domicile", type: "Championnat" })}><Plus size={16} /> Match</Btn>
+        <Btn variant="accent" size="sm" onClick={() => setEdit({ cat, lieu: "Domicile", type: "Championnat" })}><Plus size={16} /> Compétition</Btn>
       </div>
+      {(demo || peutValider) && jsonImportActif(db) && (
+        <div style={{ marginTop: -8, marginBottom: 10 }}>
+          <button type="button" onClick={() => { setImportOuvert(true); setTexteImport(""); setImportMsg(null); }} style={{ background: "none", border: "none", color: C.gris, fontSize: 11.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline", padding: 0 }}>Importer des matchs (fichier / JSON) dans {cat}</button>
+        </div>
+      )}
+      {importOuvert && (
+        <Modal title={`Importer des matchs dans ${cat}`} onClose={() => setImportOuvert(false)}
+          footer={<Btn variant="accent" full disabled={!texteImport.trim()} onClick={() => { if (importerMatchs(texteImport)) setImportOuvert(false); }}><Save size={16} /> Importer</Btn>}>
+          <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 8, lineHeight: 1.5 }}>Les matchs sont ajoutés dans la catégorie <strong>{cat}</strong>. Les doublons (même date, même adversaire, même type) sont ignorés.</div>
+          <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "10px 12px", fontWeight: 700, fontSize: 13, color: C.encre, background: "#fff", marginBottom: 10 }}>
+            <Upload size={16} /> Importer un fichier
+            <input type="file" accept=".json,application/json,text/plain,text/json,*/*" onChange={importerFichierMatchs} style={{ display: "none" }} />
+          </label>
+          <div style={{ fontSize: 12, color: C.gris, marginBottom: 6, lineHeight: 1.5 }}>Ou colle le JSON ci-dessous. Champs : date (AAAA-MM-JJ ou JJ/MM/AAAA), adversaire, lieu (Domicile/Extérieur), type (Championnat, Coupe, Amical, Plateau, Tournoi), heure, journee, numeroMatch, terrain, intendance.</div>
+          <textarea value={texteImport} onChange={(e) => setTexteImport(e.target.value)} rows={9} placeholder={'{ "matchs": [ { "date": "2026-11-07", "adversaire": "AJ AUXERRE", "lieu": "Extérieur", "type": "Championnat", "heure": "15:00", "journee": "7" } ] }'} style={{ width: "100%", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 11, fontSize: 12.5, fontFamily: "monospace", resize: "vertical", boxSizing: "border-box" }} />
+          {importMsg && <div style={{ fontSize: 12.5, color: importMsg.includes("non valide") || importMsg.includes("impossible") ? C.rouge : C.vert, fontWeight: 700, marginTop: 8, textAlign: "center" }}>{importMsg}</div>}
+        </Modal>
+      )}
       <div style={{ marginBottom: 12 }}><Corbeille db={db} mutate={mutate} cat={cat} types={["match"]} libelle="Récupérer un match supprimé" /></div>
 
       {saisons.length > 1 && (
@@ -9438,9 +10182,10 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }
         <div style={{ display: "grid", gap: 10 }}>
           {matches.map((m) => {
             const joue = matchCertifieJoue(m);
+            const estRemis = m.remis === true; // match certifié non joué (remis / reporté), scellé
             const scoreTape = m.scorePour != null && m.scorePour !== "" && m.scoreContre != null && m.scoreContre !== "";
-            const aCertifier = !joue && scoreTape; // score saisi mais match pas encore certifié joué
-            const certifieVert = matchAutoriseCartons(m) && joue; // match officiel reconnu comme joué (certifié ou ancien match avec score)
+            const aCertifier = !joue && !estRemis && scoreTape; // score saisi mais match pas encore certifié joué
+            const certifieVert = joue; // match certifié joué, toutes catégories et tous types (score scellé)
             let res = null, bg = C.grisClair, col = C.gris;
             if (joue) {
               if (+m.scorePour > +m.scoreContre) { res = "V"; bg = "#E2F4E9"; col = C.vert; }
@@ -9453,25 +10198,43 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }
                   <span style={{ fontSize: 12, color: C.gris, fontWeight: 700, minWidth: 0 }}>{fmtDate(m.date)} · {m.lieu}{m.type ? ` · ${m.type}` : ""}</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
                     {certifieVert && <Pastille bg="#E2F4E9" color={C.vert}>✓ Certifié joué</Pastille>}
-                    {res ? <Pastille bg={bg} color={col}>{res}</Pastille> : aCertifier ? <Pastille bg="#FFF3DA" color={C.jauneFonce}>À certifier</Pastille> : <Pastille bg={C.jaune} color={C.bleuNuit}>À venir</Pastille>}
+                    {estRemis && <Pastille bg="#EEF2F8" color={C.gris}>Remis</Pastille>}
+                    {estRemis ? null : (res && !(m.type === "Tournoi" || m.type === "Plateau")) ? <Pastille bg={bg} color={col}>{res}</Pastille> : aCertifier ? <Pastille bg="#FFF3DA" color={C.jauneFonce}>À certifier</Pastille> : (res || certifieVert) ? null : <Pastille bg={C.jaune} color={C.bleuNuit}>À venir</Pastille>}
                     <button onClick={(e) => { e.stopPropagation(); setEdit(m); }} title="Modifier le match (date, adversaire, lieu...)" style={{ display: "inline-flex", alignItems: "center", gap: 4, border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, borderRadius: 8, padding: "4px 8px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}><Edit3 size={13} /> Modifier</button>
                   </div>
                 </div>
-                <div style={{ display: "grid", gap: 3 }}>
-                  {(() => {
-                    // À l'extérieur, l'équipe qui reçoit (adversaire) est affichée en haut, FC Sochaux en dessous.
-                    const lFcsm = { nom: CLUB, score: joue ? m.scorePour : "" };
-                    const lAdv = { nom: m.adversaire || "Adversaire", score: joue ? m.scoreContre : "" };
-                    const lignes = m.lieu === "Extérieur" ? [lAdv, lFcsm] : [lFcsm, lAdv];
-                    return lignes.map((lg, idx) => (
-                      <div key={idx} style={{ display: "flex", alignItems: "center" }}>
-                        <span style={{ width: 34, flex: "0 0 auto" }} />
-                        <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: 800, fontSize: 15, padding: "0 6px" }}>{lg.nom}</span>
-                        <span style={{ width: 34, flex: "0 0 auto", textAlign: "right", fontWeight: 900, fontSize: 18, color: C.bleu }}>{lg.score}</span>
+                {m.heure && <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 800, color: C.vert, marginBottom: 4, letterSpacing: 0.3 }}>{String(m.heure).replace(":", "h")}</div>}
+                {(m.type === "Tournoi" || m.type === "Plateau") ? (
+                  (() => {
+                    // Tournoi/plateau : on affiche juste le nom (pas FCSM / Adversaire), avec une coupe si victoire.
+                    // La coupe n'apparaît qu'une fois la participation certifiée jouée (résultats validés seulement si certifié).
+                    const vainqueurTP = joue && (m.vainqueurTournoi === true || +m.classement === 1);
+                    const nomTP = m.nomTournoi || (m.type === "Tournoi" ? "Tournoi" : "Plateau");
+                    return (
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                        {vainqueurTP && <Trophy size={18} color="#C6A24C" style={{ flex: "0 0 auto" }} />}
+                        <span style={{ fontWeight: 900, fontSize: 15, color: C.bleu, textAlign: "center", minWidth: 0 }}>{nomTP}</span>
+                        {vainqueurTP && <Trophy size={18} color="#C6A24C" style={{ flex: "0 0 auto" }} />}
                       </div>
-                    ));
-                  })()}
-                </div>
+                    );
+                  })()
+                ) : (
+                  <div style={{ display: "grid", gap: 3 }}>
+                    {(() => {
+                      // À l'extérieur, l'équipe qui reçoit (adversaire) est affichée en haut, FC Sochaux en dessous.
+                      const lFcsm = { nom: CLUB, score: joue ? m.scorePour : "" };
+                      const lAdv = { nom: m.adversaire || "Adversaire", score: joue ? m.scoreContre : "" };
+                      const lignes = m.lieu === "Extérieur" ? [lAdv, lFcsm] : [lFcsm, lAdv];
+                      return lignes.map((lg, idx) => (
+                        <div key={idx} style={{ display: "flex", alignItems: "center" }}>
+                          <span style={{ width: 34, flex: "0 0 auto" }} />
+                          <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: lg.nom === CLUB ? 900 : 800, fontSize: 15, padding: "0 6px", color: lg.nom === CLUB ? C.bleu : C.encre }}>{lg.nom}</span>
+                          <span style={{ width: 34, flex: "0 0 auto", textAlign: "right", fontWeight: 900, fontSize: 18, color: C.bleu }}>{lg.score}</span>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                )}
                 {(m.type === "Plateau" || m.type === "Tournoi") && m.lieu === "Domicile" && (
                   <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 10 }}>
                     <Btn variant="ghost" full size="sm" onClick={() => setOrgaMatch(m.id)}><Award size={15} /> Organiser le {m.type === "Tournoi" ? "tournoi" : "plateau"} et le classement{m.organisation && (m.organisation.equipes || []).length ? ` · ${m.organisation.equipes.length} équipe${m.organisation.equipes.length > 1 ? "s" : ""}` : ""}</Btn>
@@ -9492,7 +10255,7 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }
         setEdit(null);
       }} />}
 
-      {open && <RapportMatch demo={demo} match={open} players={players} db={db} mutate={mutate} peutValider={peutValider} profil={profil}
+      {open && <RapportMatch demo={demo} match={open} players={players} db={db} mutate={mutate} peutValider={peutValider} profil={profil} onNotifierCorrection={onNotifierCorrection}
         onClose={() => setOpen(null)}
         onEdit={() => { setEdit(open); setOpen(null); }}
         onDelete={() => { mutate((d) => { const m = (d.matches || []).find((x) => x.id === open.id); ajouterCorbeille(d, m, "match", cat); d.matches = d.matches.filter((x) => x.id !== open.id); return d; }); setOpen(null); }} />}
@@ -9500,7 +10263,7 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil }
       {orgaMatch && (() => {
         const om = db.matches.find((x) => x.id === orgaMatch);
         if (!om) return null;
-        return <OrganiserPlateau tournoi={{ nom: `${om.type}${om.date ? " du " + fmtDate(om.date) : ""}`, organisation: om.organisation }} onClose={() => setOrgaMatch(null)} onSave={(organisation) => enregistrerOrgaMatch(orgaMatch, organisation)} />;
+        return <OrganiserPlateau tournoi={{ nom: `${om.type}${om.date ? " du " + fmtDate(om.date) : ""}`, organisation: om.organisation }} jsonActif={jsonImportActif(db)} onClose={() => setOrgaMatch(null)} onSave={(organisation) => enregistrerOrgaMatch(orgaMatch, organisation)} />;
       })()}
     </div>
   );
@@ -9522,11 +10285,11 @@ function EditMatch({ match, db, onClose, onSave }) {
   // Compétition à l'arrêt (arrêt exceptionnel ou vacances) : on interdit d'y créer un match officiel.
   const breaksM = (db && db.config && db.config.matchsArret) || {}; // calendrier matchs officiels (direction)
   const arretsExcM = (db && db.config && db.config.arretsExc) || [];
-  const enCoupure = f.date ? arretCompetition(f.date, breaksM, arretsExcM) : false;
+  const enCoupure = f.date ? arretCompetition(f.date, breaksM, arretsExcM, catMatch) : false;
   const typeOfficiel = estMatchPurgeable(f.type || "Championnat", catMatch, f.officiel);
   const bloqueOfficiel = enCoupure && typeOfficiel;
   return (
-    <Modal title={match.id ? "Modifier le match" : "Nouveau match"} onClose={onClose}
+    <Modal title={match.id ? "Modifier la compétition" : "Nouvelle compétition"} onClose={onClose}
       footer={<Btn variant="accent" full disabled={bloqueOfficiel} onClick={() => { if (!bloqueOfficiel) onSave(f); }}><Save size={16} /> {bloqueOfficiel ? "Match officiel impossible à cette date" : "Enregistrer"}</Btn>}>
       <Field label="Date"><Inp type="date" value={f.date || ""} onChange={(e) => set("date", e.target.value)} /></Field>
       {suspPourDate.length > 0 && typeOfficiel && (
@@ -9544,8 +10307,10 @@ function EditMatch({ match, db, onClose, onSave }) {
           </div>
         </div>
       )}
-      <Field label="Adversaire"><Inp value={f.adversaire || ""} onChange={(e) => set("adversaire", e.target.value)} placeholder="Nom de l'équipe" /></Field>
-      <Field label="Type de match">
+      {!(f.type === "Tournoi" || f.type === "Plateau") && (
+        <Field label="Adversaire"><Inp value={f.adversaire || ""} onChange={(e) => set("adversaire", e.target.value)} placeholder="Nom de l'équipe" /></Field>
+      )}
+      <Field label="Type de compétition">
         <Sel value={f.type || "Championnat"} onChange={(e) => set("type", e.target.value)}>
           {TYPES_MATCH.map((t) => <option key={t}>{t}</option>)}
         </Sel>
@@ -9563,34 +10328,81 @@ function EditMatch({ match, db, onClose, onSave }) {
           <option>Domicile</option><option>Extérieur</option>
         </Sel>
       </Field>
-      <Field label="Nom de la compétition (optionnel)"><Inp value={f.competition || ""} onChange={(e) => set("competition", e.target.value)} placeholder="Journée 5, Coupe du Doubs..." /></Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Field label="Journée N° (optionnel)"><Inp value={f.journee || ""} onChange={(e) => set("journee", e.target.value)} placeholder="5" /></Field>
-        <Field label="Numéro du match (optionnel)"><Inp value={f.numeroRencontre || ""} onChange={(e) => set("numeroRencontre", e.target.value)} placeholder="Ex : 55746308" /></Field>
-      </div>
+      {(f.type === "Tournoi" || f.type === "Plateau") && (
+        <div style={{ background: "#EAF1FB", borderRadius: 12, padding: "10px 12px", marginBottom: 12, border: "1px solid #D4E2F5" }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 8 }}>Détails {f.type.toLowerCase()} (repris dans le bilan)</div>
+          <Field label="Type de participation (repris dans le bilan)">
+            <Sel value={f.sousTypePart || ""} onChange={(e) => set("sousTypePart", e.target.value)}>
+              <option value="">À préciser</option>
+              {(f.type === "Plateau" ? SOUS_TYPES_PLATEAU : SOUS_TYPES_TOURNOI).map((x) => <option key={x} value={x}>{x}</option>)}
+            </Sel>
+          </Field>
+          <Field label="Nom du tournoi"><Inp value={f.nomTournoi || ""} onChange={(e) => set("nomTournoi", e.target.value)} placeholder="Tournoi de printemps, Challenge..." /></Field>
+          <Field label="Endroit (ville ou stade)"><Inp value={f.lieuTournoi || ""} onChange={(e) => set("lieuTournoi", e.target.value)} placeholder="Ville ou stade" /></Field>
+          <Field label="Format">
+            <Sel value={f.format || ""} onChange={(e) => set("format", e.target.value)}>
+              <option value="">À préciser</option>
+              {FORMATS_TOURNOI.map((x) => <option key={x} value={x}>{x}</option>)}
+            </Sel>
+          </Field>
+          <Field label="Élimination">
+            <Sel value={f.parcours || ""} onChange={(e) => set("parcours", e.target.value)}>
+              <option value="">À préciser</option>
+              {PARCOURS_TOURNOI.map((x) => <option key={x} value={x}>{x}</option>)}
+            </Sel>
+          </Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Classement final"><Inp type="number" inputMode="numeric" value={f.classement || ""} onChange={(e) => set("classement", e.target.value.replace(/[^0-9]/g, ""))} placeholder="3" /></Field>
+            <Field label="Équipes participantes"><Inp type="number" inputMode="numeric" value={f.nbEquipes || ""} onChange={(e) => set("nbEquipes", e.target.value.replace(/[^0-9]/g, ""))} placeholder="12" /></Field>
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", background: "#fff", border: `1px solid ${f.vainqueurTournoi ? C.jaune : "#D4E2F5"}`, borderRadius: 10, padding: "9px 11px", marginTop: 2 }}>
+            <input type="checkbox" checked={!!f.vainqueurTournoi} onChange={(e) => set("vainqueurTournoi", e.target.checked)} style={{ width: 18, height: 18, flex: "0 0 auto", cursor: "pointer" }} />
+            <span style={{ fontSize: 13.5, fontWeight: 700, color: C.encre }}>Vainqueur du {f.type.toLowerCase()}</span>
+            <Trophy size={16} color="#B87A2B" style={{ marginLeft: "auto" }} />
+          </label>
+        </div>
+      )}
+      {f.type === "Coupe" && (
+        <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", background: "#fff", border: `1px solid ${f.vainqueurCoupe ? C.jaune : "#D4E2F5"}`, borderRadius: 10, padding: "9px 11px", marginBottom: 12 }}>
+          <input type="checkbox" checked={!!f.vainqueurCoupe} onChange={(e) => set("vainqueurCoupe", e.target.checked)} style={{ width: 18, height: 18, flex: "0 0 auto", cursor: "pointer" }} />
+          <span style={{ fontSize: 13.5, fontWeight: 700, color: C.encre }}>Vainqueur / qualifié (ex. tirs au but)</span>
+          <Trophy size={16} color="#B87A2B" style={{ marginLeft: "auto" }} />
+        </label>
+      )}
+      {!(f.type === "Tournoi" || f.type === "Plateau") && (
+        <>
+          <Field label="Nom de la compétition (optionnel)"><Inp value={f.competition || ""} onChange={(e) => set("competition", e.target.value)} placeholder="Journée 5, Coupe du Doubs..." /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Journée N° (optionnel)"><Inp value={f.journee || ""} onChange={(e) => set("journee", e.target.value)} placeholder="5" /></Field>
+            <Field label="Numéro du match (optionnel)"><Inp value={f.numeroRencontre || ""} onChange={(e) => set("numeroRencontre", e.target.value)} placeholder="Ex : 55746308" /></Field>
+          </div>
+        </>
+      )}
       <Field label="Heure du match"><Inp type="time" value={f.heure || ""} onChange={(e) => set("heure", e.target.value)} /></Field>
-      <Field label="Terrain ou lieu du match">
-        {(f.lieu || "Domicile") === "Domicile" ? (
-          <>
-            <Sel value={terrainAutre ? "__autre__" : (TERRAINS.includes(f.lieuMatch) ? f.lieuMatch : "")}
-              onChange={(e) => { const v = e.target.value; if (v === "__autre__") { setTerrainAutre(true); set("lieuMatch", ""); } else { setTerrainAutre(false); set("lieuMatch", v); } }}>
-              <option value="">Choisir le terrain</option>
-              {TERRAINS.map((t) => <option key={t} value={t}>{t}</option>)}
-              <option value="__autre__">Autre (préciser)</option>
-            </Sel>
-            {terrainAutre && <Inp value={f.lieuMatch || ""} onChange={(e) => set("lieuMatch", e.target.value)} placeholder="Préciser le terrain" style={{ marginTop: 8 }} />}
-          </>
-        ) : (
-          <>
-            <Sel value={terrainAutre ? "__autre__" : "Extérieur"}
-              onChange={(e) => { const v = e.target.value; if (v === "__autre__") { setTerrainAutre(true); set("lieuMatch", ""); } else { setTerrainAutre(false); set("lieuMatch", ""); } }}>
-              <option value="Extérieur">Extérieur</option>
-              <option value="__autre__">Préciser le stade adverse</option>
-            </Sel>
-            {terrainAutre && <Inp value={f.lieuMatch || ""} onChange={(e) => set("lieuMatch", e.target.value)} placeholder="Stade adverse" style={{ marginTop: 8 }} />}
-          </>
-        )}
-      </Field>
+      {!(f.type === "Tournoi" || f.type === "Plateau") && (
+        <Field label="Terrain ou lieu du match">
+          {(f.lieu || "Domicile") === "Domicile" ? (
+            <>
+              <Sel value={terrainAutre ? "__autre__" : (TERRAINS.includes(f.lieuMatch) ? f.lieuMatch : "")}
+                onChange={(e) => { const v = e.target.value; if (v === "__autre__") { setTerrainAutre(true); set("lieuMatch", ""); } else { setTerrainAutre(false); set("lieuMatch", v); } }}>
+                <option value="">Choisir le terrain</option>
+                {TERRAINS.map((t) => <option key={t} value={t}>{t}</option>)}
+                <option value="__autre__">Autre (préciser)</option>
+              </Sel>
+              {terrainAutre && <Inp value={f.lieuMatch || ""} onChange={(e) => set("lieuMatch", e.target.value)} placeholder="Préciser le terrain" style={{ marginTop: 8 }} />}
+            </>
+          ) : (
+            <>
+              <Sel value={terrainAutre ? "__autre__" : "Extérieur"}
+                onChange={(e) => { const v = e.target.value; if (v === "__autre__") { setTerrainAutre(true); set("lieuMatch", ""); } else { setTerrainAutre(false); set("lieuMatch", ""); } }}>
+                <option value="Extérieur">Extérieur</option>
+                <option value="__autre__">Préciser le stade adverse</option>
+              </Sel>
+              {terrainAutre && <Inp value={f.lieuMatch || ""} onChange={(e) => set("lieuMatch", e.target.value)} placeholder="Stade adverse" style={{ marginTop: 8 }} />}
+            </>
+          )}
+        </Field>
+      )}
       <Field label="Intendance (optionnel)"><Inp value={f.intendance || ""} onChange={(e) => set("intendance", e.target.value)} placeholder="Goûters, bouteilles d'eau..." /></Field>
       <div style={{ fontSize: 12, color: C.gris, background: C.fond, borderRadius: 10, padding: "9px 11px", marginTop: 6, lineHeight: 1.45 }}>Le score se saisit sur la feuille de match (bouton « Match joué »), pour éviter de l'avoir à deux endroits.</div>
     </Modal>
@@ -9609,6 +10421,8 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
   const [importMsg, setImportMsg] = useState(null);
   const [coller, setColler] = useState(false);
   const [texteColle, setTexteColle] = useState("");
+  const [collerArb, setCollerArb] = useState(false);
+  const [texteArb, setTexteArb] = useState("");
   const [filtre, setFiltre] = useState("Tous");
   const [edit, setEdit] = useState(null);
   function ajouter() {
@@ -9659,6 +10473,27 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
     reader.onerror = () => setImportMsg("Lecture du fichier impossible.");
     reader.readAsText(f);
   }
+  // Import simple d'une liste de noms dans le rôle choisi (une ligne = une personne).
+  // Formats acceptés : "Nom", "Nom ; licence" ou "Nom ; licence ; email". Les doublons sont ignorés.
+  function importerListe(texte, roleCible) {
+    const rl = ROLES_ENCADREMENT.includes(roleCible) ? roleCible : "Éducateur";
+    const lignes = String(texte || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    if (!lignes.length) { setImportMsg("Aucun nom à importer."); return false; }
+    let ajout = 0, ignore = 0;
+    const base = [...liste];
+    lignes.forEach((ligne) => {
+      const parts = ligne.split(/[;,\t]/).map((s) => s.trim());
+      const n = parts[0]; if (!n) { ignore++; return; }
+      const lic = parts[1] || ""; const em = parts[2] || "";
+      const existant = base.find((e) => (lic && e.licence === lic) || (e.nom.toLowerCase() === n.toLowerCase() && e.role === rl));
+      if (existant) { if (em && !existant.email) existant.email = em; ignore++; return; }
+      base.push({ id: uid(), nom: n, role: rl, licence: lic, email: em });
+      ajout++;
+    });
+    majEnc(() => base);
+    setImportMsg(`${ajout} ${(PLURIEL_ROLE[rl] || rl).toLowerCase()} importé(s).` + (ignore ? ` ${ignore} ignoré(s) (déjà présent).` : ""));
+    return true;
+  }
   return (
     <Modal title="Encadrement : éducateurs, dirigeants, délégués, arbitres" onClose={onClose}>
       <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>Liste commune à tout le club : les noms ajoutés ici sont disponibles dans toutes les catégories. Saisis une fois les noms et numéros de licence, ils seront proposés pour chaque match.</div>
@@ -9684,19 +10519,30 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
       </div>
       <Field label="Adresse email"><Inp type="email" value={emailEnc} onChange={(e) => setEmailEnc(e.target.value)} placeholder="Optionnel" /></Field>
       <Btn variant="accent" full onClick={ajouter}><Plus size={16} /> Ajouter à la liste</Btn>
-      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "10px 12px", fontWeight: 700, fontSize: 13, color: C.encre, background: "#fff" }}>
-          <Upload size={16} /> Importer un fichier
-          <input type="file" accept=".json,application/json,text/plain,text/json,*/*" onChange={importerFichier} style={{ display: "none" }} />
-        </label>
-        <Btn variant="ghost" onClick={() => { setColler(true); setTexteColle(""); }}><ClipboardList size={16} /> Coller le JSON</Btn>
-      </div>
+      {jsonImportActif(db) && (
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "10px 12px", fontWeight: 700, fontSize: 13, color: C.encre, background: "#fff" }}>
+            <Upload size={16} /> Importer un fichier
+            <input type="file" accept=".json,application/json,text/plain,text/json,*/*" onChange={importerFichier} style={{ display: "none" }} />
+          </label>
+          <Btn variant="ghost" onClick={() => { setColler(true); setTexteColle(""); }}><ClipboardList size={16} /> Coller le JSON</Btn>
+        </div>
+      )}
+      <Btn variant="ghost" full style={{ marginTop: 8 }} onClick={() => { setCollerArb(true); setTexteArb(""); }}><Upload size={16} /> Importer une liste de noms dans « {PLURIEL_ROLE[role] || role} »</Btn>
       {importMsg && <div style={{ fontSize: 12.5, color: importMsg.includes("non valide") || importMsg.includes("impossible") ? C.rouge : C.vert, fontWeight: 700, margin: "8px 0", textAlign: "center" }}>{importMsg}</div>}
       {coller && (
         <Modal title="Coller le JSON de l'encadrement" onClose={() => setColler(false)}
           footer={<Btn variant="accent" full disabled={!texteColle.trim()} onClick={() => { if (traiterImport(texteColle)) setColler(false); }}><Save size={16} /> Importer</Btn>}>
           <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Colle ici le contenu du fichier JSON de l'encadrement, puis touche Importer.</div>
           <textarea value={texteColle} onChange={(e) => setTexteColle(e.target.value)} rows={10} placeholder='{ "encadrement": [ { "nom": "...", "role": "Éducateur", "licence": "...", "email": "..." } ] }' style={{ width: "100%", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 11, fontSize: 12.5, fontFamily: "monospace", resize: "vertical", boxSizing: "border-box" }} />
+        </Modal>
+      )}
+      {collerArb && (
+        <Modal title={`Importer dans « ${PLURIEL_ROLE[role] || role} »`} onClose={() => setCollerArb(false)}
+          footer={<Btn variant="accent" full disabled={!texteArb.trim()} onClick={() => { if (importerListe(texteArb, role)) setCollerArb(false); }}><Save size={16} /> Importer</Btn>}>
+          <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 6, lineHeight: 1.5 }}>Colle une liste de noms, un par ligne. Tous seront ajoutés dans la rubrique « {PLURIEL_ROLE[role] || role} ». Les doublons (même nom ou même licence) sont ignorés.</div>
+          <div style={{ fontSize: 11.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Tu peux aussi préciser la licence et l'email après un point-virgule. Exemples :<br />Dupont Jean<br />Martin Paul ; 1320676772<br />Diallo Sarah ; 2546677275 ; sarah@mail.com</div>
+          <textarea value={texteArb} onChange={(e) => setTexteArb(e.target.value)} rows={9} placeholder={"Un nom par ligne..."} style={{ width: "100%", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 11, fontSize: 13, resize: "vertical", boxSizing: "border-box" }} />
         </Modal>
       )}
       </>)}
@@ -9707,8 +10553,7 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
               <option value="Tous">Tous les rôles ({liste.length})</option>
               {ROLES_ENCADREMENT.map((r) => {
                 const n = liste.filter((x) => x.role === r).length;
-                if (n === 0) return null;
-                return <option key={r} value={r}>{r}s ({n})</option>;
+                return <option key={r} value={r}>{PLURIEL_ROLE[r] || (r + "s")} ({n})</option>;
               })}
             </Sel>
           </Field>
@@ -9716,6 +10561,7 @@ function RosterEncadrement({ demo, db, mutate, onClose }) {
       )}
       <div style={{ marginTop: 8, display: "grid", gap: 4 }}>
         {liste.length === 0 ? <Empty icon={<Users size={22} color={C.gris} />} text="Aucun nom enregistré" /> :
+          (filtre !== "Tous" && liste.filter((x) => x.role === filtre).length === 0) ? <Empty icon={<Users size={22} color={C.gris} />} text={`Aucun ${(PLURIEL_ROLE[filtre] || filtre).toLowerCase()} pour le moment`} sub={`Choisis le rôle « ${filtre} » puis Ajouter ou Importer`} /> :
           ROLES_ENCADREMENT.filter((r) => filtre === "Tous" || filtre === r).map((r) => {
             const gens = liste.filter((x) => x.role === r);
             if (gens.length === 0) return null;
@@ -10503,6 +11349,10 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
   const r = cur.reservation || {};
   const exterieur = cur.lieu === "Extérieur";
   const domicile = cur.lieu === "Domicile";
+  // Diagnostic transport : on fait remonter l'etat du transport de ce match dans le traceur (bouton Diag),
+  // pour verifier la liaison demande -> match et ce qui a ete attribue.
+  const diagTransport = `match ${cur.date || "?"} ${cur.adversaire || "?"} (${cur.cat || "?"}) lieu=${cur.lieu || "?"} | mode=${t.mode || "aucun"} statut=${t.statut || "-"} minibus=${normMinis(t.minibus).join("/") || "-"} loueur=${t.loueur || "-"} voitures=${t.nbVoitures || "-"} origineDemande=${t.origineDemande || "non"}`;
+  useEffect(() => { try { trace("transport match " + (cur.adversaire || cur.date || ""), diagTransport); } catch (e) {} }, [diagTransport]);
   const [liste, majListe] = useEncadrementClub(demo, db, mutate);
   const [gererDir, setGererDir] = useState(false);
   const conducteursDispo = [...new Set((liste || []).map((x) => (x.nom || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
@@ -10535,6 +11385,10 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
   function majTransport(patch) {
     mutate((d) => { const m = d.matches.find((x) => x.id === match.id); if (m) m.transport = { ...(m.transport || {}), ...patch }; return d; });
   }
+  function supprimerTransport() {
+    mutate((d) => { const m = d.matches.find((x) => x.id === match.id); if (m) m.transport = null; return d; });
+    setCauseRefus(false); setCause("");
+  }
   function majEncadrement(patch) {
     mutate((d) => { const m = d.matches.find((x) => x.id === match.id); if (m) m.encadrement = { ...(m.encadrement || {}), ...patch }; return d; });
   }
@@ -10557,7 +11411,7 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
     majReservation({ [champ]: arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v] });
   }
   function toggleMinibus(b) {
-    const arr = t.minibus || [];
+    const arr = normMinis(t.minibus);
     majTransport({ minibus: arr.includes(b) ? arr.filter((x) => x !== b) : [...arr, b] });
   }
   function repondre(accepte) {
@@ -10571,7 +11425,7 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
   }
 
   return (
-    <Modal title="Organisation du match" onClose={onClose}>
+    <Modal title="Organisation administrative" onClose={onClose}>
       <Btn variant="accent" full style={{ marginBottom: 16 }} onClick={() => setConvoc(true)}><Send size={16} /> Feuille de convocation</Btn>
       {domicile && (
         <>
@@ -10660,8 +11514,11 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
 
       {exterieur && (<>
       <div style={{ fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 7 }}><MapPin size={17} color={C.bleu} /> Transport</div>
-      <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Match à l'extérieur : choisis le transport.</div>
-      <div style={{ marginBottom: 18 }}>
+      <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>{peutValider ? "Match à l'extérieur : choisis le transport." : "Transport du match, attribué par la direction."}</div>
+      {t && t.origineDemande && (
+        <div style={{ fontSize: 11.5, color: "#2F6D43", background: "#E2F4E9", border: "1px solid #BFE3CD", borderRadius: 9, padding: "8px 10px", marginBottom: 10, lineHeight: 1.45, fontWeight: 700 }}>Transport repris automatiquement de la demande validée depuis l'accueil.{peutValider ? " Tu peux l'ajuster ici si besoin." : ""}</div>
+      )}
+      {peutValider ? (<div style={{ marginBottom: 18 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Mode de transport</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
           {MODES_TRANSPORT.map((m) => {
@@ -10679,7 +11536,7 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
             <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Minibus du club (plusieurs possibles)</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {MINIBUS.map((b) => {
-                const on = (t.minibus || []).includes(b);
+                const on = normMinis(t.minibus).includes(b);
                 return (
                   <button key={b} onClick={() => toggleMinibus(b)} style={{
                     flex: "1 1 60px", whiteSpace: "nowrap", border: `1px solid ${on ? C.jaune : C.grisClair}`, cursor: "pointer", borderRadius: 10, padding: "10px 6px", fontWeight: 900, fontSize: 14,
@@ -10692,11 +11549,11 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
               <div style={{ marginTop: 10 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Dirigeant qui conduit</div>
                 <div style={{ display: "grid", gap: 8 }}>
-                  {(t.minibus || []).map((b) => (
+                  {normMinis(t.minibus).map((b) => (
                     <div key={b} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ width: 66, flex: "0 0 auto", fontWeight: 900, color: C.bleu, fontSize: 13, whiteSpace: "nowrap" }}>{b}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <Sel value={(t.conducteurs || {})[b] || ""} onChange={(ev) => setConducteurMinibus(b, ev.target.value)}>
+                        <Sel value={normConduct(t.conducteurs)[b] || ""} onChange={(ev) => setConducteurMinibus(b, ev.target.value)}>
                           <option value="">Choisir le conducteur</option>
                           {conducteursDispo.map((n) => <option key={n} value={n}>{n}</option>)}
                         </Sel>
@@ -10774,7 +11631,29 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
             )}
           </div>
         )}
-      </div>
+        {(t.mode || t.statut || (t.minibus || []).length > 0 || t.loueur || t.nbVoitures) && (
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.grisClair}` }}>
+            <Btn variant="danger" size="sm" full onClick={() => { if (window.confirm("Supprimer complètement le transport de ce match ? Le mode, les minibus, les conducteurs et la réponse seront effacés.")) supprimerTransport(); }}><Trash2 size={15} /> Supprimer le transport de ce match</Btn>
+            <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6, lineHeight: 1.4 }}>Efface le transport attaché à ce match, même s'il a déjà reçu une réponse (acceptée ou refusée). Un nouveau pourra être créé ensuite si besoin.</div>
+          </div>
+        )}
+      </div>) : (
+        <div style={{ marginBottom: 18 }}>
+          {t.mode ? (
+            <>
+              <div style={{ fontSize: 13.5, color: C.encre, fontWeight: 700, lineHeight: 1.5 }}>{resumeTransport(t)}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                <span style={{ fontSize: 12.5, color: C.gris, fontWeight: 700 }}>Réponse :</span>
+                {t.statut === "acceptee" ? <Pastille bg="#E2F4E9" color={C.vert}>Acceptée</Pastille> : t.statut === "refusee" ? <Pastille bg="#FBE3E3" color={C.rouge}>Refusée</Pastille> : <Pastille bg={C.jaune} color={C.bleuNuit}>En attente</Pastille>}
+              </div>
+              {t.statut === "refusee" && t.cause ? <div style={{ fontSize: 13, color: C.rouge, marginTop: 6 }}>Cause : {t.cause}</div> : null}
+            </>
+          ) : (
+            <div style={{ fontSize: 13, color: C.gris }}>Aucun transport attribué pour l'instant. La direction s'en charge.</div>
+          )}
+          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 10, lineHeight: 1.45 }}>Seule la direction peut attribuer ou modifier le transport.</div>
+        </div>
+      )}
       </>)}
 
       <div style={{ fontWeight: 800, marginBottom: 6, display: "flex", alignItems: "center", gap: 7 }}><ShieldAlert size={17} color={C.bleu} /> Encadrement</div>
@@ -11154,7 +12033,9 @@ function exporterDefiJonglageLiguePDF(jsPDF, j, match) {
 
 function DefiJonglageLigue({ match, players, db, mutate, onClose }) {
   const cur = db.matches.find((x) => x.id === match.id) || match;
+  const { sauver } = useContext(AdminCtx);
   const [msgPdf, setMsgPdf] = useState(null);
+  const [msgSave, setMsgSave] = useState("");
   const cap = (v) => v === "" ? "" : Math.min(50, Math.max(0, Math.round(+v) || 0));
   const totalJ = (r) => (Math.min(50, +r.pd || 0)) + (Math.min(50, +r.pg || 0)) + (Math.min(50, +r.alt || 0));
   // V3 Ligue : le total d'équipe ne retient que les 10 meilleurs résultats sur les 12
@@ -11198,8 +12079,11 @@ function DefiJonglageLigue({ match, players, db, mutate, onClose }) {
   }) }));
   const effacer = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => ({ ...r, pd: "", pg: "", alt: "" })) }));
   const enregistrer = () => { mutate((d) => { d.matches.find((x) => x.id === match.id).jonglage = j; return d; }); };
+  // Enregistrement complet : local puis envoi au serveur (sinon les noms sont perdus au rechargement).
+  const enregistrerDef = () => { enregistrer(); setMsgSave("Enregistrement..."); setTimeout(() => { try { if (sauver) sauver(); } catch (e) {} setMsgSave("Enregistré"); setTimeout(() => setMsgSave(""), 2000); }, 120); };
   async function telecharger() {
     enregistrer(); setMsgPdf("Préparation du PDF...");
+    setTimeout(() => { try { if (sauver) sauver(); } catch (e) {} }, 120);
     try { const jsPDF = await chargerJsPDF(); exporterDefiJonglageLiguePDF(jsPDF, j, match); setMsgPdf(null); }
     catch (e) { setMsgPdf("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
   }
@@ -11244,7 +12128,7 @@ function DefiJonglageLigue({ match, players, db, mutate, onClose }) {
 
   return (
     <Modal title={"Défi jonglage " + catLabel + " (Ligue)"} onClose={onClose}
-      footer={<><Btn variant="ghost" full onClick={() => { enregistrer(); onClose(); }}><Save size={16} /> Enregistrer</Btn><Btn variant="accent" full onClick={telecharger}><FileDown size={16} /> Fiche PDF</Btn></>}>
+      footer={<><Btn variant="ghost" full onClick={() => { enregistrerDef(); setTimeout(onClose, 260); }}><Save size={16} /> {msgSave || "Enregistrer"}</Btn><Btn variant="accent" full onClick={telecharger}><FileDown size={16} /> Fiche PDF</Btn></>}>
       <div style={{ fontSize: 12, color: C.gris, lineHeight: 1.5, marginBottom: 12, background: C.fond, borderRadius: 10, padding: 10 }}>
         Fiche officielle Ligue Bourgogne-Franche-Comté (compétition U13 régionale), version V3. Chaque joueur, 2 essais, maximum 50 par pied droit, pied gauche et alterné. Le total d'équipe retient automatiquement les 10 meilleurs résultats sur les 12 de la feuille de match.
       </div>
@@ -11254,8 +12138,8 @@ function DefiJonglageLigue({ match, players, db, mutate, onClose }) {
         <Field label="Match N°"><Inp value={j.matchNum} onChange={(e) => setJ((o) => ({ ...o, matchNum: e.target.value }))} /></Field>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
-        <Field label="Score domicile"><Inp type="number" inputMode="numeric" value={j.scoreDom} onChange={(e) => setJ((o) => ({ ...o, scoreDom: e.target.value }))} placeholder="Buts marqués" /></Field>
-        <Field label="Score visiteuse"><Inp type="number" inputMode="numeric" value={j.scoreVis} onChange={(e) => setJ((o) => ({ ...o, scoreVis: e.target.value }))} placeholder="Buts adverses" /></Field>
+        <Field label="Score domicile"><Inp type="number" inputMode="numeric" min={0} value={j.scoreDom} onChange={(e) => setJ((o) => ({ ...o, scoreDom: e.target.value === "" ? "" : String(Math.max(0, parseInt(e.target.value, 10) || 0)) }))} placeholder="Buts marqués" /></Field>
+        <Field label="Score visiteuse"><Inp type="number" inputMode="numeric" min={0} value={j.scoreVis} onChange={(e) => setJ((o) => ({ ...o, scoreVis: e.target.value === "" ? "" : String(Math.max(0, parseInt(e.target.value, 10) || 0)) }))} placeholder="Buts adverses" /></Field>
       </div>
       {tableau("dom", "ÉQUIPE À DOMICILE")}
       {tableau("vis", "ÉQUIPE VISITEUSE")}
@@ -11436,7 +12320,9 @@ function exporterDefiJonglagePDF(jsPDF, j, match) {
 
 function DefiJonglage({ match, players, db, mutate, onClose }) {
   const cur = db.matches.find((x) => x.id === match.id) || match;
+  const { sauver } = useContext(AdminCtx);
   const [msgPdf, setMsgPdf] = useState(null);
+  const [msgSave, setMsgSave] = useState("");
   const cap = (v) => v === "" ? "" : Math.min(50, Math.max(0, Math.round(+v) || 0));
   const bestPD = (r) => Math.max(Math.min(50, +r.pd1 || 0), Math.min(50, +r.pd2 || 0));
   const bestPG = (r) => Math.max(Math.min(50, +r.pg1 || 0), Math.min(50, +r.pg2 || 0));
@@ -11478,8 +12364,10 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
   }) }));
   const effacer = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => ({ ...r, pd1: "", pd2: "", pg1: "", pg2: "" })) }));
   const enregistrer = () => { mutate((d) => { d.matches.find((x) => x.id === match.id).jonglage = j; return d; }); };
+  const enregistrerDef = () => { enregistrer(); setMsgSave("Enregistrement..."); setTimeout(() => { try { if (sauver) sauver(); } catch (e) {} setMsgSave("Enregistré"); setTimeout(() => setMsgSave(""), 2000); }, 120); };
   async function telecharger() {
     enregistrer(); setMsgPdf("Préparation du PDF...");
+    setTimeout(() => { try { if (sauver) sauver(); } catch (e) {} }, 120);
     try { const jsPDF = await chargerJsPDF(); exporterDefiJonglagePDF(jsPDF, j, match); setMsgPdf(null); }
     catch (e) { setMsgPdf("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
   }
@@ -11534,7 +12422,7 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
 
   return (
     <Modal title="Feuille défi jonglerie" onClose={onClose}
-      footer={<><Btn variant="ghost" full onClick={() => { enregistrer(); onClose(); }}><Save size={16} /> Enregistrer</Btn><Btn variant="accent" full onClick={telecharger}><FileDown size={16} /> Fiche PDF</Btn></>}>
+      footer={<><Btn variant="ghost" full onClick={() => { enregistrerDef(); setTimeout(onClose, 260); }}><Save size={16} /> {msgSave || "Enregistrer"}</Btn><Btn variant="accent" full onClick={telecharger}><FileDown size={16} /> Fiche PDF</Btn></>}>
       <div style={{ fontSize: 12, color: C.gris, lineHeight: 1.5, marginBottom: 12, background: C.fond, borderRadius: 10, padding: 10 }}>
         Feuille officielle District Doubs-Territoire de Belfort, à transmettre en annexe de la feuille de match. 2 essais par pied (droit et gauche), on garde le meilleur, total sur 100 par joueur. Le meilleur essai est surligné en vert.
       </div>
@@ -11549,7 +12437,7 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
   );
 }
 
-function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDelete, peutValider, profil }) {
+function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDelete, peutValider, profil, onNotifierCorrection }) {
   const [noteFor, setNoteFor] = useState(null);
   const [evalEssaiFor, setEvalEssaiFor] = useState(null); // joueur à l'essai dont on saisit l'évaluation détection
   const [orga, setOrga] = useState(false);
@@ -11566,7 +12454,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
   }
 
   function compteur(champ, joueurId, delta) {
-    if (scelle) return;
+    if (scelle || aVenir || remis) return;
     mutate((d) => {
       const m = d.matches.find((x) => x.id === match.id);
       m[champ] = m[champ] || {};
@@ -11576,7 +12464,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
     });
   }
   function setTemps(joueurId, val) {
-    if (scelle) return;
+    if (scelle || aVenir || remis) return;
     mutate((d) => {
       const m = d.matches.find((x) => x.id === match.id);
       m.tempsJeu = m.tempsJeu || {};
@@ -11600,6 +12488,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
     mutate((d) => { d.matches.find((x) => x.id === match.id).rapport = txt; return d; });
   }
   function setScore(champ, val) {
+    if (aVenir || remis) return; // match pas encore joué ou remis : saisie du score impossible
     mutate((d) => {
       const m = d.matches.find((x) => x.id === match.id);
       m[champ] = (val === "" || val == null) ? null : +val;
@@ -11627,7 +12516,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
   const nomDe = (id) => { const j = (joueursRapport || []).find((x) => x.id === id) || (players || []).find((x) => x.id === id); return j ? `${j.prenom} ${j.nom}` : id; };
   const entreeJournal = (action, type, joueurId, surcl) => ({ action, type, cat: match.cat, joueur: nomDe(joueurId), matchDate: match.date, adversaire: match.adversaire || "", lieu: match.lieu || "", competition: match.competition || match.type || "", surclasse: !!surcl, origine: surcl && surcl.cat, auteur: (auteurVerrou && auteurVerrou.nom) || "", role: (auteurVerrou && auteurVerrou.role) || "" });
   function cycleJaune(joueurId) {
-    if (scelle) return;
+    if (scelle || aVenir || remis) return;
     const avant = +((cur && cur.jaunes && cur.jaunes[joueurId]) || 0);
     const v = (avant + 1) % 3;
     const surcl = surclassesPresents.find((p) => p.id === joueurId);
@@ -11663,7 +12552,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
     });
   }
   function toggleRouge(joueurId) {
-    if (scelle) return;
+    if (scelle || aVenir || remis) return;
     const surcl = surclassesPresents.find((p) => p.id === joueurId);
     const nouveauRouge = !(cur && cur.rouges && cur.rouges[joueurId]);
     const estRetrait = !nouveauRouge; // on enlève un rouge existant
@@ -11685,7 +12574,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
     if (estRetrait) demanderCarton(faire); else faire();
   }
   function toggleBlanc(joueurId) {
-    if (scelle) return;
+    if (scelle || aVenir || remis) return;
     const surcl = surclassesPresents.find((p) => p.id === joueurId);
     const nouveauBlanc = !(cur && cur.blancs && cur.blancs[joueurId]);
     const estRetrait = !nouveauBlanc;
@@ -11704,7 +12593,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
     if (estRetrait) demanderCarton(faire); else faire();
   }
   function setMinCarton(joueurId, type, val) {
-    if (scelle) return;
+    if (scelle || aVenir || remis) return; // match scellé ou pas encore joué : cartons non saisissables
     mutate((d) => {
       const m = d.matches.find((x) => x.id === match.id);
       m.cartonsMin = m.cartonsMin || {};
@@ -11713,7 +12602,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
     });
   }
   function toggleBlesse(joueurId) {
-    if (scelle) return;
+    if (scelle || aVenir || remis) return;
     mutate((d) => {
       const m = d.matches.find((x) => x.id === match.id);
       m.blesses = m.blesses || {};
@@ -11734,6 +12623,9 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
   const cur = db.matches.find((x) => x.id === match.id) || match;
   // Les cartons ne sont possibles que sur un match officiel : championnat, coupe, ou tournoi marqué officiel.
   const cartonsActifs = matchAutoriseCartons(cur);
+  // Tournoi ou plateau : pas de score ni d'adversaire unique (tout se gère dans l'organisation du tournoi).
+  const estTournoiPlateau = (cur.type === "Tournoi" || cur.type === "Plateau");
+  const motEvt = estTournoiPlateau ? (cur.type === "Tournoi" ? "tournoi" : "plateau") : "match";
   // Un tournoi (catégorie à cartons) peut être marqué « officiel » pour activer les cartons.
   const estTournoiCat = (match.type === "Tournoi") && categorieCartons(match.cat);
   function toggleOfficiel() {
@@ -11746,28 +12638,55 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
   const aUnCarton = (obj) => obj && Object.keys(obj).some((k) => obj[k]);
   const aCartons = !!(cur && (aUnCarton(cur.jaunes) || aUnCarton(cur.rouges) || aUnCarton(cur.blancs)));
   const aucunCarton = !!(cur && cur.aucunCarton === true);
-  // Certifié joué = badge vert : match officiel reconnu joué (y compris anciens matchs avec score validé).
-  const certifie = !!(cur && matchEstCertifieVert(cur));
+  // Scellé = match certifié joué (tout match, toute catégorie, amicaux compris). Le score passe en lecture seule.
+  const certifie = !!(cur && matchCertifieJoue(cur));
   // Autorisation ponctuelle : la direction ouvre un match certifié pour qu'un coach corrige une erreur
   // ou un oubli, sans annuler la certification. Le score reste figé ; seule la compo redevient modifiable.
   const autoriseCoach = !!(cur && cur.modifCoachAutorisee === true);
   // Compo scellée : une fois le match certifié joué, un coach ne peut plus modifier la composition
   // (minutes, buts, passes, cartons, notes), SAUF si la direction a autorisé une correction.
   const scelle = certifie && !peutValider && !autoriseCoach;
+  // Match pas encore joué (date/heure dans le futur) : consultation seule, aucune saisie de
+  // score ni de cartons, et pas de certification possible. Seules les infos du match restent modifiables.
+  const aVenir = matchPasEncoreJoue(cur);
+  // Match REMIS (certifié non joué) : le match n'a pas eu lieu (reporté/annulé). Il est scellé comme
+  // un match certifié : consultable mais figé (ni score, ni cartons), et ne compte pas dans le bilan.
+  // Seule la direction peut lever la certification « remis » pour le rouvrir.
+  const remis = !!(cur && cur.remis === true);
+  function marquerRemis(v) {
+    if (v && aVenir) return; // un match encore à venir n'est pas « remis » : il suffit de changer sa date
+    mutate((d) => {
+      const m = d.matches.find((x) => x.id === match.id);
+      if (!m) return d;
+      if (v) { m.remis = true; m.joue = false; } // scellé comme non joué
+      else { delete m.remis; m.joue = false; }   // réouverture : repasse en « à certifier »
+      return d;
+    });
+  }
   function autoriserCorrectionCoach(v) {
     if (!peutValider) return; // seule la direction ouvre ou referme l'autorisation
     mutate((d) => { const m = d.matches.find((x) => x.id === match.id); if (m) { if (v) m.modifCoachAutorisee = true; else delete m.modifCoachAutorisee; } return d; });
+    // À l'ouverture de l'autorisation, on alerte le(s) coach(s) de la catégorie (message court pour la bannière).
+    if (v && typeof onNotifierCorrection === "function") {
+      const nom = (cur.type === "Tournoi" || cur.type === "Plateau")
+        ? (cur.nomTournoi || cur.type)
+        : (cur.adversaire || "Match");
+      onNotifierCorrection({ cat: match.cat, nom, date: cur.date || "" });
+    }
   }
   function terminerCorrectionCoach() {
     // Le coach referme lui-même l'autorisation quand il a fini de corriger : le match se re-scelle.
     mutate((d) => { const m = d.matches.find((x) => x.id === match.id); if (m) delete m.modifCoachAutorisee; return d; });
   }
   const cartonsTraites = aCartons || aucunCarton; // les cartons ont été renseignés (ou absence confirmée)
-  const peutCertifier = scoreSaisi && (cartonsActifs ? cartonsTraites : true);
+  // Tournoi/plateau : certifiable sans score (le résultat est le classement saisi dans les détails du tournoi).
+  const peutCertifier = (estTournoiPlateau || scoreSaisi) && (cartonsActifs ? cartonsTraites : true);
   function certifierMatch(v) {
+    if (v && aVenir) return; // on ne peut certifier « joué » qu'un match déjà disputé
     mutate((d) => { const m = d.matches.find((x) => x.id === match.id); if (m) m.joue = v; return d; });
   }
   function toggleAucunCarton() {
+    if (scelle || aVenir || remis) return;
     mutate((d) => { const m = d.matches.find((x) => x.id === match.id); if (m) m.aucunCarton = !m.aucunCarton; return d; });
   }
 
@@ -11897,8 +12816,8 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
           <Compteur label="Passes" val={a} onMinus={() => compteur("passeurs", p.id, -1)} onPlus={() => compteur("passeurs", p.id, 1)} />
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>Minutes</span>
-            <input type="number" min="0" value={t} onChange={(e) => setTemps(p.id, e.target.value)} readOnly={scelle} disabled={scelle}
-              style={{ width: 58, padding: "6px 8px", borderRadius: 9, border: `1px solid ${C.grisClair}`, fontSize: 14, textAlign: "center", background: scelle ? "#F1F4F8" : "#fff" }} />
+            <input type="number" min="0" value={t} onChange={(e) => setTemps(p.id, e.target.value)} readOnly={scelle || aVenir || remis} disabled={scelle || aVenir || remis}
+              style={{ width: 58, padding: "6px 8px", borderRadius: 9, border: `1px solid ${C.grisClair}`, fontSize: 14, textAlign: "center", background: (scelle || aVenir || remis) ? "#F1F4F8" : "#fff" }} />
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
@@ -11984,40 +12903,53 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
       </>}>
       <Card style={{ marginBottom: 14, textAlign: "center" }}>
         <div style={{ fontSize: 12, color: C.gris, fontWeight: 700 }}>{fmtDate(match.date)} · {match.lieu}{match.type ? ` · ${match.type}` : ""}{match.competition ? ` · ${match.competition}` : ""}</div>
-        <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-          <div style={{ display: "flex", alignItems: "center" }}>
-            <span style={{ width: 54, flex: "0 0 auto" }} />
-            <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: 800, fontSize: 16, padding: "0 6px" }}>{CLUB}</span>
-            <input type="text" inputMode="numeric" pattern="[0-9]*" value={cur.scorePour ?? ""} placeholder="–" readOnly={certifie} disabled={certifie}
-              onChange={(e) => setScore("scorePour", e.target.value.replace(/[^0-9]/g, ""))}
-              style={{ width: 54, flex: "0 0 auto", textAlign: "center", fontWeight: 900, fontSize: 24, color: C.bleu, border: `1.5px solid ${C.grisClair}`, borderRadius: 9, padding: "4px 0", background: certifie ? "#F1F4F8" : "#fff" }} />
+        {estTournoiPlateau ? (
+          <div style={{ marginTop: 10, fontWeight: 900, fontSize: 16, color: C.bleu }}>{match.nomTournoi || match.competition || (cur.type === "Tournoi" ? "Tournoi" : "Plateau")}{cur.classement ? <span style={{ color: C.encre }}> · {ordinalRang(cur.classement)}{cur.nbEquipes ? ` / ${cur.nbEquipes}` : ""}</span> : null}</div>
+        ) : (
+          <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <span style={{ width: 54, flex: "0 0 auto" }} />
+              <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: 800, fontSize: 16, padding: "0 6px" }}>{CLUB}</span>
+              <input type="text" inputMode="numeric" pattern="[0-9]*" value={cur.scorePour ?? ""} placeholder="–" readOnly={certifie || aVenir || remis} disabled={certifie || aVenir || remis}
+                onChange={(e) => setScore("scorePour", e.target.value.replace(/[^0-9]/g, ""))}
+                style={{ width: 54, flex: "0 0 auto", textAlign: "center", fontWeight: 900, fontSize: 24, color: C.bleu, border: `1.5px solid ${C.grisClair}`, borderRadius: 9, padding: "4px 0", background: (certifie || aVenir || remis) ? "#F1F4F8" : "#fff" }} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <span style={{ width: 54, flex: "0 0 auto" }} />
+              <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: 800, fontSize: 16, padding: "0 6px" }}>{match.adversaire || "Adversaire"}</span>
+              <input type="text" inputMode="numeric" pattern="[0-9]*" value={cur.scoreContre ?? ""} placeholder="–" readOnly={certifie || aVenir || remis} disabled={certifie || aVenir || remis}
+                onChange={(e) => setScore("scoreContre", e.target.value.replace(/[^0-9]/g, ""))}
+                style={{ width: 54, flex: "0 0 auto", textAlign: "center", fontWeight: 900, fontSize: 24, color: C.bleu, border: `1.5px solid ${C.grisClair}`, borderRadius: 9, padding: "4px 0", background: (certifie || aVenir || remis) ? "#F1F4F8" : "#fff" }} />
+            </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center" }}>
-            <span style={{ width: 54, flex: "0 0 auto" }} />
-            <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontWeight: 800, fontSize: 16, padding: "0 6px" }}>{match.adversaire || "Adversaire"}</span>
-            <input type="text" inputMode="numeric" pattern="[0-9]*" value={cur.scoreContre ?? ""} placeholder="–" readOnly={certifie} disabled={certifie}
-              onChange={(e) => setScore("scoreContre", e.target.value.replace(/[^0-9]/g, ""))}
-              style={{ width: 54, flex: "0 0 auto", textAlign: "center", fontWeight: 900, fontSize: 24, color: C.bleu, border: `1.5px solid ${C.grisClair}`, borderRadius: 9, padding: "4px 0", background: certifie ? "#F1F4F8" : "#fff" }} />
-          </div>
-        </div>
+        )}
       </Card>
 
-      {estTournoiCat && (
+      {aVenir && (
+        <Card style={{ marginBottom: 14, background: "#EAF0F7", borderColor: "#C9D8EC" }}>
+          <div style={{ fontWeight: 800, color: C.bleuNuit, display: "inline-flex", alignItems: "center", gap: 6 }}><CalendarDays size={16} color={C.bleu} /> Match pas encore joué</div>
+          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 4, lineHeight: 1.5 }}>La rencontre n'a pas encore eu lieu. Elle est consultable mais le score et les cartons ne peuvent pas être saisis. Seules les informations du match (date, adversaire, type, lieu, heure) peuvent être modifiées via le bouton « Modifier ». La saisie du score sera possible une fois le match disputé.</div>
+        </Card>
+      )}
+
+      {cur.type === "Tournoi" && !estCategorieSimple(match.cat) && (
         <Card style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: cur.officiel ? "#EAF0F7" : "#fff" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, color: C.encre, display: "inline-flex", alignItems: "center", gap: 6 }}><Award size={16} color={C.bleu} /> Tournoi officiel (FFF / Ligue / District)</div>
-            <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.45 }}>{cur.officiel ? "Tournoi officiel : les cartons sont activés et comptent pour la discipline." : "Active cette option pour un tournoi officiel afin de pouvoir saisir les cartons. Sinon (tournoi amical), aucun carton."}</div>
+            <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.45 }}>{categorieCartons(match.cat)
+              ? (cur.officiel ? "Tournoi officiel : les cartons sont activés et comptent pour la discipline." : "Active cette option pour un tournoi officiel afin de pouvoir saisir les cartons. Sinon (tournoi amical), aucun carton.")
+              : (cur.officiel ? "Tournoi officiel (FFF / Ligue / District)." : "Marque ce tournoi comme officiel, sinon il est considéré comme tournoi amical.")}</div>
           </div>
           <Btn variant={cur.officiel ? "accent" : "ghost"} size="sm" onClick={toggleOfficiel}>{cur.officiel ? "Officiel ✓" : "Activer officiel"}</Btn>
         </Card>
       )}
 
-      {cartonsActifs && (
+      {cartonsActifs && !aVenir && (
         <Card style={{ marginBottom: 14, background: certifie ? "#E2F4E9" : "#FFF7E6", borderColor: certifie ? C.vert : "#F0DBA8" }}>
           {certifie ? (
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 800, color: "#1E7A46", display: "inline-flex", alignItems: "center", gap: 6 }}><Check size={16} /> Match officiellement joué</div>
+                <div style={{ fontWeight: 800, color: "#1E7A46", display: "inline-flex", alignItems: "center", gap: 6 }}><Check size={16} /> {estTournoiPlateau ? "Participation certifiée" : "Match officiellement joué"}</div>
                 <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.45 }}>
                   {autoriseCoach
                     ? (peutValider
@@ -12039,19 +12971,81 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
                   : <div style={{ fontSize: 11.5, fontWeight: 800, color: "#1E7A46", display: "inline-flex", alignItems: "center", gap: 5, flex: "0 0 auto" }}><Lock size={14} /> Scellé</div>
               )}
             </div>
+          ) : remis ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800, color: C.bleuNuit, display: "inline-flex", alignItems: "center", gap: 6 }}><CalendarDays size={16} /> Match remis (certifié non joué)</div>
+                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.45 }}>{peutValider ? "Match scellé comme non joué (reporté). Il ne compte pas dans le bilan. Pour le rouvrir, lève la certification." : "Match scellé comme non joué (reporté). Il ne compte pas dans le bilan. Seule la direction peut le rouvrir."}</div>
+              </div>
+              {peutValider
+                ? <Btn variant="ghost" size="sm" onClick={() => marquerRemis(false)}>Rouvrir le match</Btn>
+                : <div style={{ fontSize: 11.5, fontWeight: 800, color: C.bleuNuit, display: "inline-flex", alignItems: "center", gap: 5, flex: "0 0 auto" }}><Lock size={14} /> Scellé</div>}
+            </div>
           ) : (
             <div>
-              <div style={{ fontWeight: 800, color: "#8A6D00", display: "inline-flex", alignItems: "center", gap: 6 }}><ShieldAlert size={16} /> Match à certifier</div>
-              <div style={{ fontSize: 11.5, color: C.gris, margin: "4px 0 9px", lineHeight: 1.5 }}>Renseigne le score et les cartons (ou coche « Aucun carton à noter »), puis confirme que le match a été officiellement joué. Le score ne s'affichera dans l'appli qu'une fois certifié.</div>
+              <div style={{ fontWeight: 800, color: "#8A6D00", display: "inline-flex", alignItems: "center", gap: 6 }}><ShieldAlert size={16} /> {estTournoiPlateau ? "Participation à certifier" : "Match à certifier"}</div>
+              <div style={{ fontSize: 11.5, color: C.gris, margin: "4px 0 9px", lineHeight: 1.5 }}>{estTournoiPlateau ? `Saisis les cartons (ou coche « Aucun carton à noter »), puis certifie la participation pour sceller le ${motEvt} et le compter dans le bilan.` : "Renseigne le score et les cartons (ou coche « Aucun carton à noter »), puis confirme que le match a été officiellement joué. Le score ne s'affichera dans l'appli qu'une fois certifié."}</div>
               {!aCartons && (
                 <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 700, color: C.encre, cursor: "pointer", marginBottom: 9 }}>
-                  <input type="checkbox" checked={aucunCarton} onChange={toggleAucunCarton} /> Aucun carton à noter dans ce match
+                  <input type="checkbox" checked={aucunCarton} onChange={toggleAucunCarton} /> Aucun carton à noter
                 </label>
               )}
-              {aCartons && <div style={{ fontSize: 11.5, color: "#1E7A46", fontWeight: 700, marginBottom: 9 }}>Cartons saisis sur ce match.</div>}
-              <Btn variant="accent" full onClick={() => certifierMatch(true)} disabled={!peutCertifier}><Check size={16} /> Match joué</Btn>
-              {!scoreSaisi && <div style={{ fontSize: 11.5, color: C.rouge, fontWeight: 700, marginTop: 6 }}>Entre le score (Sochaux et adversaire) pour pouvoir certifier.</div>}
-              {scoreSaisi && cartonsActifs && !cartonsTraites && <div style={{ fontSize: 11.5, color: C.rouge, fontWeight: 700, marginTop: 6 }}>Saisis les cartons ou coche « Aucun carton à noter ».</div>}
+              {aCartons && <div style={{ fontSize: 11.5, color: "#1E7A46", fontWeight: 700, marginBottom: 9 }}>Cartons saisis.</div>}
+              <Btn variant="accent" full onClick={() => certifierMatch(true)} disabled={!peutCertifier}><Check size={16} /> {estTournoiPlateau ? "Certifier la participation" : "Match joué"}</Btn>
+              <Btn variant="ghost" full style={{ marginTop: 8 }} onClick={() => marquerRemis(true)}><CalendarDays size={16} /> {estTournoiPlateau ? `${cur.type} non disputé` : "Match remis (non joué)"}</Btn>
+              {!estTournoiPlateau && !scoreSaisi && <div style={{ fontSize: 11.5, color: C.rouge, fontWeight: 700, marginTop: 6 }}>Entre le score (Sochaux et adversaire) pour certifier « Match joué », ou marque « Match remis » si la rencontre n'a pas eu lieu.</div>}
+              {(estTournoiPlateau || scoreSaisi) && cartonsActifs && !cartonsTraites && <div style={{ fontSize: 11.5, color: C.rouge, fontWeight: 700, marginTop: 6 }}>Saisis les cartons ou coche « Aucun carton à noter ».</div>}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {!cartonsActifs && !aVenir && (
+        <Card style={{ marginBottom: 14, background: certifie ? "#E2F4E9" : "#FFF7E6", borderColor: certifie ? C.vert : "#F0DBA8" }}>
+          {certifie ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800, color: "#1E7A46", display: "inline-flex", alignItems: "center", gap: 6 }}><Check size={16} /> {estTournoiPlateau ? "Participation certifiée" : "Match certifié joué"}</div>
+                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.45 }}>
+                  {estTournoiPlateau
+                    ? (autoriseCoach
+                      ? (peutValider ? "Correction autorisée : le coach peut ressaisir les détails du tournoi (classement, vainqueur...). Referme quand c'est corrigé." : `La direction t'autorise à corriger ce ${motEvt} si tu as fait une erreur. Modifie via « Modifier », puis clique sur « Terminer la correction ».`)
+                      : (peutValider ? `${cur.type} scellé : compté dans le bilan. Pour corriger, annule la certification, ou autorise une correction au coach.` : `${cur.type} scellé : consultable mais non modifiable. Demande à la direction d'autoriser une correction si erreur.`))
+                    : (peutValider
+                      ? "Score scellé : consultable mais figé. Pour le corriger, annule la certification, modifie, puis re-certifie."
+                      : "Score scellé : consultable mais non modifiable. Seule la direction peut autoriser une correction.")}
+                </div>
+              </div>
+              {peutValider ? (
+                estTournoiPlateau ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: "0 0 auto", alignItems: "stretch" }}>
+                    <Btn variant="ghost" size="sm" onClick={() => certifierMatch(false)}>Annuler la certification</Btn>
+                    <Btn variant={autoriseCoach ? "accent" : "ghost"} size="sm" onClick={() => autoriserCorrectionCoach(!autoriseCoach)}>{autoriseCoach ? "Refermer (re-sceller)" : "Autoriser une correction"}</Btn>
+                  </div>
+                ) : (
+                  <Btn variant="ghost" size="sm" onClick={() => certifierMatch(false)}>Annuler la certification</Btn>
+                )
+              ) : (estTournoiPlateau && autoriseCoach)
+                ? <Btn variant="accent" size="sm" onClick={terminerCorrectionCoach}><Check size={15} /> Terminer la correction</Btn>
+                : <div style={{ fontSize: 11.5, fontWeight: 800, color: "#1E7A46", display: "inline-flex", alignItems: "center", gap: 5, flex: "0 0 auto" }}><Lock size={14} /> Scellé</div>}
+            </div>
+          ) : remis ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800, color: C.bleuNuit, display: "inline-flex", alignItems: "center", gap: 6 }}><CalendarDays size={16} /> {estTournoiPlateau ? `${cur.type} non disputé (scellé)` : "Match remis (certifié non joué)"}</div>
+                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.45 }}>{peutValider ? `Scellé comme non disputé. Ne compte pas dans le bilan. Pour le rouvrir, lève la certification.` : `Scellé comme non disputé. Ne compte pas dans le bilan. Seule la direction peut le rouvrir.`}</div>
+              </div>
+              {peutValider
+                ? <Btn variant="ghost" size="sm" onClick={() => marquerRemis(false)}>Rouvrir</Btn>
+                : <div style={{ fontSize: 11.5, fontWeight: 800, color: C.bleuNuit, display: "inline-flex", alignItems: "center", gap: 5, flex: "0 0 auto" }}><Lock size={14} /> Scellé</div>}
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontWeight: 800, color: "#8A6D00", display: "inline-flex", alignItems: "center", gap: 6 }}><ShieldAlert size={16} /> {estTournoiPlateau ? "Participation à certifier" : "Match à certifier"}</div>
+              <div style={{ fontSize: 11.5, color: C.gris, margin: "4px 0 9px", lineHeight: 1.5 }}>{estTournoiPlateau ? `Confirme la participation de l'équipe pour sceller le ${motEvt}. Le classement et le parcours seront comptés dans le bilan. Renseigne le classement via « Modifier » si ce n'est pas déjà fait.` : "Renseigne le score, puis confirme que le match a été officiellement joué. Le score sera alors scellé et s'affichera dans l'appli. Il ne pourra plus être modifié sauf autorisation de la direction."}</div>
+              <Btn variant="accent" full onClick={() => certifierMatch(true)} disabled={!peutCertifier}><Check size={16} /> {estTournoiPlateau ? "Certifier la participation" : "Match joué"}</Btn>
+              <Btn variant="ghost" full style={{ marginTop: 8 }} onClick={() => marquerRemis(true)}><CalendarDays size={16} /> {estTournoiPlateau ? `${cur.type} non disputé` : "Match remis (non joué)"}</Btn>
+              {!estTournoiPlateau && !scoreSaisi && <div style={{ fontSize: 11.5, color: C.rouge, fontWeight: 700, marginTop: 6 }}>Entre le score (Sochaux et adversaire) pour certifier « Match joué », ou marque « Match remis » si la rencontre n'a pas eu lieu.</div>}
             </div>
           )}
         </Card>
@@ -12060,7 +13054,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
       <Card onClick={() => setOrga(true)} style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 12 }}>
         <div style={{ width: 38, height: 38, borderRadius: 10, background: C.bleu, color: "#fff", display: "grid", placeItems: "center", flex: "0 0 auto" }}><MapPin size={18} /></div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800 }}>Organisation du match</div>
+          <div style={{ fontWeight: 800 }}>Organisation administrative</div>
           <div style={{ fontSize: 12, color: C.gris, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {(() => {
               const t = cur.transport || {}, e = cur.encadrement || {}, r = cur.reservation || {};
@@ -12177,7 +13171,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
           <div style={{ marginTop: 14, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: 12 }}>
             <div style={{ fontWeight: 800, marginBottom: 6, display: "flex", alignItems: "center", gap: 7 }}><ShieldAlert size={16} color={C.bleu} /> Encadrement du match</div>
             {lignes.length === 0 ? (
-              <div style={{ fontSize: 12.5, color: C.gris }}>Aucun encadrant désigné. Désigne-les dans la composition ou via "Organisation du match".</div>
+              <div style={{ fontSize: 12.5, color: C.gris }}>Aucun encadrant désigné. Désigne-les dans la composition ou via "Organisation administrative".</div>
             ) : (
               <div style={{ display: "grid", gap: 4 }}>
                 {lignes.map(([k, v]) => (
@@ -12242,7 +13236,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
         onSave={(data) => { saveEvalEssai(evalEssaiFor.id, data); setEvalEssaiFor(null); }}
         onEffacer={() => { saveEvalEssai(evalEssaiFor.id, null); setEvalEssaiFor(null); }} />}
       {orga && <OrgaMatch demo={demo} match={match} db={db} mutate={mutate} peutValider={peutValider} onClose={() => setOrga(false)} />}
-      {plateau && <OrganiserPlateau tournoi={{ nom: `${match.type}${match.date ? " du " + fmtDate(match.date) : ""}`, organisation: cur.organisation }} onClose={() => setPlateau(false)} onSave={enregistrerPlateau} />}
+      {plateau && <OrganiserPlateau tournoi={{ nom: `${match.type}${match.date ? " du " + fmtDate(match.date) : ""}`, organisation: cur.organisation }} jsonActif={jsonImportActif(db)} onClose={() => setPlateau(false)} onSave={enregistrerPlateau} />}
       {jong && (/^U13/.test(match.cat)
         ? <DefiJonglageLigue match={match} players={players} db={db} mutate={mutate} onClose={() => setJong(false)} />
         : <DefiJonglage match={match} players={players} db={db} mutate={mutate} onClose={() => setJong(false)} />)}
@@ -12808,8 +13802,8 @@ function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessur
           <div style={{ marginBottom: 12 }}><Corbeille db={db} mutate={mutate} cat={cat} types={["seance"]} libelle="Récupérer une séance supprimée" onMsg={setImportMsg} /></div>
           {players.length > 0 && (
             <Card style={{ marginBottom: 12, padding: 13, background: "#F4F8FD", borderColor: "#D7E3F2" }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2 }}>Responsables matériel (ballons + chasubles)</div>
-              <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>{avantDemarrage ? "Premier passage : d" : "D"}u lundi {dtW.debut} au vendredi {dtW.fin} · deux responsables, chacun un sac de ballons et des chasubles · le binôme suivant s'affiche le dimanche (pour prévenir les parents), responsabilité du lundi au vendredi, absents exclus</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4, textAlign: "center" }}>Responsables matériel</div>
+              <div style={{ fontSize: 15.5, fontWeight: 800, color: C.encre, marginBottom: 12, textAlign: "center" }}>{avantDemarrage ? "Premier passage · " : ""}Du lundi {dtW.debut} au vendredi {dtW.fin}</div>
               {!rouleActif ? (
                 <div style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "12px 11px", marginBottom: 8, fontSize: 13, color: C.encre, lineHeight: 1.5 }}>
                   Le roulement démarrera le <strong>lundi {semaineMatDates(startW).debut}</strong> (du lundi {semaineMatDates(startW).debut} au vendredi {semaineMatDates(startW).fin}). Les deux premiers joueurs de l'ordre alphabétique seront désignés automatiquement à la première séance du lundi.
@@ -12828,9 +13822,10 @@ function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessur
               ) : null}
               {[["ball", "Responsable 1", ballP, ballIndispo, recW && recW.oubliBall], ["chas", "Responsable 2", chasP, chasIndispo, recW && recW.oubliChas]].map(([role, lib, p, indispo, oubli]) => (
                 <div key={role} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", borderRadius: 10, border: `1px solid ${C.grisClair}`, padding: "9px 11px", marginBottom: 8 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3 }}>{lib} · ballons + chasubles</div>
-                    <div style={{ fontWeight: 800, fontSize: 14.5, marginTop: 2 }}>{p ? `${p.prenom} ${p.nom}` : "—"}{p && surclassesAjoutes.some((s) => s.id === p.id) ? <span style={{ fontSize: 10.5, fontWeight: 800, color: C.bleu, background: "#EAF0F7", borderRadius: 6, padding: "1px 6px", marginLeft: 6 }}>Surclassé {p.cat || ""}</span> : null}{p ? <span style={{ fontSize: 11.5, color: C.gris, fontWeight: 600 }}> · {passagesMat(db.config || {}, cat, p.id)} passage{passagesMat(db.config || {}, cat, p.id) > 1 ? "s" : ""}</span> : null}</div>
+                  <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3 }}>{lib}</div>
+                    <div style={{ fontWeight: 800, fontSize: 14.5, marginTop: 2 }}>{p ? `${p.prenom} ${p.nom}` : "—"}{p && surclassesAjoutes.some((s) => s.id === p.id) ? <span style={{ fontSize: 10.5, fontWeight: 800, color: C.bleu, background: "#EAF0F7", borderRadius: 6, padding: "1px 6px", marginLeft: 6 }}>Surclassé {p.cat || ""}</span> : null}</div>
+                    {p ? <div style={{ fontSize: 11.5, color: C.gris, fontWeight: 600, marginTop: 1 }}>{passagesMat(db.config || {}, cat, p.id)} passage{passagesMat(db.config || {}, cat, p.id) > 1 ? "s" : ""}</div> : null}
                     {indispo ? <div style={{ fontSize: 11, color: C.rouge, fontWeight: 700, marginTop: 2 }}>Absent cette semaine, pense à réajuster</div> : null}
                   </div>
                   {p && <button onClick={() => toggleOubli(role)} style={{ border: "none", cursor: "pointer", borderRadius: 9, padding: "7px 10px", fontSize: 12, fontWeight: 800, background: oubli ? C.rouge : C.grisClair, color: oubli ? "#fff" : C.gris, flex: "0 0 auto" }}>{oubli ? "Oubli noté" : "Noter un oubli"}</button>}
@@ -12990,13 +13985,15 @@ function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessur
           </div>
           <Btn variant="ghost" full style={{ marginBottom: 10 }} onClick={() => setHisto(true)}><CalendarDays size={16} /> Historique des présences (toutes dates)</Btn>
           <Btn variant="ghost" full style={{ marginBottom: 10 }} onClick={() => setNbMois(true)}><ClipboardList size={16} /> Nombre d'entraînements par mois</Btn>
-          <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-            <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "10px 12px", fontWeight: 700, fontSize: 13, color: C.encre, background: "#fff" }}>
-              <Upload size={16} /> Importer un fichier
-              <input type="file" accept=".json,application/json,text/plain,text/json,*/*" onChange={importerSeances} style={{ display: "none" }} />
-            </label>
-            <Btn variant="ghost" onClick={() => { setColler(true); setTexteColle(""); }}><ClipboardList size={16} /> Coller le JSON</Btn>
-          </div>
+          {jsonImportActif(db) && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+              <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "10px 12px", fontWeight: 700, fontSize: 13, color: C.encre, background: "#fff" }}>
+                <Upload size={16} /> Importer un fichier
+                <input type="file" accept=".json,application/json,text/plain,text/json,*/*" onChange={importerSeances} style={{ display: "none" }} />
+              </label>
+              <Btn variant="ghost" onClick={() => { setColler(true); setTexteColle(""); }}><ClipboardList size={16} /> Coller le JSON</Btn>
+            </div>
+          )}
           {importMsg && <div style={{ fontSize: 12.5, color: importMsg.includes("non valide") || importMsg.includes("impossible") ? C.rouge : C.vert, fontWeight: 700, marginBottom: 10, textAlign: "center" }}>{importMsg}</div>}
           <Btn variant="accent" full style={{ marginBottom: 12 }} onClick={() => setBlessure({ cat, circonstance: "entrainement", debut: hoyISO() })}><HeartPulse size={16} /> Signaler un joueur blessé à l'entraînement</Btn>
 
@@ -14159,6 +15156,7 @@ function PlanningSemaine({ planning, cat, type, onClose }) {
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>{typeLabel} · semaine · {cat}</div>
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto", marginLeft: "auto" }}><X size={17} /> Fermer</button>
       </header>
       <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.grisClair}`, background: "#fff", display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -14548,7 +15546,8 @@ function Planning({ planning, majPlanning, chargement, erreur, cats, profil, peu
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
-        <div style={{ fontWeight: 800, fontSize: 16 }}>Planning des {type === "vestiaires" ? "vestiaires" : "terrains"}</div>
+        <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Planning des {type === "vestiaires" ? "vestiaires" : "terrains"}</div>
+        <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto" }}><X size={17} /> Fermer</button>
       </header>
 
       <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10, borderBottom: `1px solid ${C.grisClair}`, background: "#fff" }}>
@@ -14901,6 +15900,7 @@ function AccesSecteurs({ db, mutate, estAdmin, onClose }) {
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Droits d'accès</div>
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto", marginLeft: "auto" }}><X size={17} /> Fermer</button>
       </header>
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
@@ -14988,7 +15988,7 @@ function exporterProgrammePDF(jsPDF, matchs, lundi, dim) {
     try { doc.addImage(LOGO_CLUB, "PNG", M, 3, lw, lh); } catch (e) {}
   }
 
-  const transportTxt = (m) => { const t = m.transport || {}; if (!t.mode) return ""; if (t.mode === "Minibus club" && t.minibus && t.minibus.length) return `Minibus ${t.minibus.join("/")}`; if (t.mode === "Bus en location" && t.loueur) return `Bus ${t.loueur}`; return t.mode; };
+  const transportTxt = (m) => { const t = m.transport || {}; if (!t.mode) return ""; if (t.mode === "Minibus club" && t.minibus && t.minibus.length) return `Minibus ${normMinis(t.minibus).join("/")}`; if (t.mode === "Bus en location" && t.loueur) return `Bus ${t.loueur}`; return t.mode; };
   const intendanceRouge = (txt) => /repas|pas de go|arbitr/i.test(txt || "");
 
   const cellules = (m) => {
@@ -15142,7 +16142,7 @@ function EditLignePlanning({ match, cats, encadrement, onClose, onSave }) {
     else if (v === "__autre__") { setTerrainAutre(true); }
     else { setTerrainAutre(false); setF((p) => ({ ...p, lieu: "Domicile", lieuMatch: v })); }
   };
-  const transInit = (() => { const t = match.transport || {}; if (!t.mode) return ""; if (t.mode === "Minibus club" && t.minibus && t.minibus.length) return `Minibus ${t.minibus.join("/")}`; if (t.mode === "Bus en location" && t.loueur) return `Bus ${t.loueur}`; return t.mode; })();
+  const transInit = (() => { const t = match.transport || {}; if (!t.mode) return ""; if (t.mode === "Minibus club" && t.minibus && t.minibus.length) return `Minibus ${normMinis(t.minibus).join("/")}`; if (t.mode === "Bus en location" && t.loueur) return `Bus ${t.loueur}`; return t.mode; })();
   const [transInput, setTransInput] = useState(transInit);
   const enregistrer = () => { const maj = { ...f }; maj.transport = transInput.trim() ? { mode: transInput.trim() } : null; onSave(maj); };
   const listeCats = cats && cats.length ? cats : CATEGORIES.map((c) => c.id);
@@ -15232,6 +16232,19 @@ function ProgrammeSemaine({ db, localDb, peutValider, userId, encadrement, cats,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localDb, peutValider, rechargeTick]);
 
+  // Diag : tous les matchs (toutes catégories) qui ont un transport renseigné, pour retrouver une demande qui traîne.
+  useEffect(() => {
+    try {
+      const avecTransport = (tousMatchs || []).filter((m) => m && m.transport && (m.transport.mode || m.transport.statut));
+      trace(`Transports sur les matchs (${avecTransport.length})`, avecTransport.map((m) => {
+        const t = m.transport || {};
+        const mini = (t.minibus && t.minibus.length) ? normMinis(t.minibus).join("/") : "";
+        return `${m.cat || "?"} | ${m.date || "sans date"} vs ${m.adversaire || "?"} | mode=${t.mode || "-"}${mini ? " (" + mini + ")" : ""} | statut=${t.statut || "-"}${t.cause ? " (" + t.cause + ")" : ""} | id=${m.id || "?"}`;
+      }));
+    } catch (e) {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tousMatchs]);
+
   // Enregistre une ligne modifiée du planning dans la bonne catégorie (déplacement si l'équipe change).
   async function sauverLigne(maj) {
     const origCat = ligneEdit ? ligneEdit.origCat : maj.cat;
@@ -15273,7 +16286,18 @@ function ProgrammeSemaine({ db, localDb, peutValider, userId, encadrement, cats,
   const lieuDe = (m) => m.lieuMatch || (m.lieu === "Domicile" ? ((m.reservation && m.reservation.terrain) || "Domicile") : "Extérieur");
   const rdvDe = (m) => [m.rdv, m.lieuRdv].filter(Boolean).join(" ");
   const dirDe = (m) => { const e = m.encadrement || {}; return [nomFamille(e.dirigeant), nomFamille(e.delegue)].filter(Boolean).join(", "); };
-  const transDe = (m) => { const t = m.transport || {}; if (!t.mode) return ""; if (t.mode === "Minibus club" && t.minibus && t.minibus.length) return `Minibus ${t.minibus.join("/")}`; if (t.mode === "Bus en location" && t.loueur) return `Bus ${t.loueur}`; return t.mode; };
+  const transDe = (m) => {
+    const t = m.transport || {};
+    const actifs = (t.modes && t.modes.length) ? t.modes : (t.mode ? [t.mode] : []);
+    if (!actifs.length) return "";
+    const parts = actifs.map((mode) => {
+      if (mode === "Minibus club" && t.minibus && t.minibus.length) return `Minibus ${normMinis(t.minibus).join("/")}`;
+      if (mode === "Bus en location") return `Bus ${t.loueur || "location"}${Number(t.nbLocation) > 1 ? " ×" + t.nbLocation : ""}`;
+      if (mode === "Voitures des parents") return `Voitures parents${t.nbVoitures ? " (" + t.nbVoitures + ")" : ""}`;
+      return mode;
+    });
+    return parts.join(" + ");
+  };
 
   const chargement = tousMatchs === null;
   const matchs = (tousMatchs || [])
@@ -15283,13 +16307,19 @@ function ProgrammeSemaine({ db, localDb, peutValider, userId, encadrement, cats,
   // Transport : si le match n'a pas son propre transport, on reprend la demande de transport VALIDÉE (acceptée)
   // pour cette catégorie et cette date, pour qu'elle s'affiche directement dans le planning et le PDF.
   const demandesT = (transport && transport.demandes) || [];
-  const demandeAcceptee = (m) => demandesT.filter((d) => d && d.statut === "acceptee" && d.cat === m.cat && d.date && d.date === m.date)
-    .sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""))[0] || null;
+  const demandeAcceptee = (m) => {
+    // Priorité : une demande rattachée explicitement à ce match (via son id), sinon par catégorie + date.
+    const parId = demandesT.filter((d) => d && d.statut === "acceptee" && d.matchId && String(d.matchId) === String(m.id))
+      .sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""))[0];
+    if (parId) return parId;
+    return demandesT.filter((d) => d && d.statut === "acceptee" && !d.matchId && d.cat === m.cat && d.date && d.date === m.date)
+      .sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""))[0] || null;
+  };
   const matchsAff = matchs.map((m) => {
-    if (m.transport && m.transport.mode) return m;
+    if (m.transport && (m.transport.mode || (m.transport.modes && m.transport.modes.length))) return m;
     const da = demandeAcceptee(m);
     if (!da) return m;
-    return { ...m, transport: { mode: da.mode || "", minibus: da.minibus || [], loueur: da.loueur || "", conducteurs: da.conducteurs || {} } };
+    return { ...m, transport: { mode: da.mode || "", modes: da.modes || [], minibus: da.minibus || [], loueur: da.loueur || "", nbLocation: da.nbLocation || "", nbVoitures: da.nbVoitures || "", parents: da.parents || "", conducteurs: da.conducteurs || {}, locations: da.locations || [], chauffeursSup: da.chauffeursSup || [] } };
   });
 
   const rows = matchsAff.map((m) => [m.cat, fmtDate(m.date), m.adversaire || "", lieuDe(m), m.heure || "", rdvDe(m), dirDe(m), m.intendance || "", transDe(m)]);
@@ -15355,6 +16385,7 @@ function ProgrammeSemaine({ db, localDb, peutValider, userId, encadrement, cats,
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Programme de la semaine</div>
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto", marginLeft: "auto" }}><X size={17} /> Fermer</button>
       </header>
 
       <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.grisClair}`, background: "#fff", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -15550,7 +16581,9 @@ function SuiviMedical({ db, mutate, cat, estMedical, onSignalerBlessure, onClose
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
-        <div style={{ fontWeight: 800, fontSize: 16 }}>Suivi médical · {cat}</div>
+        <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Suivi médical · {cat}</div>
+        <BoutonSauver size="sm" />
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto" }}><X size={17} /> Fermer</button>
       </header>
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
         <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 14, lineHeight: 1.5 }}>Rubrique de l'équipe médicale : joueurs pris en charge par le club, en réathlétisation ou convalescence. {sousType === "pro" ? "Catégorie professionnelle." : sousType === "formation" ? "Centre de formation." : "Cette catégorie est normalement suivie par les parents ; un joueur n'apparaît ici que si le coach a choisi une prise en charge par le club."}{!estMedical ? " Consultation seule : seule l'équipe médicale peut renseigner ce dossier." : ""}</div>
@@ -15600,6 +16633,7 @@ function PlanningHebdo({ onClose }) {
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Planning hebdomadaire des entraînements</div>
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto", marginLeft: "auto" }}><X size={17} /> Fermer</button>
       </header>
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
         <div style={{ fontSize: 12, color: C.gris, marginBottom: 12, lineHeight: 1.5, background: "#EAF0F7", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "9px 12px" }}>Créneaux d'entraînement attribués pour la saison. Synthé centre correspond au synthétique plein air, Dôme au synthétique du dôme. Ces séances sont automatiquement reportées dans le planning des terrains, verrouillées et répétées chaque semaine.</div>
@@ -15813,6 +16847,7 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onRafra
             <RefreshCw size={16} style={{ animation: majMsg ? "spin 0.6s linear infinite" : "none" }} /> {majMsg ? "..." : "Actualiser"}
           </button>
         )}
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto" }}><X size={17} /> Fermer</button>
       </header>
       <style>{"@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}"}</style>
 
@@ -16062,7 +17097,9 @@ function DocumentsAdmin({ players, cat, db, mutate, lectureSeule, demo, adminUnl
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
-        <div style={{ fontWeight: 800, fontSize: 16 }}>Documents administratifs · {cat}</div>
+        <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Documents administratifs · {cat}</div>
+        <BoutonSauver size="sm" />
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto" }}><X size={17} /> Fermer</button>
       </header>
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
@@ -16145,212 +17182,977 @@ function DocumentsAdmin({ players, cat, db, mutate, lectureSeule, demo, adminUnl
 }
 
 
-function exporterBilanPDF(jsPDF, { cat, saison, nbMatchs, v, n, d, bp, bc, buteurs, passeurs, notes }) {
-  const doc = new jsPDF({ unit: "pt", format: "a4" });
-  try { doc.setProperties({ title: `Bilan de saison ${cat} ${saison}`, subject: "Bilan de saison", author: CLUB_LONG, creator: CLUB_LONG }); } catch (e) {}
-  const W = 595, H = 842, M = 40;
-  const NAVY = [14, 30, 51], BLEU = [26, 53, 83], OR = [198, 162, 76];
-  const ENCRE = [22, 32, 46], GRIS = [122, 130, 142], TRAIT = [228, 232, 238], FOND = [247, 248, 250];
-  const VERT = [39, 134, 82], ROUGE = [200, 62, 54], ORF = [184, 122, 43];
-  const sc = (c) => doc.setTextColor(c[0], c[1], c[2]);
-  const sd = (c) => doc.setDrawColor(c[0], c[1], c[2]);
-  const sf = (c) => doc.setFillColor(c[0], c[1], c[2]);
-
-  // En-tete
-  sf(NAVY); doc.rect(0, 0, W, 5, "F");
-  if (typeof LOGO_CLUB === "string" && LOGO_CLUB) {
-    try { const pr = doc.getImageProperties(LOGO_CLUB); const lh = 42, lw = lh * (pr.width / pr.height); doc.addImage(LOGO_CLUB, "PNG", W - M - lw, 22, lw, lh); } catch (e) {}
-  }
-  sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
-  doc.text(CLUB_LONG, M, 42);
-  sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-  doc.text(`${secteurLabel(cat).toUpperCase()}   ·   BILAN DE SAISON   ·   ${cat}   ·   ${saison}`, M, 56);
-  sd(OR); doc.setLineWidth(1); doc.line(M, 66, W - M, 66); doc.setLineWidth(0.5);
-
-  let y = 92;
-  const titreSection = (t) => { sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text(t.toUpperCase(), M, y); y += 12; };
-
-  const tuile = (x, ty, w, h, val, lab, col) => {
-    sf(FOND); doc.roundedRect(x, ty, w, h, 6, 6, "F"); sd(TRAIT); doc.roundedRect(x, ty, w, h, 6, 6);
-    sc(col || BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(20); doc.text(String(val), x + w / 2, ty + 28, { align: "center" });
-    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text(lab, x + w / 2, ty + h - 9, { align: "center" });
-  };
-
-  // Resultats
-  titreSection("Résultats");
-  const gap = 10, h1 = 54;
-  const w4 = (W - 2 * M - 3 * gap) / 4;
-  [["Matchs", nbMatchs, BLEU], ["Victoires", v, VERT], ["Nuls", n, ORF], ["Défaites", d, ROUGE]].forEach((t, i) => tuile(M + i * (w4 + gap), y, w4, h1, t[1], t[0], t[2]));
-  y += h1 + gap;
-  const w3 = (W - 2 * M - 2 * gap) / 3;
-  const diff = bp - bc;
-  [["Buts marqués", bp, BLEU], ["Buts encaissés", bc, BLEU], ["Différence", (diff > 0 ? "+" : "") + diff, diff >= 0 ? VERT : ROUGE]].forEach((t, i) => tuile(M + i * (w3 + gap), y, w3, h1, t[1], t[0], t[2]));
-  y += h1 + 20;
-
-  // Classements
-  const classement = (titre, rows, unite) => {
-    if (y > H - 120) { doc.addPage(); y = 56; }
-    titreSection(titre);
-    if (!rows.length) { sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.text("Aucune donnée pour cette saison.", M, y + 4); y += 20; return; }
-    rows.forEach((r, i) => {
-      if (y > H - 60) { doc.addPage(); y = 56; }
-      const rh = 22;
-      if (i % 2 === 0) { sf(FOND); doc.rect(M, y - 10, W - 2 * M, rh, "F"); }
-      // rang
-      sf(i === 0 ? OR : TRAIT); doc.circle(M + 11, y + 1, 8, "F");
-      sc(i === 0 ? NAVY : GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(String(i + 1), M + 11, y + 4, { align: "center" });
-      // nom
-      sc(ENCRE); doc.setFont("helvetica", "normal"); doc.setFontSize(11); doc.text(r.nom, M + 28, y + 4);
-      // valeur
-      sc(BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(`${r.val} ${unite}`, W - M - 4, y + 4, { align: "right" });
-      y += rh;
-    });
-    y += 14;
-  };
-  classement("Meilleurs buteurs", buteurs, "buts");
-  classement("Meilleurs passeurs", passeurs, "passes");
-  classement("Meilleures notes moyennes", notes, "/ 7");
-
-  // Pied de page sur chaque page
-  const pages = doc.getNumberOfPages();
-  for (let i = 1; i <= pages; i++) {
-    doc.setPage(i);
-    sd(OR); doc.setLineWidth(0.8); doc.line(M, H - 28, W - M, H - 28); doc.setLineWidth(0.5);
-    sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-    doc.text(`Bilan édité le ${new Date().toLocaleDateString("fr-FR")}`, M, H - 19);
-    doc.text(CLUB_LONG, W - M, H - 19, { align: "right" });
-  }
-
-  telechargerDoc(doc, `Bilan_${cat}_${saison}.pdf`.replace(/\s+/g, "_"));
+// Compte les matchs amicaux et les tournois/plateaux RÉALISÉS (date passée) d'une catégorie sur une saison.
+function compterAmicauxTournois(matchesCat) {
+  let amicaux = 0, tournois = 0;
+  (matchesCat || []).forEach((m) => {
+    if (matchPasEncoreJoue(m)) return; // pas encore joué : non compté comme réalisé
+    const t = (m.type || "").toLowerCase();
+    if (t.includes("amical")) amicaux++;
+    else if (t.includes("tournoi") || t.includes("plateau")) tournois++;
+  });
+  return { amicaux, tournois };
+}
+// Calcule le bilan complet d'une catégorie à partir de son blob de données (matches + players).
+// Réutilise exactement les mêmes règles que l'écran Bilan : seuls les matchs officiels certifiés comptent.
+function calculerBilanCat(blob, cat, saison) {
+  const b = blob || {};
+  const matchesCat = (b.matches || []).filter((m) => m.cat === cat && saisonDe(m.date) === saison);
+  const joues = matchesCat.filter((m) => matchCompteStats(m));
+  let v = 0, n = 0, d = 0, bp = 0, bc = 0;
+  joues.forEach((m) => { const sp = +m.scorePour, sc = +m.scoreContre; bp += sp; bc += sc; if (sp > sc) v++; else if (sp === sc) n++; else d++; });
+  const players = b.players || [];
+  const statsJ = players.map((p) => ({ p, s: statsJoueur(p, b, saison) }));
+  const nom = (x) => `${x.p.prenom || ""} ${x.p.nom || ""}`.trim();
+  const buteurs = statsJ.filter((x) => x.s.buts > 0).sort((a, z) => z.s.buts - a.s.buts).slice(0, 8).map((x) => ({ nom: nom(x), val: x.s.buts }));
+  const passeurs = statsJ.filter((x) => x.s.passes > 0).sort((a, z) => z.s.passes - a.s.passes).slice(0, 8).map((x) => ({ nom: nom(x), val: x.s.passes }));
+  const notes = statsJ.filter((x) => x.s.moy != null).sort((a, z) => z.s.moy - a.s.moy).slice(0, 8).map((x) => ({ nom: nom(x), val: x.s.moy.toFixed(1) }));
+  const at = compterAmicauxTournois(matchesCat);
+  return { cat, saison, nbMatchs: joues.length, v, n, d, bp, bc, buteurs, passeurs, notes, nbAmicaux: at.amicaux, nbTournois: at.tournois };
 }
 
-function BilanEquipe({ db, players, cat, onClose, onTournois }) {
+/* ===== Bilan de saison structuré : secteurs, bilan COLLECTIF et bilan JOUEURS ===== */
+// Les trois secteurs du club (chacun regroupe ses catégories).
+const SECTEURS_BILAN = [
+  { nom: "Pôle École de foot / Préformation", cats: CATEGORIES.filter((c) => c.groupe === "École de foot" || c.groupe === "Pré-formation").map((c) => c.id) },
+  { nom: "Pôle Féminine", cats: CATEGORIES.filter((c) => c.groupe === "Féminines").map((c) => c.id) },
+  { nom: "Pôle Formation / Professionnels", cats: CATEGORIES.filter((c) => c.groupe === "Formation" || c.groupe === "PRO").map((c) => c.id) },
+];
+// Nom du pôle d'une catégorie (pour l'affichage), ou null si hors pôle (Loisirs, Foot santé).
+function poleDeCategorie(catId) { const s = SECTEURS_BILAN.find((x) => x.cats.includes(catId)); return s ? s.nom : null; }
+// Dernier test physique saisi d'un joueur (le plus récent par date).
+function dernierTestJoueur(p) {
+  const ts = ((p && p.tests) || []).slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  return ts[ts.length - 1] || null;
+}
+// Renvoie les éléments formant les 3 meilleures valeurs DISTINCTES (toutes les égalités incluses).
+function top3Egalites(items, getVal, croissant) {
+  const arr = (items || []).filter((x) => { const v = getVal(x); return v != null && !isNaN(v); });
+  arr.sort((a, b) => croissant ? getVal(a) - getVal(b) : getVal(b) - getVal(a));
+  const vals = [], out = [];
+  for (const it of arr) { const v = getVal(it); if (!vals.includes(v)) { if (vals.length >= 3) break; vals.push(v); } out.push(it); }
+  return out;
+}
+// Bilan COLLECTIF d'une catégorie : matchs par type (championnat/coupe/amical), buts, tournois, effectif, infos direction.
+function bilanCollectifCat(blob, cat, saison) {
+  const b = blob || {};
+  const matchesCat = (b.matches || []).filter((m) => m.cat === cat && saisonDe(m.date) === saison);
+  const typ = { Championnat: { joues: 0, gagnes: 0, nuls: 0, perdus: 0 }, Coupe: { joues: 0, gagnes: 0, nuls: 0, perdus: 0 }, Amical: { joues: 0, gagnes: 0, nuls: 0, perdus: 0 } };
+  let bp = 0, bc = 0;
+  matchesCat.forEach((m) => {
+    const t = m.type; if (!typ[t]) return;
+    if (!matchCertifieJoue(m)) return;
+    const sp = +m.scorePour, sc = +m.scoreContre; if (isNaN(sp) || isNaN(sc)) return;
+    typ[t].joues++; bp += sp; bc += sc;
+    // Coupe : une case « Vainqueur / qualifié » (ex. tirs au but) force la victoire même sur un nul.
+    if (t === "Coupe" && m.vainqueurCoupe === true && sp <= sc) { typ[t].gagnes++; }
+    else if (sp > sc) typ[t].gagnes++; else if (sp === sc) typ[t].nuls++; else typ[t].perdus++;
+  });
+  // Tournois du bilan = enregistrements « tournoi » (db.tournois) + matchs de type Tournoi/Plateau joués
+  // (avec leurs détails saisis sur le match : classement, équipes, format, parcours).
+  const tournoisDb = (b.tournois || []).filter((t) => t.cat === cat && saisonDe(t.date) === saison)
+    .map((t) => ({ nom: t.nom, lieu: t.lieu || "", place: (t.vainqueur === true && !(+t.place)) ? 1 : (+t.place || 0), nbEquipes: t.nbEquipes, format: t.format, parcours: t.parcours, date: t.date, id: t.id, source: "tournoi", enAvant: t.enAvant === true, vainqueur: t.vainqueur === true || +t.place === 1 }));
+  const tournoisMatch = matchesCat
+    .filter((m) => (m.type === "Tournoi" || m.type === "Plateau") && matchCertifieJoue(m))
+    .map((m) => ({ nom: m.nomTournoi || m.competition || m.adversaire || m.type, lieu: m.lieuTournoi || m.lieuMatch || "", place: (m.vainqueurTournoi === true && !(+m.classement)) ? 1 : (+m.classement || 0), nbEquipes: m.nbEquipes, format: m.format, parcours: m.parcours, date: m.date, id: m.id, source: "match", enAvant: m.enAvant === true, vainqueur: m.vainqueurTournoi === true || +m.classement === 1 }));
+  const tournois = [...tournoisDb, ...tournoisMatch];
+  const gagnes = tournois.filter((t) => t.vainqueur).length;
+  const avecPlace = tournois.filter((t) => +t.place > 0).sort((a, z) => (+a.place) - (+z.place));
+  const meilleur = avecPlace[0] || null;
+  // Tournois cochés « à mettre en avant » : ce sont ceux affichés comme meilleurs dans le bilan.
+  // Les compteurs (gagnés / réalisés) ne changent pas : TOUS les tournois restent comptabilisés.
+  const misEnAvant = tournois.filter((t) => t.enAvant);
+  const infos = (((b.config || {}).bilanInfos) || {})[saison] || {};
+  // Données importées (fichier bilan) : en COMPLÉMENT, uniquement là où l'auto est vide.
+  const imp = ((((b.config || {}).bilanImport) || {})[saison] || {}).collectif || {};
+  const totAutoJoues = typ.Championnat.joues + typ.Coupe.joues + typ.Amical.joues;
+  const mergeType = (autoT, impT) => (autoT.joues === 0 && impT) ? { joues: +impT.joues || 0, gagnes: +impT.gagnes || 0, nuls: +impT.nuls || 0, perdus: +impT.perdus || 0 } : autoT;
+  const championnat = mergeType(typ.Championnat, imp.championnat);
+  const coupe = mergeType(typ.Coupe, imp.coupe);
+  const amicaux = mergeType(typ.Amical, imp.amicaux);
+  let BP = bp, BC = bc;
+  if (totAutoJoues === 0 && (imp.butsMarques != null || imp.butsEncaisses != null)) { BP = +imp.butsMarques || 0; BC = +imp.butsEncaisses || 0; }
+  let tournObj = { nb: tournois.length, gagnes, meilleur, misEnAvant, liste: tournois };
+  if (tournois.length === 0 && imp.tournois) { tournObj = { nb: +imp.tournois.realises || 0, gagnes: +imp.tournois.gagnes || 0, meilleur: imp.tournois.meilleur || null, misEnAvant: imp.tournois.meilleur ? [imp.tournois.meilleur] : [], liste: [] }; }
+  let effectif = (b.players || []).length;
+  if (effectif === 0 && imp.effectif != null) effectif = +imp.effectif || 0;
+  // Compteurs de participation (pour le bilan simple U7/U8) : plateaux, tournois et amicaux réalisés.
+  const plateauxMatch = matchesCat.filter((m) => m.type === "Plateau" && matchCertifieJoue(m));
+  const tournoisMatchReal = matchesCat.filter((m) => m.type === "Tournoi" && matchCertifieJoue(m));
+  const nbPlateaux = plateauxMatch.length;
+  const nbTournoisReal = tournoisDb.length + tournoisMatchReal.length;
+  const nbAmicauxReal = matchesCat.filter((m) => m.type === "Amical" && matchCertifieJoue(m)).length;
+  // Détail par type de participation (sous-type saisi sur le match) : repris dans le bilan simple.
+  const compteParSousType = (arr, defaut) => {
+    const map = {};
+    arr.forEach((m) => { const k = (m.sousTypePart && String(m.sousTypePart).trim()) || defaut; map[k] = (map[k] || 0) + 1; });
+    return map;
+  };
+  const detailMap = {};
+  Object.entries(compteParSousType(plateauxMatch, "Plateau (à préciser)")).forEach(([k, v]) => { detailMap[k] = (detailMap[k] || 0) + v; });
+  Object.entries(compteParSousType(tournoisMatchReal, "Tournoi (à préciser)")).forEach(([k, v]) => { detailMap[k] = (detailMap[k] || 0) + v; });
+  tournoisDb.forEach((t) => { const k = (t.sousTypePart && String(t.sousTypePart).trim()) || "Tournoi (à préciser)"; detailMap[k] = (detailMap[k] || 0) + 1; });
+  if (nbAmicauxReal > 0) detailMap["Matchs amicaux"] = nbAmicauxReal;
+  // Ordre d'affichage : plateaux d'abord, puis tournois, puis amicaux.
+  const ordre = [...SOUS_TYPES_PLATEAU, "Plateau (à préciser)", ...SOUS_TYPES_TOURNOI, "Tournoi (à préciser)", "Matchs amicaux"];
+  const detail = Object.keys(detailMap)
+    .sort((a, z) => { const ia = ordre.indexOf(a), iz = ordre.indexOf(z); return (ia < 0 ? 99 : ia) - (iz < 0 ? 99 : iz); })
+    .map((k) => ({ nom: k, val: detailMap[k] }));
+  const simpleActif = estCategorieSimple(cat);
+  const simple = {
+    actif: simpleActif,
+    plateaux: (nbPlateaux === 0 && imp.plateaux != null) ? (+imp.plateaux || 0) : nbPlateaux,
+    tournois: (nbTournoisReal === 0 && imp.tournoisSimple != null) ? (+imp.tournoisSimple || 0) : nbTournoisReal,
+    amicaux: (nbAmicauxReal === 0 && imp.amicauxSimple != null) ? (+imp.amicauxSimple || 0) : nbAmicauxReal,
+    detail,
+  };
+  return {
+    cat, saison,
+    championnat, coupe, amicaux,
+    bp: BP, bc: BC,
+    tournois: tournObj,
+    simple,
+    effectif,
+    nonConserves: infos.nonConserves != null && infos.nonConserves !== "" ? infos.nonConserves : null,
+    seancesSemaine: infos.seancesSemaine != null && infos.seancesSemaine !== "" ? infos.seancesSemaine : null,
+    niveau: infos.niveau || "",
+  };
+}
+// Totaux matchs (joués, gagnés, nuls, perdus) sur championnat + coupe + amicaux.
+function totauxCollectif(d) {
+  const t = [d.championnat, d.coupe, d.amicaux];
+  return {
+    joues: t.reduce((a, o) => a + o.joues, 0),
+    gagnes: t.reduce((a, o) => a + o.gagnes, 0),
+    nuls: t.reduce((a, o) => a + o.nuls, 0),
+    perdus: t.reduce((a, o) => a + o.perdus, 0),
+  };
+}
+// Détail par compétition (lignes pour une carte) : gagnés/joués + nuls et perdus.
+function parCompRows(d) {
+  // Format court victoires / joués. La fenêtre s'intitule « Nombre de victoires » pour lever l'ambiguïté.
+  const ligne = (nom, o) => ({ nom, val: `${o.gagnes}/${o.joues}` });
+  return [ligne("Championnat", d.championnat), ligne("Coupe", d.coupe), ligne("Amicaux", d.amicaux)];
+}
+// Lignes « fenêtre » pour la carte Tournois (concis et lisible).
+function tournoisRowsCarte(d) {
+  const rows = [{ nom: "Tournois gagnés", val: d.tournois.gagnes }, { nom: "Tournois réalisés", val: d.tournois.nb }];
+  if (d.tournois.meilleur) {
+    const mt = d.tournois.meilleur;
+    const infosMt = [mt.parcours || mt.format, mt.lieu].filter(Boolean).join(", ");
+    rows.push({ nom: `Meilleur : ${mt.nom || "Tournoi"}`, val: mt.place ? `${mt.place}${mt.nbEquipes ? "/" + mt.nbEquipes : ""}` : "-", detail: infosMt || undefined });
+  }
+  return rows;
+}
+// Bilan JOUEURS d'une catégorie : 3 meilleurs (avec égalités) buteurs, passeurs, vitesses 10/20/40 m, VMA, présences.
+function bilanJoueursCat(blob, cat, saison) {
+  const b = blob || {};
+  const players = b.players || [];
+  const nom = (p) => `${p.prenom || ""} ${p.nom || ""}`.trim();
+  const st = players.map((p) => ({ p, s: statsJoueur(p, b, saison), t: dernierTestJoueur(p), a: assiduiteJoueur(p, b, saison) }));
+  const mk = (items, getVal, croissant, fmt, unite) => top3Egalites(items, getVal, croissant).map((x) => ({ nom: nom(x.p), val: fmt ? fmt(getVal(x)) : getVal(x), unite }));
+  const buteurs = mk(st.filter((x) => x.s.buts > 0), (x) => x.s.buts, false, null, "buts");
+  const passeurs = mk(st.filter((x) => x.s.passes > 0), (x) => x.s.passes, false, null, "passes");
+  const v10 = mk(st.filter((x) => x.t && x.t.v10), (x) => +x.t.v10, true, (v) => v.toFixed(2), "s");
+  const v20 = mk(st.filter((x) => x.t && x.t.v20), (x) => +x.t.v20, true, (v) => v.toFixed(2), "s");
+  const v40 = mk(st.filter((x) => x.t && x.t.v40), (x) => +x.t.v40, true, (v) => v.toFixed(2), "s");
+  const vma = mk(st.filter((x) => x.t && x.t.vma), (x) => +x.t.vma, false, (v) => v.toFixed(1), "km/h");
+  const presences = top3Egalites(st.filter((x) => x.a.seancesPointees > 0), (x) => x.a.presences / x.a.seancesPointees, false)
+    .map((x) => ({ nom: nom(x.p), val: Math.round((x.a.presences / x.a.seancesPointees) * 100), unite: "%", detail: `${x.a.presences}/${x.a.seancesPointees}` }));
+  // Données importées (fichier bilan) : en COMPLÉMENT, seulement si l'auto est vide pour ce classement.
+  const impJ = ((((b.config || {}).bilanImport) || {})[saison] || {}).joueurs || {};
+  const fus = (auto, liste, unite) => (auto.length ? auto : (Array.isArray(liste) ? liste.filter((r) => r && r.nom != null).map((r) => ({ nom: r.nom, val: r.val, unite, detail: r.detail })) : []));
+  const B = fus(buteurs, impJ.buteurs, "buts");
+  const P = fus(passeurs, impJ.passeurs, "passes");
+  const V10 = fus(v10, impJ.v10, "s");
+  const V20 = fus(v20, impJ.v20, "s");
+  const V40 = fus(v40, impJ.v40, "s");
+  const VMA = fus(vma, impJ.vma, "km/h");
+  const PR = fus(presences, impJ.presences, "%");
+  const aDesDonnees = B.length || P.length || V10.length || V20.length || V40.length || VMA.length || PR.length;
+  return { cat, saison, buteurs: B, passeurs: P, v10: V10, v20: V20, v40: V40, vma: VMA, presences: PR, aDesDonnees: !!aDesDonnees };
+}
+
+/* ============================================================
+   Bilan de saison en PDF, thème clair avec rappels des couleurs du club
+   (bandeau bleu #034A97, liseré jaune #FFCF21, logo FCSM), format paysage.
+   Pages réutilisables : collectif (équipe) et joueurs (individuel).
+   ============================================================ */
+const PDFC = { BLEU: [3, 74, 151], BLEUF: [2, 52, 110], JAUNE: [255, 207, 33], TILEBG: [233, 241, 251], ENCRE: [22, 35, 58], GRIS: [107, 118, 136], GRISF: [90, 100, 116], LIGNE: [227, 232, 240], BLANC: [255, 255, 255], CLAIRB: [214, 226, 245] };
+function pdfCtx(doc) {
+  return { sc: (c) => doc.setTextColor(c[0], c[1], c[2]), sd: (c) => doc.setDrawColor(c[0], c[1], c[2]), sf: (c) => doc.setFillColor(c[0], c[1], c[2]) };
+}
+// Bandeau d'en-tête bleu club + logo + titre blanc, liseré jaune dessous.
+function enteteBilanPDF(doc, titre, sousTitre) {
+  const { sc, sf } = pdfCtx(doc); const W = 842, M = 40;
+  sf(PDFC.BLEU); doc.rect(0, 0, W, 74, "F");
+  sf(PDFC.JAUNE); doc.rect(0, 74, W, 3, "F");
+  sc(PDFC.BLANC); doc.setFont("helvetica", "bold"); doc.setFontSize(20); doc.text(titre, M, 37);
+  if (sousTitre) { sc(PDFC.CLAIRB); doc.setFont("helvetica", "normal"); doc.setFontSize(11); doc.text(sousTitre, M, 57); }
+  // Logo du club en haut à droite du bandeau.
+  try { const pr = doc.getImageProperties(LOGO_CLUB); const lh = 48, lw = lh * (pr.width / pr.height); doc.addImage(LOGO_CLUB, "PNG", W - M - lw, 13, lw, lh); } catch (e) {}
+}
+function piedBilanPDF(doc) {
+  const { sc } = pdfCtx(doc); const W = 842, H = 595, M = 40;
+  sc(PDFC.GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+  doc.text(`Bilan édité le ${new Date().toLocaleDateString("fr-FR")}`, M, H - 18);
+  doc.text(CLUB_LONG, W - M, H - 18, { align: "right" });
+}
+// Carte blanche avec une liste de lignes. grand = « fenêtre » plus lisible (texte plus gros, sans numéro de rang).
+function carteListePDF(doc, x, y, w, h, titre, rows, maxRows, grand) {
+  const { sc, sd, sf } = pdfCtx(doc);
+  sf(PDFC.BLANC); doc.roundedRect(x, y, w, h, 8, 8, "F");
+  sd(PDFC.LIGNE); doc.setLineWidth(0.8); doc.roundedRect(x, y, w, h, 8, 8); doc.setLineWidth(0.5);
+  sc(PDFC.BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(grand ? 12 : 10); doc.text(titre.toUpperCase(), x + 16, y + 22);
+  sf(PDFC.JAUNE); doc.rect(x + 16, y + 27, 30, 3, "F");
+  if (!rows || !rows.length) { sc(PDFC.GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(grand ? 11 : 9.5); doc.text("Pas de donnée", x + 16, y + 50); return; }
+  const rh = grand ? 28 : 20; const startY = grand ? 52 : 44;
+  const mx = Math.max(1, Math.min(maxRows || 99, Math.floor((h - startY + 10) / rh)));
+  let ry = y + startY;
+  rows.slice(0, mx).forEach((r, i) => {
+    const vtxt = `${r.val}${r.unite ? " " + r.unite : ""}${r.detail ? " (" + r.detail + ")" : ""}`;
+    if (grand) {
+      doc.setFont("helvetica", "bold"); doc.setFontSize(13); const valW = doc.getTextWidth(vtxt);
+      const limite = Math.max(40, w - 32 - valW - 12);
+      // Pas de troncature : on réduit la taille du texte jusqu'à ce que le libellé tienne en entier.
+      doc.setFont("helvetica", "normal"); let fs = 12.5; doc.setFontSize(fs);
+      while (doc.getTextWidth(r.nom || "") > limite && fs > 7.5) { fs -= 0.5; doc.setFontSize(fs); }
+      sc(PDFC.ENCRE); doc.text(r.nom || "", x + 16, ry);
+      sc(PDFC.BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(vtxt, x + w - 16, ry, { align: "right" });
+    } else {
+      sf(i === 0 ? PDFC.JAUNE : [232, 236, 242]); doc.circle(x + 22, ry - 4, 7.5, "F");
+      sc(i === 0 ? PDFC.BLEUF : PDFC.GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.text(String(i + 1), x + 22, ry - 1, { align: "center" });
+      doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); const valW = doc.getTextWidth(vtxt);
+      const limite = Math.max(30, (x + w - 14) - (x + 36) - valW - 8);
+      doc.setFont("helvetica", "normal"); let fs = 10.5; doc.setFontSize(fs);
+      while (doc.getTextWidth(r.nom || "") > limite && fs > 7) { fs -= 0.5; doc.setFontSize(fs); }
+      sc(PDFC.ENCRE); doc.text(r.nom || "", x + 36, ry);
+      sc(PDFC.BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); doc.text(vtxt, x + w - 14, ry, { align: "right" });
+    }
+    ry += rh;
+  });
+}
+// Petite coupe dorée (vecteur) pour marquer un tournoi vainqueur. baseY = ligne de base du texte.
+function coupePDF(doc, cx, baseY, col) {
+  const { sf, sd } = pdfCtx(doc);
+  sf(col); sd(col);
+  const topY = baseY - 11, bowlH = 6.2, wTop = 10, wBot = 4;
+  const lxT = cx - wTop / 2, rxT = cx + wTop / 2, lxB = cx - wBot / 2, rxB = cx + wBot / 2, bBot = topY + bowlH;
+  doc.triangle(lxT, topY, rxT, topY, rxB, bBot, "F");
+  doc.triangle(lxT, topY, rxB, bBot, lxB, bBot, "F");
+  doc.setLineWidth(1.1);
+  doc.ellipse(lxT - 0.3, topY + 2, 2.4, 2.4, "S");
+  doc.ellipse(rxT + 0.3, topY + 2, 2.4, 2.4, "S");
+  doc.setLineWidth(0.5);
+  doc.rect(cx - 1, bBot, 2, 3, "F");
+  doc.rect(cx - 3, bBot + 3, 6, 2, "F");
+}
+// Bloc Tournois lisible (PDF) : gagnés / réalisés, puis le meilleur tournoi sur ses propres lignes.
+function panneauTournoisPDF(doc, x, y, w, h, d) {
+  const { sc, sd, sf } = pdfCtx(doc);
+  sf(PDFC.BLANC); doc.roundedRect(x, y, w, h, 8, 8, "F");
+  sd(PDFC.LIGNE); doc.setLineWidth(0.8); doc.roundedRect(x, y, w, h, 8, 8); doc.setLineWidth(0.5);
+  sc(PDFC.BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text("TOURNOIS", x + 16, y + 22);
+  sf(PDFC.JAUNE); doc.rect(x + 16, y + 27, 30, 3, "F");
+  const ligne = (lab, val, yy) => {
+    sc(PDFC.ENCRE); doc.setFont("helvetica", "normal"); doc.setFontSize(12); doc.text(lab, x + 16, yy);
+    sc(PDFC.BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(String(val), x + w - 16, yy, { align: "right" });
+  };
+  ligne("Tournois gagnés", d.tournois.gagnes, y + 52);
+  ligne("Tournois réalisés", d.tournois.nb, y + 74);
+  const vedettes = (d.tournois.misEnAvant && d.tournois.misEnAvant.length) ? d.tournois.misEnAvant : (d.tournois.meilleur ? [d.tournois.meilleur] : []);
+  if (vedettes.length) {
+    const padX = 16, x0 = x + padX, innerW = w - padX * 2;
+    const c1w = innerW * 0.46, c2w = innerW * 0.30, c3w = innerW * 0.24;
+    const c1x = x0, c2x = x0 + c1w, c3rx = x0 + innerW;
+    // Cellule : texte ajusté à la largeur (réduction de taille, jamais de troncature).
+    const cellule = (txt, cx, cy, maxW, align, baseFs, minFs, color, gras) => {
+      doc.setFont("helvetica", gras ? "bold" : "normal"); let fs = baseFs; doc.setFontSize(fs);
+      while (doc.getTextWidth(String(txt)) > maxW && fs > minFs) { fs -= 0.5; doc.setFontSize(fs); }
+      sc(color); doc.text(String(txt), cx, cy, align === "right" ? { align: "right" } : undefined);
+    };
+    sc(PDFC.GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text("TOURNOIS MIS EN AVANT", x0, y + 100);
+    // En-tête du tableau + filet.
+    let ty = y + 115;
+    sc(PDFC.GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+    doc.text("TOURNOI", c1x, ty); doc.text("LIEU", c2x, ty); doc.text("RANG", c3rx, ty, { align: "right" });
+    ty += 5; sd(PDFC.LIGNE); doc.setLineWidth(0.6); doc.line(x0, ty, x0 + innerW, ty); doc.setLineWidth(0.5);
+    const headY = ty;
+    const rows = vedettes.slice(0, 5);
+    // Hauteur de ligne dynamique : tout rentre dans le panneau, jusqu'à 5 tournois.
+    const dispo = (y + h - 12) - (headY + 10);
+    const rowH = Math.max(16, Math.min(22, dispo / rows.length));
+    ty = headY + 14;
+    rows.forEach((mt, i) => {
+      const estVainq = mt.vainqueur === true || +mt.place === 1;
+      let nx = c1x;
+      if (estVainq) { coupePDF(doc, c1x + 5, ty, PDFC.JAUNE); nx = c1x + 13; }
+      cellule(mt.nom || "Tournoi", nx, ty, (c1x + c1w - 4) - nx, "left", 9.5, 6.5, PDFC.ENCRE, true);
+      cellule(mt.lieu || "—", c2x, ty, c2w - 6, "left", 8.5, 6, PDFC.GRIS, false);
+      const clt = estVainq ? "1er" : (mt.place ? `${mt.place}${mt.nbEquipes ? "/" + mt.nbEquipes : ""}` : "—");
+      cellule(clt, c3rx, ty, c3w - 2, "right", 9, 6.5, PDFC.BLEU, true);
+      if (i < rows.length - 1) { sd(PDFC.LIGNE); doc.setLineWidth(0.4); doc.line(x0, ty + rowH * 0.32, x0 + innerW, ty + rowH * 0.32); doc.setLineWidth(0.5); }
+      ty += rowH;
+    });
+  }
+}
+function tournoisRowsPDF(d) {
+  const rows = [];
+  rows.push({ nom: "Tournois réalisés", val: d.tournois.nb });
+  rows.push({ nom: "Tournois gagnés", val: d.tournois.gagnes });
+  if (d.tournois.meilleur) { const mt = d.tournois.meilleur; rows.push({ nom: `Meilleur : ${mt.nom || "Tournoi"}`, val: mt.place ? `${mt.place}${mt.nbEquipes ? "/" + mt.nbEquipes : ""}` : "" }); }
+  (d.tournois.liste || []).filter((t) => +t.place > 0).sort((a, z) => (+a.place) - (+z.place)).slice(0, 3).forEach((t) => rows.push({ nom: t.nom || "Tournoi", val: `${t.place}${t.nbEquipes ? "/" + t.nbEquipes : ""}` }));
+  return rows;
+}
+// Page BILAN COLLECTIF (équipe) : résultats par type, buts, tournois, effectif. Collectif uniquement.
+function pageCollectifPDF(doc, d) {
+  const { sc, sf } = pdfCtx(doc); const W = 842, H = 595, M = 40, gap = 14;
+  sf(PDFC.BLANC); doc.rect(0, 0, W, H, "F");
+  enteteBilanPDF(doc, `BILAN COLLECTIF ${String(d.cat).toUpperCase()}`, `Saison ${d.saison}`);
+  const tuile = (x, y, w, h, val, lab, fs) => {
+    sf(PDFC.TILEBG); doc.roundedRect(x, y, w, h, 8, 8, "F");
+    sf(PDFC.JAUNE); doc.rect(x + 1, y + 11, 4, h - 22, "F");
+    sc(PDFC.BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(fs || 28); doc.text(String(val), x + 18, y + (fs ? 38 : 42));
+    sc(PDFC.GRISF); doc.setFont("helvetica", "normal"); doc.setFontSize(9); const L = doc.splitTextToSize(lab, w - 24); doc.text(L, x + 18, y + h - (L.length > 1 ? 22 : 13));
+  };
+  const w4 = (W - 2 * M - 3 * gap) / 4;
+  if (d.simple && d.simple.actif) {
+    // Bilan simple U7/U8 : même modèle, mais participation au lieu des résultats de championnat.
+    let y1 = 100; const h1 = 100;
+    [["Plateaux réalisés", d.simple.plateaux], ["Tournois réalisés", d.simple.tournois], ["Matchs amicaux", d.simple.amicaux], ["Joueurs dans l'effectif", d.effectif]]
+      .forEach((t, i) => tuile(M + i * (w4 + gap), y1, w4, h1, t[1], t[0], 34));
+    let y2 = y1 + h1 + gap; const h2 = 56;
+    sc(PDFC.GRISF); doc.setFont("helvetica", "italic"); doc.setFontSize(11);
+    doc.text("Catégorie sans championnat : bilan de participation.", M + 2, y2 + 18);
+    const cy = y2 + h2 + gap; const ch = H - cy - 34; const cw = (W - 2 * M - 2 * gap) / 3;
+    const partRows = (d.simple.detail && d.simple.detail.length) ? d.simple.detail : [
+      { nom: "Plateaux réalisés", val: d.simple.plateaux },
+      { nom: "Tournois réalisés", val: d.simple.tournois },
+      { nom: "Matchs amicaux", val: d.simple.amicaux },
+    ];
+    carteListePDF(doc, M, cy, cw, ch, "Participation", partRows, 8, true);
+    carteListePDF(doc, M + cw + gap, cy, cw, ch, "Effectif", [
+      { nom: "Joueurs dans l'effectif", val: d.effectif },
+      { nom: "Joueurs non conservés", val: d.nonConserves != null ? d.nonConserves : "à renseigner" },
+    ], 3, true);
+    carteListePDF(doc, M + 2 * (cw + gap), cy, cw, ch, "Entraînement", [
+      { nom: "Séances par semaine", val: d.seancesSemaine != null ? d.seancesSemaine : "à renseigner" },
+    ], 3, true);
+    piedBilanPDF(doc);
+    return;
+  }
+  const T = totauxCollectif(d);
+  const diff = d.bp - d.bc;
+  let y1 = 100; const h1 = 100;
+  [["Total matchs joués (année)", T.joues], ["Matchs gagnés", T.gagnes], ["Matchs nuls", T.nuls], ["Matchs perdus", T.perdus]]
+    .forEach((t, i) => tuile(M + i * (w4 + gap), y1, w4, h1, t[1], t[0], 34));
+  let y2 = y1 + h1 + gap; const h2 = 86; const w4b = (W - 2 * M - 3 * gap) / 4;
+  [["Buts marqués", d.bp], ["Buts encaissés", d.bc], ["Différence de buts", (diff > 0 ? "+" : "") + diff], ["Tournois gagnés / réalisés", `${d.tournois.gagnes}/${d.tournois.nb}`]]
+    .forEach((t, i) => tuile(M + i * (w4b + gap), y2, w4b, h2, t[1], t[0], 28));
+  const cy = y2 + h2 + gap + 4; const ch = H - cy - 34; const cw = (W - 2 * M - 2 * gap) / 3;
+  carteListePDF(doc, M, cy, cw, ch, "Nombre de victoires", parCompRows(d), 3, true);
+  panneauTournoisPDF(doc, M + cw + gap, cy, cw, ch, d);
+  carteListePDF(doc, M + 2 * (cw + gap), cy, cw, ch, "Effectif", [
+    { nom: "Joueurs dans l'effectif", val: d.effectif },
+    { nom: "Joueurs non conservés", val: d.nonConserves != null ? d.nonConserves : "à renseigner" },
+  ], 3, true);
+  piedBilanPDF(doc);
+}
+// Page BILAN JOUEURS (individuel) : 7 cartes (buteurs, passeurs, présence, VMA, 10/20/40 m).
+function pageJoueursPDF(doc, d) {
+  const { sf } = pdfCtx(doc); const W = 842, H = 595, M = 40, gap = 12;
+  sf(PDFC.BLANC); doc.rect(0, 0, W, H, "F");
+  enteteBilanPDF(doc, `BILAN JOUEURS ${String(d.cat).toUpperCase()}`, `Saison ${d.saison}`);
+  const cols = 4, rows = 2; const cw = (W - 2 * M - (cols - 1) * gap) / cols;
+  const topY = 100, botPad = 30; const ch = (H - topY - botPad - gap) / rows;
+  const cartes = [["Meilleurs buteurs", d.buteurs], ["Meilleurs passeurs", d.passeurs], ["Présence entraînement", d.presences], ["VMA (km/h)", d.vma], ["Vitesse 10 m (debout)", d.v10], ["Vitesse 20 m (debout)", d.v20], ["Vitesse 40 m (debout)", d.v40]];
+  cartes.forEach((c, i) => { const col = i % cols, row = Math.floor(i / cols); carteListePDF(doc, M + col * (cw + gap), topY + row * (ch + gap), cw, ch, c[0], c[1], 5); });
+  piedBilanPDF(doc);
+}
+function couvertureBilanPDF(doc, titre, saison, cible) {
+  const { sc, sf } = pdfCtx(doc); const W = 842, H = 595;
+  sf(PDFC.BLEU); doc.rect(0, 0, W, H, "F");
+  try { const pr = doc.getImageProperties(LOGO_CLUB); const lh = 92, lw = lh * (pr.width / pr.height); doc.addImage(LOGO_CLUB, "PNG", (W - lw) / 2, 128, lw, lh); } catch (e) {}
+  sc(PDFC.BLANC); doc.setFont("helvetica", "bold"); doc.setFontSize(30); doc.text(titre, W / 2, 290, { align: "center" });
+  sf(PDFC.JAUNE); doc.rect(W / 2 - 70, 306, 140, 3, "F");
+  if (cible) { sc(PDFC.JAUNE); doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.text(cible, W / 2, 338, { align: "center" }); }
+  sc(PDFC.CLAIRB); doc.setFont("helvetica", "normal"); doc.setFontSize(14); doc.text(`Saison ${saison}     Réunion de fin de saison`, W / 2, cible ? 366 : 346, { align: "center" });
+  sc(PDFC.CLAIRB); doc.setFontSize(12); doc.text(CLUB_LONG, W / 2, H - 40, { align: "center" });
+}
+function secteurPDF(doc, nom) {
+  const { sc, sf } = pdfCtx(doc); const W = 842, H = 595, M = 40;
+  sf(PDFC.BLANC); doc.rect(0, 0, W, H, "F");
+  try { const pr = doc.getImageProperties(LOGO_CLUB); const lh = 54, lw = lh * (pr.width / pr.height); doc.addImage(LOGO_CLUB, "PNG", W - M - lw, 30, lw, lh); } catch (e) {}
+  sf(PDFC.BLEU); doc.rect(0, H / 2 - 62, 12, 124, "F");
+  sf(PDFC.JAUNE); doc.rect(12, H / 2 - 62, 4, 124, "F");
+  sc(PDFC.BLEU); doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.text("SECTEUR", 44, H / 2 - 12);
+  sc(PDFC.ENCRE); doc.setFont("helvetica", "bold"); doc.setFontSize(30); doc.text(nom, 44, H / 2 + 24);
+}
+// Construit (sans télécharger) le PDF collectif d'une catégorie. Renvoie le document.
+function construireCollectifCatPDF(jsPDF, d) {
+  const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
+  try { doc.setProperties({ title: `Bilan collectif ${d.cat} ${d.saison}`, author: CLUB_LONG, creator: CLUB_LONG }); } catch (e) {}
+  pageCollectifPDF(doc, d);
+  return doc;
+}
+// Construit le PDF collectif (couverture + secteurs + une page par catégorie). cible = pôle visé ou « Tout le club ».
+function construireCollectifClubPDF(jsPDF, { saison, groupes, cible }) {
+  const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
+  try { doc.setProperties({ title: `Bilan collectif ${cible || "club"} ${saison}`, author: CLUB_LONG, creator: CLUB_LONG }); } catch (e) {}
+  couvertureBilanPDF(doc, "BILAN COLLECTIF", saison, cible);
+  const multi = groupes.length > 1;
+  groupes.forEach((g) => { if (!g.items.length) return; if (multi) { doc.addPage(); secteurPDF(doc, g.nom); } g.items.forEach((d) => { doc.addPage(); pageCollectifPDF(doc, d); }); });
+  return doc;
+}
+// Construit le PDF individuel des joueurs (couverture + secteurs + une page par catégorie).
+function construireJoueursClubPDF(jsPDF, { saison, groupes, cible }) {
+  const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
+  try { doc.setProperties({ title: `Bilan individuel ${cible || "club"} ${saison}`, author: CLUB_LONG, creator: CLUB_LONG }); } catch (e) {}
+  couvertureBilanPDF(doc, "BILAN INDIVIDUEL DES JOUEURS", saison, cible);
+  const multi = groupes.length > 1;
+  groupes.forEach((g) => { if (!g.items.length) return; if (multi) { doc.addPage(); secteurPDF(doc, g.nom); } g.items.forEach((d) => { doc.addPage(); pageJoueursPDF(doc, d); }); });
+  return doc;
+}
+
+/* ============================================================
+   Bilan de saison du club en PowerPoint (pour la réunion de fin de saison).
+   Deux présentations SÉPARÉES : bilan COLLECTIF et bilan INDIVIDUEL des joueurs,
+   chacune groupée par secteurs (École de foot/Préformation, Féminines, Formation/Pros).
+   Couleurs FCSM : fond bleu nuit, chiffres or, cartes crème sobres.
+   ============================================================ */
+// Palette FC Sochaux-Montbéliard, thème clair avec rappels des couleurs du club :
+// fond blanc, bandeau et accents bleu #034A97, liseré jaune #FFCF21, logo FCSM.
+const BPX = { BLEU: "034A97", BLEUF: "02346E", JAUNE: "FFCF21", TILEBG: "E9F1FB", ENCRE: "16233A", GRIS: "6B7688", LIGNE: "E3E8F0", BLANC: "FFFFFF", CLAIRB: "D6E2F5", FF: "Arial" };
+// Bandeau d'en-tête : bande bleue + logo + titre blanc + liseré jaune.
+function enteteSlide(pptx, s, titre, cat, saison) {
+  s.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.333, h: 1.0, fill: { color: BPX.BLEU } });
+  s.addShape(pptx.ShapeType.rect, { x: 0, y: 1.0, w: 13.333, h: 0.06, fill: { color: BPX.JAUNE } });
+  s.addText(`${titre}  ${String(cat).toUpperCase()}`, { x: 0.55, y: 0.12, w: 11.4, h: 0.5, fontSize: 23, color: BPX.BLANC, bold: true, valign: "middle", fontFace: BPX.FF });
+  s.addText(`Saison ${saison}`, { x: 0.55, y: 0.6, w: 11.4, h: 0.3, fontSize: 11.5, color: BPX.CLAIRB, valign: "middle", fontFace: BPX.FF });
+  // Logo du club en haut à droite, proportions respectées (ni étiré, ni aplati).
+  { const lh = 0.66, lw = lh * LOGO_RATIO; try { s.addImage({ data: LOGO_CLUB, x: 13.333 - 0.3 - lw, y: 0.17, w: lw, h: lh }); } catch (e) {} }
+}
+function piedSlide(s) {
+  const ML = 0.55;
+  s.addText(`Bilan édité le ${new Date().toLocaleDateString("fr-FR")}`, { x: ML, y: 7.15, w: 5, h: 0.25, fontSize: 8, color: BPX.GRIS, fontFace: BPX.FF });
+  s.addText(CLUB_LONG, { x: 13.333 - ML - 5, y: 7.15, w: 5, h: 0.25, fontSize: 8, color: BPX.GRIS, align: "right", fontFace: BPX.FF });
+}
+function tuilePptx(pptx, s, x, y, w, h, val, lab, fs) {
+  s.addShape(pptx.ShapeType.roundRect, { x, y, w, h, fill: { color: BPX.TILEBG }, rectRadius: 0.08 });
+  s.addShape(pptx.ShapeType.rect, { x: x + 0.04, y: y + 0.15, w: 0.06, h: h - 0.3, fill: { color: BPX.JAUNE } });
+  s.addText(String(val), { x: x + 0.24, y: y + 0.08, w: w - 0.38, h: h * 0.52, fontSize: fs || 26, color: BPX.BLEU, bold: true, align: "left", valign: "middle", fontFace: BPX.FF });
+  s.addText(lab, { x: x + 0.24, y: y + h - 0.46, w: w - 0.36, h: 0.4, fontSize: 9.5, color: BPX.GRIS, align: "left", valign: "top", fontFace: BPX.FF });
+}
+// grand = carte « fenêtre » plus lisible (texte plus gros, lignes libellées sans numéro de rang).
+function cartePptx(pptx, s, x, y, w, h, titre, rows, maxRows, grand) {
+  s.addShape(pptx.ShapeType.roundRect, { x, y, w, h, fill: { color: BPX.BLANC }, line: { color: BPX.LIGNE, width: 1 }, rectRadius: 0.08 });
+  s.addText(titre.toUpperCase(), { x: x + 0.18, y: y + 0.12, w: w - 0.36, h: 0.3, fontSize: grand ? 13 : 10.5, color: BPX.BLEU, bold: true, fontFace: BPX.FF });
+  s.addShape(pptx.ShapeType.rect, { x: x + 0.18, y: y + (grand ? 0.46 : 0.4), w: 0.5, h: 0.045, fill: { color: BPX.JAUNE } });
+  if (!rows || !rows.length) { s.addText("Pas de donnée", { x: x + 0.18, y: y + 0.6, w: w - 0.36, h: 0.3, fontSize: grand ? 11.5 : 9.5, color: BPX.GRIS, italic: true, fontFace: BPX.FF }); return; }
+  const rh = grand ? 0.46 : 0.3, startY = grand ? 0.66 : 0.54;
+  const mx = Math.max(1, Math.min(maxRows || 99, Math.floor((h - startY) / rh)));
+  rows.slice(0, mx).forEach((r, i) => {
+    const ry = y + startY + i * rh;
+    const vtxt = `${r.val}${r.unite ? " " + r.unite : ""}${r.detail ? " (" + r.detail + ")" : ""}`;
+    if (grand) {
+      const valCourt = String(vtxt).length <= 6;
+      const valW = valCourt ? 0.85 : 1.5;
+      s.addText(r.nom || "", { x: x + 0.2, y: ry, w: w - 0.4 - valW, h: 0.4, fontSize: 12.5, color: BPX.ENCRE, valign: "middle", fontFace: BPX.FF, fit: "shrink", wrap: false });
+      s.addText(vtxt, { x: x + w - 0.2 - valW, y: ry, w: valW, h: 0.4, fontSize: 13, bold: true, color: BPX.BLEU, align: "right", valign: "middle", fontFace: BPX.FF, fit: "shrink", wrap: false });
+    } else {
+      s.addText(`${i + 1}`, { x: x + 0.14, y: ry, w: 0.28, h: 0.28, fontSize: 9.5, bold: true, color: i === 0 ? BPX.BLEU : BPX.GRIS, align: "center", valign: "middle", fontFace: BPX.FF });
+      s.addText(r.nom || "", { x: x + 0.44, y: ry, w: w - 1.4, h: 0.28, fontSize: 10.5, color: BPX.ENCRE, valign: "middle", fontFace: BPX.FF, fit: "shrink", wrap: false });
+      s.addText(vtxt, { x: x + w - 1.1, y: ry, w: 0.94, h: 0.28, fontSize: 10, bold: true, color: BPX.BLEU, align: "right", valign: "middle", fontFace: BPX.FF, fit: "shrink", wrap: false });
+    }
+  });
+}
+// Bloc Tournois lisible (PPTX) : gagnés / réalisés, puis le meilleur tournoi sur ses propres lignes.
+// Petite coupe dorée (formes) pour marquer un tournoi vainqueur en PowerPoint. yTop = haut de la coupe.
+function coupePptx(pptx, s, x, yTop) {
+  const col = BPX.JAUNE;
+  s.addShape(pptx.ShapeType.triangle, { x, y: yTop, w: 0.17, h: 0.12, fill: { color: col }, flipV: true });
+  s.addShape(pptx.ShapeType.rect, { x: x + 0.075, y: yTop + 0.12, w: 0.02, h: 0.05, fill: { color: col } });
+  s.addShape(pptx.ShapeType.rect, { x: x + 0.035, y: yTop + 0.17, w: 0.1, h: 0.03, fill: { color: col } });
+}
+function panneauTournoisPptx(pptx, s, x, y, w, h, d) {
+  s.addShape(pptx.ShapeType.roundRect, { x, y, w, h, fill: { color: BPX.BLANC }, line: { color: BPX.LIGNE, width: 1 }, rectRadius: 0.08 });
+  s.addText("TOURNOIS", { x: x + 0.18, y: y + 0.1, w: w - 0.36, h: 0.26, fontSize: 12.5, color: BPX.BLEU, bold: true, fontFace: BPX.FF });
+  s.addShape(pptx.ShapeType.rect, { x: x + 0.18, y: y + 0.4, w: 0.5, h: 0.045, fill: { color: BPX.JAUNE } });
+  // Une seule ligne compacte : gagnés + réalisés.
+  const padX = 0.18, x0 = x + padX, innerW = w - padX * 2;
+  s.addText([
+    { text: "Gagnés ", options: { color: BPX.ENCRE } }, { text: String(d.tournois.gagnes), options: { bold: true, color: BPX.BLEU } },
+    { text: "    Réalisés ", options: { color: BPX.ENCRE } }, { text: String(d.tournois.nb), options: { bold: true, color: BPX.BLEU } },
+  ], { x: x0, y: y + 0.5, w: innerW, h: 0.3, fontSize: 12, valign: "middle", fontFace: BPX.FF, fit: "shrink", wrap: false });
+  const vedettes = (d.tournois.misEnAvant && d.tournois.misEnAvant.length) ? d.tournois.misEnAvant : (d.tournois.meilleur ? [d.tournois.meilleur] : []);
+  if (vedettes.length) {
+    const c1w = innerW * 0.46, c2w = innerW * 0.30, c3w = innerW * 0.24;
+    const c1x = x0, c2x = x0 + c1w, c3x = x0 + c1w + c2w;
+    s.addText("TOURNOIS MIS EN AVANT", { x: x0, y: y + 0.86, w: innerW, h: 0.2, fontSize: 9, color: BPX.GRIS, bold: true, fontFace: BPX.FF });
+    const hy = y + 1.08;
+    s.addText("TOURNOI", { x: c1x, y: hy, w: c1w, h: 0.18, fontSize: 7, bold: true, color: BPX.GRIS, valign: "middle", fontFace: BPX.FF });
+    s.addText("LIEU", { x: c2x, y: hy, w: c2w, h: 0.18, fontSize: 7, bold: true, color: BPX.GRIS, valign: "middle", fontFace: BPX.FF });
+    s.addText("RANG", { x: c3x, y: hy, w: c3w, h: 0.18, fontSize: 7, bold: true, color: BPX.GRIS, align: "right", valign: "middle", fontFace: BPX.FF });
+    s.addShape(pptx.ShapeType.line, { x: x0, y: hy + 0.2, w: innerW, h: 0, line: { color: BPX.LIGNE, width: 0.75 } });
+    const rows = vedettes.slice(0, 5);
+    const dispo = (y + h - 0.12) - (hy + 0.26); // hauteur restante pour les lignes
+    const rowH = Math.max(0.24, Math.min(0.34, dispo / rows.length));
+    let ry = hy + 0.26;
+    rows.forEach((mt, i) => {
+      const estVainq = mt.vainqueur === true || +mt.place === 1;
+      let nx = c1x, nw = c1w;
+      if (estVainq) { coupePptx(pptx, s, c1x, ry + (rowH - 0.2) / 2); nx = c1x + 0.2; nw = c1w - 0.2; }
+      s.addText(mt.nom || "Tournoi", { x: nx, y: ry, w: nw, h: rowH, fontSize: 9, bold: true, color: BPX.ENCRE, valign: "middle", fontFace: BPX.FF, fit: "shrink", wrap: false });
+      s.addText(mt.lieu || "—", { x: c2x, y: ry, w: c2w, h: rowH, fontSize: 8, color: BPX.GRIS, valign: "middle", fontFace: BPX.FF, fit: "shrink", wrap: false });
+      const clt = estVainq ? "1er" : (mt.place ? `${mt.place}${mt.nbEquipes ? "/" + mt.nbEquipes : ""}` : "—");
+      s.addText(clt, { x: c3x, y: ry, w: c3w, h: rowH, fontSize: 8.5, bold: true, color: BPX.BLEU, align: "right", valign: "middle", fontFace: BPX.FF, fit: "shrink", wrap: false });
+      if (i < rows.length - 1) s.addShape(pptx.ShapeType.line, { x: x0, y: ry + rowH, w: innerW, h: 0, line: { color: BPX.LIGNE, width: 0.5 } });
+      ry += rowH;
+    });
+  }
+}
+function slideCouvertureBilan(pptx, titre, saison, cible) {
+  const s = pptx.addSlide(); s.background = { color: BPX.BLEU };
+  { const lh = 1.7, lw = lh * LOGO_RATIO; try { s.addImage({ data: LOGO_CLUB, x: (13.333 - lw) / 2, y: 1.1, w: lw, h: lh }); } catch (e) {} }
+  s.addText(CLUB_LONG.toUpperCase(), { x: 0.5, y: 3.05, w: 12.33, h: 0.4, fontSize: 15, color: BPX.CLAIRB, bold: true, align: "center", fontFace: BPX.FF });
+  s.addText(titre, { x: 0.5, y: 3.5, w: 12.33, h: 0.9, fontSize: 36, color: BPX.BLANC, bold: true, align: "center", fontFace: BPX.FF });
+  s.addShape(pptx.ShapeType.rect, { x: (13.333 - 1.4) / 2, y: 4.5, w: 1.4, h: 0.05, fill: { color: BPX.JAUNE } });
+  if (cible) s.addText(cible, { x: 0.5, y: 4.62, w: 12.33, h: 0.4, fontSize: 18, color: BPX.JAUNE, bold: true, align: "center", fontFace: BPX.FF });
+  s.addText(`Saison ${saison}     Réunion de fin de saison`, { x: 0.5, y: cible ? 5.08 : 4.75, w: 12.33, h: 0.4, fontSize: 16, color: BPX.CLAIRB, align: "center", fontFace: BPX.FF });
+}
+
+function slideSecteur(pptx, nomSecteur) {
+  const s = pptx.addSlide(); s.background = { color: BPX.BLANC };
+  { const lh = 0.78, lw = lh * LOGO_RATIO; try { s.addImage({ data: LOGO_CLUB, x: 13.333 - 0.35 - lw, y: 0.3, w: lw, h: lh }); } catch (e) {} }
+  s.addShape(pptx.ShapeType.rect, { x: 0, y: 2.9, w: 0.35, h: 1.7, fill: { color: BPX.BLEU } });
+  s.addShape(pptx.ShapeType.rect, { x: 0.35, y: 2.9, w: 0.1, h: 1.7, fill: { color: BPX.JAUNE } });
+  s.addText("SECTEUR", { x: 0.95, y: 3.0, w: 11, h: 0.4, fontSize: 14, color: BPX.BLEU, bold: true, fontFace: BPX.FF });
+  s.addText(nomSecteur, { x: 0.95, y: 3.45, w: 11.6, h: 1.0, fontSize: 36, color: BPX.ENCRE, bold: true, fontFace: BPX.FF });
+}
+function slideCollectif(pptx, d) {
+  const s = pptx.addSlide(); s.background = { color: BPX.BLANC };
+  const ML = 0.55, gap = 0.22;
+  enteteSlide(pptx, s, "BILAN COLLECTIF", d.cat, d.saison);
+  const w4 = (13.333 - 2 * ML - 3 * gap) / 4;
+  if (d.simple && d.simple.actif) {
+    // Bilan simple U7/U8 : même modèle, participation au lieu des résultats de championnat.
+    const y1 = 1.4, h1 = 1.55;
+    [["Plateaux réalisés", d.simple.plateaux], ["Tournois réalisés", d.simple.tournois], ["Matchs amicaux", d.simple.amicaux], ["Joueurs dans l'effectif", d.effectif]]
+      .forEach((t, i) => tuilePptx(pptx, s, ML + i * (w4 + gap), y1, w4, h1, t[1], t[0], 34));
+    const y2b = y1 + h1 + gap;
+    s.addText("Catégorie sans championnat : bilan de participation.", { x: ML, y: y2b, w: 12, h: 0.35, fontSize: 12, italic: true, color: BPX.GRIS, fontFace: BPX.FF });
+    const cyb = y2b + 0.5, chb = 7.5 - cyb - 0.4, cwb = (13.333 - 2 * ML - 2 * gap) / 3;
+    const partRows = (d.simple.detail && d.simple.detail.length) ? d.simple.detail : [
+      { nom: "Plateaux réalisés", val: d.simple.plateaux },
+      { nom: "Tournois réalisés", val: d.simple.tournois },
+      { nom: "Matchs amicaux", val: d.simple.amicaux },
+    ];
+    cartePptx(pptx, s, ML, cyb, cwb, chb, "Participation", partRows, 8, true);
+    cartePptx(pptx, s, ML + cwb + gap, cyb, cwb, chb, "Effectif", [
+      { nom: "Joueurs dans l'effectif", val: d.effectif },
+      { nom: "Joueurs non conservés", val: d.nonConserves != null ? d.nonConserves : "à renseigner" },
+    ], 3, true);
+    cartePptx(pptx, s, ML + 2 * (cwb + gap), cyb, cwb, chb, "Entraînement", [
+      { nom: "Séances par semaine", val: d.seancesSemaine != null ? d.seancesSemaine : "à renseigner" },
+    ], 3, true);
+    piedSlide(s);
+    return;
+  }
+  const T = totauxCollectif(d);
+  const diff = d.bp - d.bc;
+  const y1 = 1.3, h1 = 1.28;
+  [["Total matchs joués (année)", T.joues], ["Matchs gagnés", T.gagnes], ["Matchs nuls", T.nuls], ["Matchs perdus", T.perdus]]
+    .forEach((t, i) => tuilePptx(pptx, s, ML + i * (w4 + gap), y1, w4, h1, t[1], t[0], 32));
+  const y2 = y1 + h1 + gap, h2 = 1.02, w4b = (13.333 - 2 * ML - 3 * gap) / 4;
+  [["Buts marqués", d.bp], ["Buts encaissés", d.bc], ["Différence de buts", (diff > 0 ? "+" : "") + diff], ["Tournois gagnés / réalisés", `${d.tournois.gagnes}/${d.tournois.nb}`]]
+    .forEach((t, i) => tuilePptx(pptx, s, ML + i * (w4b + gap), y2, w4b, h2, t[1], t[0], 26));
+  const cy = y2 + h2 + gap + 0.08, ch = 7.5 - cy - 0.35, cw = (13.333 - 2 * ML - 2 * gap) / 3;
+  cartePptx(pptx, s, ML, cy, cw, ch, "Nombre de victoires", parCompRows(d), 3, true);
+  panneauTournoisPptx(pptx, s, ML + cw + gap, cy, cw, ch, d);
+  cartePptx(pptx, s, ML + 2 * (cw + gap), cy, cw, ch, "Effectif", [
+    { nom: "Joueurs dans l'effectif", val: d.effectif },
+    { nom: "Joueurs non conservés", val: d.nonConserves != null ? d.nonConserves : "à renseigner" },
+  ], 3, true);
+  piedSlide(s);
+}
+function slideJoueurs(pptx, d) {
+  const s = pptx.addSlide(); s.background = { color: BPX.BLANC };
+  const ML = 0.55, gap = 0.2;
+  enteteSlide(pptx, s, "BILAN JOUEURS", d.cat, d.saison);
+  const cols = 4, rows = 2;
+  const cw = (13.333 - 2 * ML - (cols - 1) * gap) / cols;
+  const topY = 1.5, botPad = 0.45, ch = (7.5 - topY - botPad - gap) / rows;
+  const cartes = [
+    ["Meilleurs buteurs", d.buteurs], ["Meilleurs passeurs", d.passeurs],
+    ["Présence entraînement", d.presences], ["VMA (km/h)", d.vma],
+    ["Vitesse 10 m (debout)", d.v10], ["Vitesse 20 m (debout)", d.v20],
+    ["Vitesse 40 m (debout)", d.v40],
+  ];
+  cartes.forEach((c, i) => {
+    const col = i % cols, row = Math.floor(i / cols);
+    cartePptx(pptx, s, ML + col * (cw + gap), topY + row * (ch + gap), cw, ch, c[0], c[1], 5);
+  });
+  piedSlide(s);
+}
+async function exporterBilanCollectifPPTX(PptxGenJS, { saison, groupes, cible, nomFichier }) {
+  const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE";
+  try { pptx.author = CLUB_LONG; pptx.company = CLUB_LONG; pptx.title = `Bilan collectif ${cible || "club"} ${saison}`; } catch (e) {}
+  slideCouvertureBilan(pptx, "BILAN COLLECTIF", saison, cible);
+  const multi = groupes.length > 1;
+  groupes.forEach((g) => { if (!g.items.length) return; if (multi) slideSecteur(pptx, g.nom); g.items.forEach((d) => slideCollectif(pptx, d)); });
+  await pptx.writeFile({ fileName: `${(nomFichier || "Bilan_collectif_club_" + saison)}.pptx`.replace(/\s+/g, "_") });
+}
+async function exporterBilanJoueursPPTX(PptxGenJS, { saison, groupes, cible, nomFichier }) {
+  const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE";
+  try { pptx.author = CLUB_LONG; pptx.company = CLUB_LONG; pptx.title = `Bilan individuel ${cible || "club"} ${saison}`; } catch (e) {}
+  slideCouvertureBilan(pptx, "BILAN INDIVIDUEL DES JOUEURS", saison, cible);
+  const multi = groupes.length > 1;
+  groupes.forEach((g) => { if (!g.items.length) return; if (multi) slideSecteur(pptx, g.nom); g.items.forEach((d) => slideJoueurs(pptx, d)); });
+  await pptx.writeFile({ fileName: `${(nomFichier || "Bilan_individuel_club_" + saison)}.pptx`.replace(/\s+/g, "_") });
+}
+
+function BilanEquipe({ db, players, cat, mutate, onClose, onTournois }) {
   const saisons = useMemo(() => {
     const s = new Set([saisonCourante()]);
     (db.matches || []).forEach((m) => { if (m.cat === cat) { const sa = saisonDe(m.date); if (sa) s.add(sa); } });
     return [...s].sort().reverse();
   }, [db, cat]);
   const [saison, setSaison] = useState(saisons[0]);
+  const [vue, setVue] = useState("collectif"); // "collectif" | "joueurs" | "club"
   const [pdfMsg, setPdfMsg] = useState(null);
+  const [clubMsg, setClubMsg] = useState(null);
 
-  const joues = (db.matches || []).filter((m) => m.cat === cat && saisonDe(m.date) === saison && matchCompteStats(m));
-  let v = 0, n = 0, d = 0, bp = 0, bc = 0;
-  joues.forEach((m) => {
-    const sp = +m.scorePour, sc = +m.scoreContre;
-    bp += sp; bc += sc;
-    if (sp > sc) v++; else if (sp === sc) n++; else d++;
-  });
-  const nbMatchs = joues.length;
+  // Catégorie affichée : on peut consulter une autre catégorie sans fermer la page (menu déroulant).
+  const [catSel, setCatSel] = useState(cat);
+  const [catBlob, setCatBlob] = useState(null); // données chargées d'une autre catégorie que la courante
+  const [chargeMsg, setChargeMsg] = useState(null);
+  useEffect(() => {
+    let annule = false;
+    if (catSel === cat) { setCatBlob(null); setChargeMsg(null); return; }
+    setCatBlob(null); setChargeMsg("Chargement de la catégorie...");
+    loadCat(catSel).then((b) => { if (!annule) { setCatBlob(b || {}); setChargeMsg(null); } })
+      .catch(() => { if (!annule) { setCatBlob({}); setChargeMsg("Chargement impossible (vérifie la connexion)."); } });
+    return () => { annule = true; };
+  }, [catSel, cat]);
+  const estCourante = catSel === cat;
+  const dataDb = estCourante ? db : (catBlob || {});
+  const pret = estCourante || catBlob !== null; // données prêtes à afficher
 
-  const statsJ = players.map((p) => ({ p, s: statsJoueur(p, db, saison) }));
-  const buteurs = statsJ.filter((x) => x.s.buts > 0).sort((a, b) => b.s.buts - a.s.buts).slice(0, 8);
-  const passeurs = statsJ.filter((x) => x.s.passes > 0).sort((a, b) => b.s.passes - a.s.passes).slice(0, 8);
-  const notes = statsJ.filter((x) => x.s.moy != null).sort((a, b) => b.s.moy - a.s.moy).slice(0, 5);
+  const col = bilanCollectifCat(dataDb, catSel, saison);
+  const jou = bilanJoueursCat(dataDb, catSel, saison);
+  const diffButs = col.bp - col.bc;
+  const totCol = totauxCollectif(col);
 
-  async function telechargerBilan() {
+  // Infos saisies à la main (direction) : non conservés, séances/semaine, niveau/évolution.
+  // Modifiables uniquement pour la catégorie courante (celle ouverte dans l'appli).
+  const infos = (((dataDb.config || {}).bilanInfos) || {})[saison] || {};
+  function setInfo(champ, val) {
+    if (!estCourante || typeof mutate !== "function") return;
+    mutate((dd) => {
+      dd.config = dd.config || {};
+      dd.config.bilanInfos = dd.config.bilanInfos || {};
+      dd.config.bilanInfos[saison] = { ...(dd.config.bilanInfos[saison] || {}), [champ]: val };
+      return dd;
+    });
+  }
+  // Coche/décoche un tournoi « à mettre en avant » dans le bilan (le total comptabilisé ne change pas).
+  function toggleTournoiEnAvant(t) {
+    if (!estCourante || typeof mutate !== "function" || !t || !t.id) return;
+    mutate((dd) => {
+      if (t.source === "match") { const m = (dd.matches || []).find((x) => x.id === t.id); if (m) m.enAvant = !m.enAvant; }
+      else { const r = (dd.tournois || []).find((x) => x.id === t.id); if (r) r.enAvant = !r.enAvant; }
+      return dd;
+    });
+  }
+
+  const [apercu, setApercu] = useState(null); // { doc, nom } : aperçu PDF avant enregistrer/imprimer
+
+  // Aperçu PDF collectif de la catégorie affichée (consultable, puis enregistrer ou imprimer).
+  async function apercuCollectifCatPDF() {
     setPdfMsg("Préparation du PDF...");
     try {
       const jsPDF = await chargerJsPDF();
-      const nom = (x) => `${x.p.prenom || ""} ${x.p.nom || ""}`.trim();
-      exporterBilanPDF(jsPDF, {
-        cat, saison, nbMatchs, v, n, d, bp, bc,
-        buteurs: buteurs.map((x) => ({ nom: nom(x), val: x.s.buts })),
-        passeurs: passeurs.map((x) => ({ nom: nom(x), val: x.s.passes })),
-        notes: notes.map((x) => ({ nom: nom(x), val: x.s.moy.toFixed(1) })),
-      });
+      const doc = construireCollectifCatPDF(jsPDF, bilanCollectifCat(dataDb, catSel, saison));
+      setApercu({ url: doc.output("bloburl"), nom: `Bilan_collectif_${catSel}_${saison}.pdf`.replace(/\s+/g, "_") });
       setPdfMsg(null);
-    } catch (e) {
-      setPdfMsg("Téléchargement du module PDF impossible (vérifie la connexion). Réessaie.");
-    }
+    } catch (e) { setPdfMsg("Module PDF indisponible (vérifie la connexion). Réessaie."); }
   }
 
-  const Tuile = ({ val, lab, col }) => (
-    <div style={{ background: "#fff", borderRadius: 12, padding: "12px 6px", textAlign: "center", border: `1px solid ${C.grisClair}`, flex: 1 }}>
-      <div style={{ fontSize: 22, fontWeight: 900, color: col || C.bleu }}>{val}</div>
-      <div style={{ fontSize: 10.5, color: C.gris, marginTop: 2 }}>{lab}</div>
+  // Choix du pôle pour les exports : un pôle précis, ou tous les pôles réunis.
+  const [pole, setPole] = useState(poleDeCategorie(cat) || "__TOUS__");
+  const labelCible = () => pole === "__TOUS__" ? "Tout le club" : pole;
+  const slugCible = () => (pole === "__TOUS__" ? "club" : pole).replace(/[àâä]/gi, "a").replace(/[éèêë]/gi, "e").replace(/[ôö]/gi, "o").replace(/[ùûü]/gi, "u").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  // Charge les catégories du pôle visé (toutes, même sans données) et calcule collectif + joueurs.
+  async function chargerPourPole() {
+    const secteurs = pole === "__TOUS__" ? SECTEURS_BILAN : SECTEURS_BILAN.filter((s) => s.nom === pole);
+    const cats = [...new Set(secteurs.flatMap((s) => s.cats))];
+    const parCat = {};
+    for (let i = 0; i < cats.length; i++) {
+      const c = cats[i];
+      setClubMsg(`Lecture des données : ${c} (${i + 1}/${cats.length})`);
+      let blob = null;
+      try { blob = (c === cat) ? db : await loadCat(c); } catch (e) { blob = null; }
+      if (blob) parCat[c] = { collectif: bilanCollectifCat(blob, c, saison), joueurs: bilanJoueursCat(blob, c, saison) };
+    }
+    return { secteurs, parCat };
+  }
+  // Groupes pour l'export : TOUTES les catégories du pôle (U7 à U15, etc.), même sans données.
+  function groupesDe(secteurs, parCat, kind) {
+    return secteurs.map((sec) => ({ nom: sec.nom, items: sec.cats.map((c) => parCat[c] && (kind === "collectif" ? parCat[c].collectif : parCat[c].joueurs)).filter(Boolean) }));
+  }
+  // Aperçu PDF du bilan du pôle (collectif ou individuel).
+  async function apercuClubPDF(kind) {
+    setClubMsg("Préparation du PDF...");
+    try {
+      const jsPDF = await chargerJsPDF();
+      const { secteurs, parCat } = await chargerPourPole();
+      const groupes = groupesDe(secteurs, parCat, kind);
+      if (!groupes.some((g) => g.items.length)) { setClubMsg("Aucune catégorie chargée pour ce pôle."); return; }
+      setClubMsg("Génération du PDF...");
+      const doc = kind === "collectif" ? construireCollectifClubPDF(jsPDF, { saison, groupes, cible: labelCible() }) : construireJoueursClubPDF(jsPDF, { saison, groupes, cible: labelCible() });
+      setApercu({ url: doc.output("bloburl"), nom: `Bilan_${kind}_${slugCible()}_${saison}.pdf`.replace(/\s+/g, "_") });
+      setClubMsg(null);
+    } catch (e) { setClubMsg("Génération impossible (vérifie la connexion). Réessaie."); }
+  }
+  // Export PowerPoint du bilan du pôle (collectif ou individuel).
+  async function exportClub(kind) {
+    setClubMsg("Préparation du PowerPoint...");
+    try {
+      const PptxGenJS = await chargerPptxGenJS();
+      const { secteurs, parCat } = await chargerPourPole();
+      const groupes = groupesDe(secteurs, parCat, kind);
+      if (!groupes.some((g) => g.items.length)) { setClubMsg("Aucune catégorie chargée pour ce pôle."); return; }
+      setClubMsg("Génération du PowerPoint...");
+      const nomFichier = `Bilan_${kind === "collectif" ? "collectif" : "individuel"}_${slugCible()}_${saison}`;
+      if (kind === "collectif") await exporterBilanCollectifPPTX(PptxGenJS, { saison, groupes, cible: labelCible(), nomFichier });
+      else await exporterBilanJoueursPPTX(PptxGenJS, { saison, groupes, cible: labelCible(), nomFichier });
+      setClubMsg(kind === "collectif" ? "PowerPoint collectif généré." : "PowerPoint individuel généré.");
+    } catch (e) { setClubMsg("Génération impossible (vérifie la connexion). Réessaie."); }
+  }
+
+  const Tuile = ({ val, lab, col: cc }) => (
+    <div style={{ background: "#fff", borderRadius: 12, padding: "12px 6px", textAlign: "center", border: `1px solid ${C.grisClair}`, flex: 1, minWidth: 0 }}>
+      <div style={{ fontSize: 20, fontWeight: 900, color: cc || C.bleu }}>{val}</div>
+      <div style={{ fontSize: 10, color: C.gris, marginTop: 2, lineHeight: 1.25 }}>{lab}</div>
     </div>
   );
-
-  const Classement = ({ titre, data, cle, unite }) => (
+  const Liste = ({ titre, rows }) => (
     <>
-      <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "16px 0 8px" }}>{titre}</div>
-      {data.length === 0 ? (
-        <div style={{ fontSize: 13, color: C.gris, padding: "4px 2px" }}>Aucune donnée pour cette saison.</div>
+      <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "14px 0 8px" }}>{titre}</div>
+      {(!rows || !rows.length) ? (
+        <div style={{ fontSize: 13, color: C.gris, padding: "2px" }}>Pas de donnée pour cette saison.</div>
       ) : (
         <Card>
-          {data.map((x, i) => (
-            <div key={x.p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: i ? `1px solid ${C.grisClair}` : "none" }}>
+          {rows.map((r, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: i ? `1px solid ${C.grisClair}` : "none" }}>
               <span style={{ width: 22, height: 22, borderRadius: 999, background: i === 0 ? C.jaune : "#EEF2F8", color: i === 0 ? C.bleuNuit : C.gris, fontSize: 12, fontWeight: 800, display: "grid", placeItems: "center", flex: "0 0 auto" }}>{i + 1}</span>
-              <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{x.p.prenom} {x.p.nom}</span>
-              <span style={{ fontSize: 15, fontWeight: 900, color: C.bleu }}>{cle === "moy" ? x.s.moy.toFixed(1) : x.s[cle]}<span style={{ fontSize: 11, color: C.gris, fontWeight: 700 }}> {unite}</span></span>
+              <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{r.nom}</span>
+              <span style={{ fontSize: 14, fontWeight: 900, color: C.bleu }}>{r.val}{r.unite ? <span style={{ fontSize: 11, color: C.gris, fontWeight: 700 }}> {r.unite}</span> : null}{r.detail ? <span style={{ fontSize: 11, color: C.gris, fontWeight: 600 }}> ({r.detail})</span> : null}</span>
             </div>
           ))}
         </Card>
       )}
     </>
   );
+  const SousTitre = ({ children }) => (<div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "12px 0 8px" }}>{children}</div>);
 
   return (
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
-        <div style={{ fontWeight: 800, fontSize: 16 }}>Bilan de saison · {cat}</div>
+        <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Bilan de saison · {catSel}</div>
+        <BoutonSauver size="sm" />
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto" }}><X size={17} /> Fermer</button>
       </header>
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
-        <Field label="Saison">
-          <Sel value={saison} onChange={(e) => setSaison(e.target.value)}>
-            {saisons.map((s) => <option key={s} value={s}>{s}</option>)}
-          </Sel>
-        </Field>
-        {nbMatchs > 0 && <Btn variant="accent" full style={{ margin: "2px 0 6px" }} onClick={telechargerBilan}><FileDown size={16} /> Exporter le bilan en PDF</Btn>}
-        {pdfMsg && <div style={{ fontSize: 12.5, color: pdfMsg.includes("impossible") ? C.rouge : C.gris, marginBottom: 10, textAlign: "center" }}>{pdfMsg}</div>}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 160px", minWidth: 0 }}>
+            <Field label="Catégorie (par pôle)">
+              <Sel value={catSel} onChange={(e) => setCatSel(e.target.value)}>
+                {SECTEURS_BILAN.map((sec) => (
+                  <optgroup key={sec.nom} label={sec.nom}>
+                    {sec.cats.map((id) => <option key={id} value={id}>{id}</option>)}
+                  </optgroup>
+                ))}
+                {(() => {
+                  const dansPole = new Set(SECTEURS_BILAN.flatMap((s) => s.cats));
+                  const autres = CATEGORIES.filter((c) => !dansPole.has(c.id));
+                  return autres.length ? <optgroup label="Autres">{autres.map((c) => <option key={c.id} value={c.id}>{c.id}</option>)}</optgroup> : null;
+                })()}
+              </Sel>
+            </Field>
+          </div>
+          <div style={{ flex: "1 1 160px", minWidth: 0 }}>
+            <Field label="Saison">
+              <Sel value={saison} onChange={(e) => setSaison(e.target.value)}>
+                {saisons.map((s) => <option key={s} value={s}>{s}</option>)}
+              </Sel>
+            </Field>
+          </div>
+        </div>
+        {poleDeCategorie(catSel) && <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#EAF1FB", color: C.bleu, fontWeight: 800, fontSize: 11.5, borderRadius: 999, padding: "4px 11px", margin: "2px 0 8px" }}>{poleDeCategorie(catSel)}</div>}
+        {!estCourante && <div style={{ fontSize: 11.5, color: C.gris, margin: "2px 0 8px", lineHeight: 1.45 }}>Tu consultes la catégorie {catSel}. Les champs « à renseigner » ne sont modifiables que depuis la catégorie ouverte dans l'appli ({cat}).</div>}
+        {chargeMsg && <div style={{ fontSize: 12.5, color: chargeMsg.includes("impossible") ? C.rouge : C.gris, margin: "2px 0 10px", textAlign: "center" }}>{chargeMsg}</div>}
+        <div style={{ display: "flex", gap: 7, margin: "4px 0 12px" }}>
+          {[["collectif", "Collectif"], ["joueurs", "Joueurs"], ["club", "Club (réunion)"]].map(([k, lab]) => (
+            <button key={k} onClick={() => setVue(k)} style={{
+              flex: 1, border: "none", cursor: "pointer", borderRadius: 10, padding: "9px 6px",
+              fontWeight: 800, fontSize: 12, background: vue === k ? C.bleu : "#fff", color: vue === k ? "#fff" : C.gris,
+              boxShadow: "0 1px 3px rgba(10,42,107,0.08)",
+            }}>{lab}</button>
+          ))}
+        </div>
 
-        {nbMatchs === 0 ? (
-          <Empty icon={<Trophy size={26} color={C.gris} />} text="Aucun match joué cette saison" sub="Les résultats apparaîtront une fois les scores saisis" />
-        ) : (
+        {pret && vue === "collectif" && (
           <>
-            <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "6px 0 8px" }}>Résultats</div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-              <Tuile val={nbMatchs} lab="Matchs" />
-              <Tuile val={v} lab="Victoires" col={C.vert} />
-              <Tuile val={n} lab="Nuls" col="#B87A2B" />
-              <Tuile val={d} lab="Défaites" col={C.rouge} />
-            </div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-              <Tuile val={bp} lab="Buts marqués" />
-              <Tuile val={bc} lab="Buts encaissés" />
-              <Tuile val={(bp - bc > 0 ? "+" : "") + (bp - bc)} lab="Différence" col={bp - bc >= 0 ? C.vert : C.rouge} />
-            </div>
+            <Btn variant="accent" full style={{ marginBottom: 6 }} onClick={apercuCollectifCatPDF}><FileDown size={16} /> Aperçu / imprimer le bilan collectif (PDF)</Btn>
+            {pdfMsg && <div style={{ fontSize: 12.5, color: pdfMsg.includes("indisponible") ? C.rouge : C.gris, marginBottom: 8, textAlign: "center" }}>{pdfMsg}</div>}
 
-            <Classement titre="Meilleurs buteurs" data={buteurs} cle="buts" unite="buts" />
-            <Classement titre="Meilleurs passeurs" data={passeurs} cle="passes" unite="passes" />
-            <Classement titre="Meilleures notes moyennes" data={notes} cle="moy" unite="/ 7" />
+            {col.simple && col.simple.actif ? (
+              <>
+                <SousTitre>Participation de la saison</SousTitre>
+                <div style={{ fontSize: 11.5, color: C.gris, margin: "0 0 8px", lineHeight: 1.45 }}>Catégorie sans championnat : bilan de participation (plateaux, tournois et matchs amicaux).</div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  <Tuile val={col.simple.plateaux} lab="Plateaux réalisés" />
+                  <Tuile val={col.simple.tournois} lab="Tournois réalisés" col="#B87A2B" />
+                  <Tuile val={col.simple.amicaux} lab="Matchs amicaux" />
+                </div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  <Tuile val={col.effectif} lab="Joueurs dans l'effectif" />
+                  <Tuile val={col.seancesSemaine != null ? col.seancesSemaine : "—"} lab="Séances / semaine" />
+                </div>
+                {col.simple.detail && col.simple.detail.length > 0 && (
+                  <>
+                    <SousTitre>Détail de la participation</SousTitre>
+                    <Card>
+                      {col.simple.detail.map((r, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 0", borderTop: i ? `1px solid ${C.grisClair}` : "none" }}>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: C.encre }}>{r.nom}</div>
+                          <div style={{ fontSize: 15, fontWeight: 900, color: C.bleu }}>{r.val}</div>
+                        </div>
+                      ))}
+                    </Card>
+                    <div style={{ fontSize: 11.5, color: C.gris, margin: "4px 0 8px", lineHeight: 1.45 }}>Le détail (Plateau District, Plateau Futsal District, Tournoi régional...) se renseigne sur chaque match dans « Type de participation ». Un plateau n'est compté qu'une fois la participation certifiée.</div>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <SousTitre>Résultats de la saison</SousTitre>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  <Tuile val={totCol.joues} lab="Total matchs (année)" />
+                  <Tuile val={totCol.gagnes} lab="Gagnés" col={C.vert} />
+                  <Tuile val={totCol.nuls} lab="Nuls" col="#B87A2B" />
+                  <Tuile val={totCol.perdus} lab="Perdus" col={C.rouge} />
+                </div>
+                <SousTitre>Nombre de victoires (gagnés / joués)</SousTitre>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  <Tuile val={`${col.championnat.gagnes}/${col.championnat.joues}`} lab="Championnat" />
+                  <Tuile val={`${col.coupe.gagnes}/${col.coupe.joues}`} lab="Coupe" />
+                  <Tuile val={`${col.amicaux.gagnes}/${col.amicaux.joues}`} lab="Amicaux" col="#B87A2B" />
+                </div>
+                <div style={{ fontSize: 11.5, color: C.gris, margin: "0 0 8px", lineHeight: 1.45 }}>Nuls et perdus par compétition : Championnat {col.championnat.nuls} N / {col.championnat.perdus} D · Coupe {col.coupe.nuls} N / {col.coupe.perdus} D · Amicaux {col.amicaux.nuls} N / {col.amicaux.perdus} D</div>
+                <SousTitre>Buts, tournois et effectif</SousTitre>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  <Tuile val={col.bp} lab="Buts marqués" />
+                  <Tuile val={col.bc} lab="Buts encaissés" />
+                  <Tuile val={(diffButs > 0 ? "+" : "") + diffButs} lab="Différence" col={diffButs >= 0 ? C.vert : C.rouge} />
+                </div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+                  <Tuile val={`${col.tournois.gagnes}/${col.tournois.nb}`} lab="Tournois gagnés / réalisés" col="#B87A2B" />
+                  <Tuile val={col.effectif} lab="Joueurs dans l'effectif" />
+                </div>
+              </>
+            )}
+
+            {(() => {
+              const tournois = (col.tournois.liste || []).slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+              if (tournois.length === 0) return null;
+              return (
+                <>
+                  <SousTitre>Tournois de la saison</SousTitre>
+                  <div style={{ fontSize: 11.5, color: C.gris, margin: "-4px 0 8px", lineHeight: 1.45 }}>Coche les tournois à mettre en avant dans le bilan (les meilleurs). Tous les tournois restent comptés dans le total, seul l'affichage « mis en avant » est sélectif.</div>
+                  <Card>
+                    {tournois.map((t, i) => {
+                      const sous = [t.format, t.parcours, t.lieu, t.date ? new Date(t.date + "T00:00:00").toLocaleDateString("fr-FR") : ""].filter(Boolean).join(" · ");
+                      return (
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: i ? `1px solid ${C.grisClair}` : "none" }}>
+                          <input type="checkbox" checked={!!t.enAvant} disabled={!estCourante || !t.id} onChange={() => toggleTournoiEnAvant(t)} title="Mettre en avant dans le bilan" style={{ width: 18, height: 18, flex: "0 0 auto", cursor: estCourante ? "pointer" : "default" }} />
+                          <div style={{ width: 30, height: 30, borderRadius: 9, background: couleurRang(t.place), color: "#fff", display: "grid", placeItems: "center", flex: "0 0 auto", fontWeight: 900, fontSize: 12 }}>{t.place ? ordinalRang(t.place) : <Trophy size={15} />}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>{(t.vainqueur || +t.place === 1) ? <Trophy size={15} color="#C6A24C" style={{ flex: "0 0 auto" }} /> : null}<span>{t.nom}</span>{t.enAvant ? <span style={{ fontSize: 10.5, fontWeight: 800, color: "#8A6D00", background: "#FFF3CC", borderRadius: 6, padding: "2px 6px" }}>Mis en avant</span> : null}</div>
+                            {sous && <div style={{ fontSize: 12, color: C.gris }}>{sous}</div>}
+                          </div>
+                          {t.place ? <div style={{ fontSize: 14, fontWeight: 900, color: C.bleu }}>{ordinalRang(t.place)}{t.nbEquipes ? <span style={{ fontSize: 11, color: C.gris, fontWeight: 700 }}> / {t.nbEquipes}</span> : null}</div> : null}
+                        </div>
+                      );
+                    })}
+                  </Card>
+                </>
+              );
+            })()}
+
+            <SousTitre>Effectif et encadrement (à renseigner par la direction)</SousTitre>
+            <Card>
+              <Field label="Nombre de joueurs non conservés cette saison">
+                <Inp type="number" inputMode="numeric" disabled={!estCourante} value={infos.nonConserves ?? ""} onChange={(e) => setInfo("nonConserves", e.target.value.replace(/[^0-9]/g, ""))} placeholder="Ex : 2" style={!estCourante ? { background: "#F1F4F8" } : undefined} />
+              </Field>
+              <Field label="Nombre de séances d'entraînement par semaine">
+                <Inp type="number" inputMode="numeric" disabled={!estCourante} value={infos.seancesSemaine ?? ""} onChange={(e) => setInfo("seancesSemaine", e.target.value.replace(/[^0-9]/g, ""))} placeholder="Ex : 3" style={!estCourante ? { background: "#F1F4F8" } : undefined} />
+              </Field>
+              <Field label="Niveau / évolution de la catégorie">
+                <textarea value={infos.niveau || ""} disabled={!estCourante} onChange={(e) => setInfo("niveau", e.target.value)} rows={3} placeholder="Quelques lignes sur le niveau et l'évolution de l'équipe cette saison..." style={{ width: "100%", boxSizing: "border-box", padding: "9px 11px", borderRadius: 10, border: `1px solid ${C.grisClair}`, fontSize: 14, fontFamily: "inherit", resize: "vertical", lineHeight: 1.45, background: estCourante ? "#fff" : "#F1F4F8" }} />
+              </Field>
+              <div style={{ fontSize: 11.5, color: C.gris, lineHeight: 1.5 }}>{estCourante ? (col.simple && col.simple.actif ? "Pour cette catégorie (bilan simple), le nombre de joueurs non conservés et les séances par semaine apparaissent dans le bilan collectif. Le niveau / évolution est enregistré ici mais ne figure pas sur la slide." : "Le nombre de joueurs non conservés apparaît dans le bilan collectif. Les séances par semaine et le niveau / évolution sont enregistrés ici (mémorisés par saison) mais ne figurent pas dans la slide collective, comme demandé.") : `Pour modifier ces champs pour ${catSel}, ouvre d'abord cette catégorie dans l'appli. Ici tu peux seulement les consulter.`}</div>
+            </Card>
           </>
         )}
 
-        {(() => {
-          const tournois = (db.tournois || []).filter((t) => t.cat === cat && saisonDe(t.date) === saison).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-          if (tournois.length === 0) return null;
-          return (
-            <>
-              <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "16px 0 8px" }}>Tournois</div>
-              <Card>
-                {tournois.map((t, i) => (
-                  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: i ? `1px solid ${C.grisClair}` : "none" }}>
-                    <div style={{ width: 30, height: 30, borderRadius: 9, background: couleurRang(t.place), color: "#fff", display: "grid", placeItems: "center", flex: "0 0 auto", fontWeight: 900, fontSize: 12 }}>{t.place ? ordinalRang(t.place) : <Trophy size={15} />}</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700 }}>{t.nom}</div>
-                      <div style={{ fontSize: 12, color: C.gris }}>{t.date ? new Date(t.date + "T00:00:00").toLocaleDateString("fr-FR") : ""}</div>
-                    </div>
-                    {t.place ? <div style={{ fontSize: 14, fontWeight: 900, color: C.bleu }}>{ordinalRang(t.place)}{t.nbEquipes ? <span style={{ fontSize: 11, color: C.gris, fontWeight: 700 }}> / {t.nbEquipes}</span> : null}</div> : null}
-                  </div>
-                ))}
-              </Card>
-            </>
-          );
-        })()}
+        {pret && vue === "joueurs" && (
+          <>
+            {!jou.aDesDonnees && <Empty icon={<Trophy size={26} color={C.gris} />} text="Aucune donnée joueur cette saison" sub="Buts, passes, tests physiques et présences apparaîtront ici" />}
+            <Liste titre="3 meilleurs buteurs" rows={jou.buteurs} />
+            <Liste titre="3 meilleurs passeurs" rows={jou.passeurs} />
+            <Liste titre="3 meilleures présences à l'entraînement" rows={jou.presences} />
+            <Liste titre="3 meilleures VMA" rows={jou.vma} />
+            <Liste titre="3 meilleurs temps 10 m (départ debout)" rows={jou.v10} />
+            <Liste titre="3 meilleurs temps 20 m (départ debout)" rows={jou.v20} />
+            <Liste titre="3 meilleurs temps 40 m (départ debout)" rows={jou.v40} />
+            <div style={{ fontSize: 11.5, color: C.gris, marginTop: 12, lineHeight: 1.5 }}>En cas d'égalité, tous les joueurs à égalité sont affichés. Les temps viennent du dernier test physique saisi pour chaque joueur.</div>
+          </>
+        )}
+
+        {vue === "club" && (
+          <>
+            <Card style={{ marginBottom: 12, background: C.bleuNuit, border: "none" }}>
+              <div style={{ color: C.jaune, fontWeight: 900, fontSize: 15, letterSpacing: 0.3 }}>BILAN DE FIN DE SAISON PAR PÔLE</div>
+              <div style={{ color: "#D6DEEA", fontSize: 12.5, marginTop: 6, lineHeight: 1.55 }}>
+                Choisis un pôle : tu obtiens un fichier pour ce pôle avec TOUTES ses catégories (par exemple U7 à U15 au complet), même celles sans données. « Aperçu PDF » pour consulter et imprimer, « PowerPoint » pour le fichier modifiable. « Tous les pôles » réunit le club entier.
+              </div>
+            </Card>
+            <Field label="Pôle">
+              <Sel value={pole} onChange={(e) => setPole(e.target.value)}>
+                {SECTEURS_BILAN.map((s) => <option key={s.nom} value={s.nom}>{s.nom}</option>)}
+                <option value="__TOUS__">Tous les pôles (club entier)</option>
+              </Sel>
+            </Field>
+            <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "10px 0 6px" }}>Bilan collectif, {labelCible()} ({saison})</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+              <Btn variant="accent" full onClick={() => apercuClubPDF("collectif")}><FileDown size={15} /> Aperçu PDF</Btn>
+              <Btn variant="ghost" full onClick={() => exportClub("collectif")}>PowerPoint</Btn>
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "4px 0 6px" }}>Bilan individuel des joueurs, {labelCible()} ({saison})</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn variant="accent" full onClick={() => apercuClubPDF("joueurs")}><FileDown size={15} /> Aperçu PDF</Btn>
+              <Btn variant="ghost" full onClick={() => exportClub("joueurs")}>PowerPoint</Btn>
+            </div>
+            {clubMsg && <div style={{ fontSize: 12.5, color: clubMsg.includes("impossible") || clubMsg.includes("Aucune") ? C.rouge : C.gris, marginTop: 10, textAlign: "center", lineHeight: 1.5 }}>{clubMsg}</div>}
+            <div style={{ fontSize: 11.5, color: C.gris, marginTop: 12, lineHeight: 1.5 }}>L'aperçu PDF s'affiche dans l'appli pour consulter, imprimer ou enregistrer. Le PowerPoint se télécharge et s'ouvre dans PowerPoint. Toutes les catégories du pôle sont incluses (une page/slide chacune), même sans données saisies.</div>
+          </>
+        )}
       </div>
+      {apercu && <ApercuPDF url={apercu.url} nom={apercu.nom} onClose={() => setApercu(null)} />}
     </div>
   );
 }
@@ -16373,6 +18175,20 @@ function couleurRang(place) {
 function classementPoule(equipeIds, matchs, equipes, regle) {
   const st = {};
   (equipeIds || []).forEach((id) => { st[id] = { id, j: 0, g: 0, n: 0, p: 0, bp: 0, bc: 0, pts: 0 }; });
+  // Filet de securite forfait : si une equipe est declaree forfait et que le score
+  // du match n'a pas encore ete fige dans le planning, on applique 3-0 au calcul.
+  const ff = new Set((equipes || []).filter((e) => e && e.forfait).map((e) => e.id));
+  const PTS_FORF = 3;
+  const avecForfait = (matchs || []).map((m) => {
+    const vide = m.sa === "" || m.sa == null || m.sb === "" || m.sb == null;
+    if (!vide) return m;
+    const aFF = ff.has(m.aId), bFF = ff.has(m.bId);
+    if (aFF && !bFF) return { ...m, sa: 0, sb: PTS_FORF };
+    if (bFF && !aFF) return { ...m, sa: PTS_FORF, sb: 0 };
+    if (aFF && bFF) return { ...m, sa: 0, sb: 0 };
+    return m;
+  });
+  matchs = avecForfait;
   (matchs || []).forEach((m) => {
     const sa = m.sa === "" || m.sa == null ? null : Number(m.sa);
     const sb = m.sb === "" || m.sb == null ? null : Number(m.sb);
@@ -16475,11 +18291,19 @@ function exporterPlateauPDF(jsPDF, titre, org) {
       if (s.phase) { const pw = doc.getTextWidth(s.phase); doc.text(s.phase, W - M - 8 - pw, y + 1); }
       y += 20;
       (s.matchs || []).forEach((m) => {
+        // Terrain a gauche, rencontre centree : equipe A (alignee a droite vers le centre),
+        // "contre" ou le score au centre, equipe B (alignee a gauche depuis le centre).
         sc(gris); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(nomTerr(m.terrain), M + 8, y);
-        sc(encre); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+        const cx = W / 2;
         const aScore = m.sa !== "" && m.sa != null, bScore = m.sb !== "" && m.sb != null;
-        const milieu = (aScore || bScore) ? `   ${aScore ? m.sa : "-"}  -  ${bScore ? m.sb : "-"}   ` : "   contre   ";
-        doc.text(`${m.a}${milieu}${m.b}`, M + 90, y);
+        const avecScore = aScore || bScore;
+        const milieu = avecScore ? `${aScore ? m.sa : "-"}  -  ${bScore ? m.sb : "-"}` : "contre";
+        doc.setFont("helvetica", avecScore ? "bold" : "normal"); doc.setFontSize(avecScore ? 11 : 9);
+        const demi = doc.getTextWidth(String(milieu)) / 2 + 10;
+        sc(gris); doc.text(String(milieu), cx, y, { align: "center" });
+        sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+        doc.text(String(m.a || ""), cx - demi, y, { align: "right" });
+        doc.text(String(m.b || ""), cx + demi, y, { align: "left" });
         y += 15;
       });
       y += 6;
@@ -16524,12 +18348,37 @@ function exporterPlateauPDF(jsPDF, titre, org) {
     }
   }
 
-  // Classement général (à partir du planning)
-  const teamsPlan = org.planningTeams || [];
+  // Classement général (à partir du planning) : meme logique robuste que l'ecran.
+  const rawMatchsPDF = [];
+  (org.planning || []).forEach((s) => { if (s.repas) return; (s.matchs || []).forEach((m) => rawMatchsPDF.push(m)); });
+  const refAp = (m) => m.aId || m.a, refBp = (m) => m.bId || m.b;
+  let teamsPlanBrut = (org.planningTeams || []).filter((t) => t && t.id);
+  if (!teamsPlanBrut.length) {
+    const vus = new Map();
+    rawMatchsPDF.forEach((m) => { const ia = refAp(m), ib = refBp(m); if (ia && !vus.has(ia)) vus.set(ia, m.a || ia); if (ib && !vus.has(ib)) vus.set(ib, m.b || ib); });
+    teamsPlanBrut = [...vus.entries()].map(([id, nom]) => ({ id, nom }));
+  }
+  const forfaitEqsPDF = (org.equipes || []).filter((e) => e && e.forfait);
+  const mapTP = new Map(teamsPlanBrut.map((t) => [t.id, { id: t.id, nom: t.nom }]));
+  forfaitEqsPDF.forEach((e) => { if (!mapTP.has(e.id)) mapTP.set(e.id, { id: e.id, nom: e.nom }); });
+  const ffIdPDF = new Set(forfaitEqsPDF.map((e) => e.id));
+  const ffNomPDF = new Set(forfaitEqsPDF.map((e) => e.nom));
+  const teamsPlan = [...mapTP.values()].map((t) => ({ ...t, forfait: ffIdPDF.has(t.id) || ffNomPDF.has(t.nom) }));
   if (teamsPlan.length) {
-    const matchsPlan = [];
-    (org.planning || []).forEach((s) => (s.matchs || []).forEach((m) => { if (m.aId && m.bId) matchsPlan.push(m); }));
-    const cg = classementPoule(teamsPlan.map((t) => t.id), matchsPlan, teamsPlan, regle);
+    const matchsPlan = rawMatchsPDF.filter((m) => refAp(m) && refBp(m)).map((m) => ({ ...m, aId: refAp(m), bId: refBp(m) }));
+    const paireP = (x, y) => [x, y].sort().join("|");
+    const dejaLaP = new Set(matchsPlan.map((m) => paireP(m.aId, m.bId)));
+    const idsP = teamsPlan.map((t) => t.id);
+    const forfaitIdsP = teamsPlan.filter((t) => t.forfait).map((t) => t.id);
+    const synthP = [];
+    forfaitIdsP.forEach((fid) => idsP.forEach((oid) => {
+      if (oid === fid) return;
+      const k = paireP(fid, oid);
+      if (dejaLaP.has(k)) return;
+      dejaLaP.add(k);
+      synthP.push({ id: "synthFF-" + fid + "-" + oid, aId: fid, bId: oid, sa: 0, sb: forfaitIdsP.indexOf(oid) !== -1 ? 0 : 3, forfaitEq: true });
+    }));
+    const cg = classementPoule(idsP, matchsPlan.concat(synthP), teamsPlan, regle);
     const nomTeam = (id) => { const t = teamsPlan.find((x) => x.id === id); return t ? t.nom : "?"; };
     if (cg.length) {
       place(40 + cg.length * 16);
@@ -16622,18 +18471,31 @@ function exporterPlateauPDF(jsPDF, titre, org) {
   telechargerDoc(doc, nomPdf(titre || "Plateau"));
 }
 
-function OrganiserPlateau({ tournoi, onClose, onSave }) {
+function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
   const defaut = { regle: { v: 3, n: 1, d: 0 }, equipes: [], poules: [], finales: [], planningConf: { nbEquipes: "", nbTerrains: 2, debut: "09:00", fin: "", duree: 10, pause: 2, repas: 0, retour: false, auto: false, terrains: "" }, planning: [], qualifConf: { nbFinale: 2 }, format: "simple" };
   const [org, setOrg] = useState(() => ({ ...defaut, ...(tournoi.organisation || {}), regle: { ...defaut.regle, ...((tournoi.organisation || {}).regle || {}) }, planningConf: { ...defaut.planningConf, ...((tournoi.organisation || {}).planningConf || {}) }, qualifConf: { ...defaut.qualifConf, ...((tournoi.organisation || {}).qualifConf || {}) } }));
   const [nomEquipe, setNomEquipe] = useState("");
+  const [editEquipe, setEditEquipe] = useState({ id: null, nom: "" });
+  const [suppEquipeId, setSuppEquipeId] = useState(null);
   const [importMsg, setImportMsg] = useState(null);
   const [coller, setColler] = useState(false);
   const [texteColle, setTexteColle] = useState("");
   const [msgPdf, setMsgPdf] = useState(null);
   const [msgSave, setMsgSave] = useState(null);
   const [retardMin, setRetardMin] = useState("");
-  const commit = (next) => { setOrg(next); onSave(next); };
-  function enregistrerManuel() { onSave(org); setMsgSave("Modifications enregistrées"); setTimeout(() => setMsgSave(null), 2500); }
+  // Enregistrement temporisé : l'affichage se met à jour tout de suite, mais la sauvegarde (réseau)
+  // n'est envoyée qu'après une courte pause de frappe, pour éviter des enregistrements à chaque touche.
+  const onSaveRef = useRef(onSave); onSaveRef.current = onSave;
+  const pendingOrg = useRef(null);
+  const [nonEnregistre, setNonEnregistre] = useState(false);
+  // AUCUN enregistrement automatique pendant la saisie : on garde les modifications en local.
+  // La sauvegarde (réseau) ne part qu'au clic sur « Enregistrer » ou à la fermeture de la fenêtre.
+  const flushSave = () => { if (pendingOrg.current) { onSaveRef.current(pendingOrg.current); pendingOrg.current = null; setNonEnregistre(false); } };
+  const commit = (next) => { setOrg(next); pendingOrg.current = next; setNonEnregistre(true); };
+  // Sécurité : on force la sauvegarde en attente si la fenêtre est fermée/démontée.
+  useEffect(() => () => { if (pendingOrg.current) onSaveRef.current(pendingOrg.current); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  function enregistrerManuel() { const aEnvoyer = pendingOrg.current || org; pendingOrg.current = null; onSave(aEnvoyer); setNonEnregistre(false); setMsgSave("Modifications enregistrées"); setTimeout(() => setMsgSave(null), 2500); }
+  const fermer = () => { flushSave(); onClose(); };
   async function exporterPDF() {
     setMsgPdf("Préparation du PDF...");
     try { const jsPDF = await chargerJsPDF(); exporterPlateauPDF(jsPDF, tournoi.nom || "Plateau", org); setMsgPdf(null); }
@@ -16681,13 +18543,77 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
     reader.onerror = () => setImportMsg("Lecture du fichier impossible.");
     reader.readAsText(f);
   }
-  function suppEquipe(id) {
-    commit({
+  function renommerEquipe(id, nouveauNom) {
+    const n = String(nouveauNom || "").trim();
+    if (!n) return;
+    // Le nouveau nom est aussi répercuté dans le planning déjà généré (sans le reconstruire).
+    const planR = (org.planning || []).map((s) => s.matchs ? { ...s, matchs: s.matchs.map((m) => ({ ...m, a: m.aId === id ? n : m.a, b: m.bId === id ? n : m.b })) } : s);
+    const planTR = (org.planningTeams || []).map((t) => t.id === id ? { ...t, nom: n } : t);
+    commit({ ...org, equipes: org.equipes.map((e) => e.id === id ? { ...e, nom: n } : e), planning: planR, planningTeams: planTR });
+  }
+  // Forfait d'équipe = l'équipe quitte PENDANT le tournoi : l'adversaire gagne (3-0) dans TOUTES ses
+  // rencontres. On recalcule de façon déterministe à chaque changement pour que poules, phases finales
+  // ET planning restent toujours synchronisés, quels que soient les allers-retours (activer/annuler).
+  const FORFAIT_BUTS = 3;
+  // Recalcule toutes les rencontres en fonction des équipes actuellement en forfait.
+  // Marqueur dédié `forfaitEq` (différent du forfait manuel d'une rencontre de finale), pour pouvoir
+  // le poser et le retirer sans toucher aux scores saisis à la main.
+  function appliquerForfaits(baseOrg) {
+    const ff = new Set((baseOrg.equipes || []).filter((e) => e.forfait).map((e) => e.id));
+    const maj = (arr) => (arr || []).map((m) => {
+      const aFF = ff.has(m.aId), bFF = ff.has(m.bId);
+      if (aFF || bFF) {
+        // On pose le forfait. Si ce match n'etait pas deja en forfait, on MEMORISE son vrai score
+        // (scoreAvant) pour pouvoir le restaurer si le forfait etait une erreur. Si une sauvegarde
+        // existe deja (forfait deja actif), on la conserve.
+        const scoreAvant = (!m.forfaitEq && !m.forfait) ? { sa: m.sa, sb: m.sb } : m.scoreAvant;
+        if (aFF && !bFF) return { ...m, sa: 0, sb: FORFAIT_BUTS, forfaitEq: true, scoreAvant };
+        if (bFF && !aFF) return { ...m, sa: FORFAIT_BUTS, sb: 0, forfaitEq: true, scoreAvant };
+        return { ...m, sa: 0, sb: 0, forfaitEq: true, scoreAvant };
+      }
+      // plus aucune équipe en forfait sur ce match : si on l'avait mis en forfait d'équipe, on RESTAURE
+      // le vrai score memorise (annulation d'une erreur), ou on vide s'il n'y en avait pas.
+      // (m.forfait : ancien marqueur, migré ici ; m.forfaitManuel d'une finale n'est PAS touché.)
+      if (m.forfaitEq || m.forfait) {
+        const r = m.scoreAvant || { sa: "", sb: "" };
+        const copie = { ...m, sa: r.sa == null ? "" : r.sa, sb: r.sb == null ? "" : r.sb, forfaitEq: false, forfait: false };
+        delete copie.scoreAvant;
+        return copie;
+      }
+      return m;
+    });
+    return {
+      ...baseOrg,
+      poules: (baseOrg.poules || []).map((p) => ({ ...p, matchs: maj(p.matchs) })),
+      finales: (baseOrg.finales || []).map((f) => ({ ...f, matchs: maj(f.matchs) })),
+      planning: (baseOrg.planning || []).map((s) => s.matchs ? { ...s, matchs: maj(s.matchs) } : s),
+    };
+  }
+  function forfaitEquipe(id) {
+    const next = { ...org, equipes: org.equipes.map((e) => e.id === id ? { ...e, forfait: true } : e) };
+    commit(appliquerForfaits(next));
+  }
+  function annulerForfaitEquipe(id) {
+    const next = { ...org, equipes: org.equipes.map((e) => e.id === id ? { ...e, forfait: false } : e) };
+    commit(appliquerForfaits(next));
+    setMsgSave("Forfait annulé. Les vrais scores saisis avant le forfait sont restaurés (poules, phases finales et planning)."); setTimeout(() => setMsgSave(null), 4000);
+  }
+  // CAS 2 — l'équipe est absente AU DÉPART : on la retire complètement et on réorganise le planning
+  // en fonction des équipes réellement présentes.
+  function retirerReorganiser(id) {
+    const next = {
       ...org,
       equipes: org.equipes.filter((e) => e.id !== id),
       poules: org.poules.map((p) => ({ ...p, equipeIds: (p.equipeIds || []).filter((x) => x !== id), matchs: (p.matchs || []).filter((m) => m.aId !== id && m.bId !== id) })),
       finales: org.finales.map((f) => ({ ...f, matchs: (f.matchs || []).map((m) => ({ ...m, aId: m.aId === id ? "" : m.aId, bId: m.bId === id ? "" : m.bId })) })),
-    });
+      planningTeams: (org.planningTeams || []).filter((t) => t.id !== id),
+    };
+    if ((org.planning || []).length > 0) {
+      genererPlanning({ ...next, planningConf: { ...next.planningConf, nbEquipes: "" } });
+      setMsgSave("Planning réorganisé avec les équipes présentes."); setTimeout(() => setMsgSave(null), 4000);
+    } else {
+      commit({ ...next, planning: [] });
+    }
   }
   function majPoule(pid, patch) { commit({ ...org, poules: org.poules.map((p) => p.id === pid ? { ...p, ...patch } : p) }); }
   function ajouterPoule() { commit({ ...org, poules: [...org.poules, { id: uid(), nom: `Poule ${String.fromCharCode(65 + org.poules.length)}`, temps: 10, equipeIds: [], matchs: [] }] }); }
@@ -16776,16 +18702,55 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
   function ajouterMatchFinale(fid) { const f = org.finales.find((x) => x.id === fid); majFinale(fid, { matchs: [...(f.matchs || []), { id: uid(), aId: "", bId: "", sa: "", sb: "" }] }); }
   function majMatchFinale(fid, mid, patch) { const f = org.finales.find((x) => x.id === fid); majFinale(fid, { matchs: (f.matchs || []).map((m) => m.id === mid ? { ...m, ...patch } : m) }); }
   function suppMatchFinale(fid, mid) { const f = org.finales.find((x) => x.id === fid); majFinale(fid, { matchs: (f.matchs || []).filter((m) => m.id !== mid) }); }
+  // Équipes déjà engagées dans une phase finale (pour ne pas repêcher une équipe déjà qualifiée).
+  function equipesEnFinale() {
+    const s = new Set();
+    (org.finales || []).forEach((f) => (f.matchs || []).forEach((m) => { if (m.aId) s.add(m.aId); if (m.bId) s.add(m.bId); }));
+    return s;
+  }
+  // Meilleure équipe repêchable = la mieux classée en phase de qualification (poules),
+  // pas encore qualifiée en finale et non forfait.
+  function meilleureRepechable(exclureId) {
+    const used = equipesEnFinale();
+    const forfaitIds = new Set((org.equipes || []).filter((e) => e.forfait).map((e) => e.id));
+    const rows = [];
+    (org.poules || []).forEach((p) => {
+      const cl = classementPoule(p.equipeIds, p.matchs, org.equipes, org.regle);
+      cl.forEach((r, idx) => rows.push({ id: r.id, rangPoule: idx + 1, pts: r.pts, diff: (r.bp - r.bc), bp: r.bp }));
+    });
+    rows.sort((a, z) => a.rangPoule - z.rangPoule || z.pts - a.pts || z.diff - a.diff || z.bp - a.bp);
+    return rows.find((r) => r.id !== exclureId && !used.has(r.id) && !forfaitIds.has(r.id)) || null;
+  }
+  function repecher(fid, mid, cote) {
+    const f = org.finales.find((x) => x.id === fid); if (!f) return;
+    const m = (f.matchs || []).find((x) => x.id === mid); if (!m) return;
+    const actuel = cote === "a" ? m.aId : m.bId;
+    const best = meilleureRepechable(actuel);
+    if (!best) { setMsgSave("Aucune équipe à repêcher (toutes déjà qualifiées ou forfait)."); setTimeout(() => setMsgSave(null), 3500); return; }
+    majMatchFinale(fid, mid, cote === "a" ? { aId: best.id } : { bId: best.id });
+    const nom = (org.equipes.find((e) => e.id === best.id) || {}).nom || "Équipe";
+    setMsgSave(`${nom} repêchée (mieux classée en qualification).`); setTimeout(() => setMsgSave(null), 3500);
+  }
+  // Forfait sur une rencontre de phase finale : l'équipe du côté choisi déclare forfait, l'adversaire gagne.
+  function forfaitMatchFinale(fid, mid, cote) {
+    majMatchFinale(fid, mid, cote === "a" ? { sa: 0, sb: FORFAIT_BUTS, forfaitManuel: true } : { sa: FORFAIT_BUTS, sb: 0, forfaitManuel: true });
+    setMsgSave("Forfait enregistré : l'adversaire remporte la rencontre."); setTimeout(() => setMsgSave(null), 3000);
+  }
 
   function majPlanningConf(patch) { commit({ ...org, planningConf: { ...org.planningConf, ...patch } }); }
-  function genererPlanning() {
-    const conf = org.planningConf;
+  function genererPlanning(baseOrg) {
+    const src = baseOrg || org;
+    const conf = src.planningConf;
     const nbT = Math.max(1, Number(conf.nbTerrains) || 1);
     let nb = Number(conf.nbEquipes);
-    if (!nb || nb < 2) nb = org.equipes.length;
-    if (!nb || nb < 2) { commit({ ...org, planning: [] }); return; }
+    if (!nb || nb < 2) nb = src.equipes.length;
+    // Réorganisation : si on régénère après un départ, on cale sur le nombre d'équipes réellement présentes.
+    if (baseOrg) nb = src.equipes.length;
+    // On n'exclut JAMAIS une équipe réellement inscrite : le planning inclut au moins toutes les équipes présentes.
+    if (src.equipes.length > nb) nb = src.equipes.length;
+    if (!nb || nb < 2) { commit({ ...src, planning: [] }); return; }
     const teams = [];
-    for (let i = 0; i < nb; i++) teams.push(org.equipes[i] ? { id: org.equipes[i].id, nom: org.equipes[i].nom } : { id: "g" + (i + 1), nom: `Équipe ${i + 1}` });
+    for (let i = 0; i < nb; i++) teams.push(src.equipes[i] ? { id: src.equipes[i].id, nom: src.equipes[i].nom } : { id: "g" + (i + 1), nom: `Équipe ${i + 1}` });
     const allerRounds = roundsRoundRobin(teams);
     const pause = Math.max(0, Number(conf.pause) || 0);
     const repas = Math.max(0, Number(conf.repas) || 0);
@@ -16821,7 +18786,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
     });
     const totalMin = Math.max(0, elapsed - pause);
     const finPrevue = addMinutesHM(conf.debut, totalMin);
-    commit({ ...org, planningConf: { ...conf, nbEquipes: nb, duree }, planning: slots, planningTeams: teams });
+    commit(appliquerForfaits({ ...src, planningConf: { ...conf, nbEquipes: nb, duree }, planning: slots, planningTeams: teams }));
     let msg = msgCalc ? msgCalc + " " : `Durée ${duree} min par match. `;
     msg += `Fin estimée vers ${finPrevue}.`;
     if (conf.fin && (toMin(conf.debut) + totalMin) > toMin(conf.fin)) msg += " Attention : cela dépasse l'heure de fin prévue, réduisez la durée ou ajoutez un terrain.";
@@ -16829,8 +18794,12 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
     setTimeout(() => setMsgSave(null), 6000);
   }
   function effacerPlanning() { commit({ ...org, planning: [], planningTeams: [] }); }
-  const nomsTerrains = (Array.isArray(org.planningConf.terrains) ? org.planningConf.terrains : String(org.planningConf.terrains || "").split(",")).map((s) => String(s || "").trim());
-  const nomTerrain = (k) => nomsTerrains[k - 1] || `Terrain ${k}`;
+  // On NE trim PAS les valeurs en cours de saisie (sinon la touche espace semble ne pas marcher).
+  // Le nettoyage se fait seulement à l'usage (nomTerrain) et pour l'ancien format en texte séparé par des virgules.
+  const nomsTerrains = Array.isArray(org.planningConf.terrains)
+    ? org.planningConf.terrains.map((s) => String(s || ""))
+    : String(org.planningConf.terrains || "").split(",").map((s) => String(s || "").trim());
+  const nomTerrain = (k) => (nomsTerrains[k - 1] || "").trim() || `Terrain ${k}`;
   function setNomTerrain(i, val) {
     const nbT = Math.max(1, Number(org.planningConf.nbTerrains) || 1);
     const a = [...nomsTerrains];
@@ -16858,13 +18827,116 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
     commit({ ...org, planning: slots });
   }
   const classementGeneral = (() => {
-    const teams = org.planningTeams || [];
-    if (!teams.length) return [];
-    const matchs = [];
-    (org.planning || []).forEach((s) => (s.matchs || []).forEach((m) => { if (m.aId && m.bId) matchs.push(m); }));
-    return classementPoule(teams.map((t) => t.id), matchs, teams, org.regle);
+    // Rencontres du planning (hors pauses repas).
+    const rawMatchs = [];
+    (org.planning || []).forEach((s) => { if (s.repas) return; (s.matchs || []).forEach((m) => rawMatchs.push(m)); });
+    // Identifiant de reference d'une equipe dans une rencontre : aId sinon le nom (anciens plannings).
+    const refA = (m) => m.aId || m.a, refB = (m) => m.bId || m.b;
+    // Liste des equipes : planningTeams si presente, sinon DEDUITE des rencontres (robuste aux anciens plannings).
+    let teams = (org.planningTeams || []).filter((t) => t && t.id);
+    if (!teams.length) {
+      const vus = new Map();
+      rawMatchs.forEach((m) => {
+        const ia = refA(m), ib = refB(m);
+        if (ia && !vus.has(ia)) vus.set(ia, m.a || ia);
+        if (ib && !vus.has(ib)) vus.set(ib, m.b || ib);
+      });
+      teams = [...vus.entries()].map(([id, nom]) => ({ id, nom }));
+    }
+    // Equipes en forfait (statut vivant) : on les ajoute au classement meme si elles ne sont PAS
+    // dans le planning, pour que leurs adversaires recoivent bien la victoire 3-0.
+    const forfaitEqs = (org.equipes || []).filter((e) => e && e.forfait);
+    const mapT = new Map(teams.map((t) => [t.id, { id: t.id, nom: t.nom }]));
+    forfaitEqs.forEach((e) => { if (!mapT.has(e.id)) mapT.set(e.id, { id: e.id, nom: e.nom }); });
+    const teamsAll = [...mapT.values()];
+    if (!teamsAll.length) return [];
+    const ffId = new Set(forfaitEqs.map((e) => e.id));
+    const ffNom = new Set(forfaitEqs.map((e) => e.nom));
+    const teamsFF = teamsAll.map((t) => ({ ...t, forfait: ffId.has(t.id) || ffNom.has(t.nom) }));
+    // Rencontres reelles (deux equipes), identifiant normalise.
+    const matchs = rawMatchs.filter((m) => refA(m) && refB(m)).map((m) => ({ ...m, aId: refA(m), bId: refB(m) }));
+    // Rencontres de forfait synthetiques : pour chaque equipe forfait, une defaite 3-0 contre
+    // chaque autre equipe avec qui elle n'a PAS deja une rencontre au planning (evite les doublons).
+    const paire = (x, y) => [x, y].sort().join("|");
+    const dejaLa = new Set(matchs.map((m) => paire(m.aId, m.bId)));
+    const ids = teamsFF.map((t) => t.id);
+    const forfaitIds = teamsFF.filter((t) => t.forfait).map((t) => t.id);
+    const synth = [];
+    forfaitIds.forEach((fid) => ids.forEach((oid) => {
+      if (oid === fid) return;
+      const k = paire(fid, oid);
+      if (dejaLa.has(k)) return;
+      dejaLa.add(k);
+      const advForfait = forfaitIds.indexOf(oid) !== -1;
+      synth.push({ id: "synthFF-" + fid + "-" + oid, aId: fid, bId: oid, sa: 0, sb: advForfait ? 0 : 3, forfaitEq: true });
+    }));
+    return classementPoule(ids, matchs.concat(synth), teamsFF, org.regle);
   })();
-  const nomTeamPlan = (id) => { const t = (org.planningTeams || []).find((x) => x.id === id); return t ? t.nom : id; };
+  const nomTeamPlan = (id) => { const t = (org.planningTeams || []).find((x) => x.id === id) || (org.equipes || []).find((x) => x.id === id); return t ? t.nom : id; };
+  // Diagnostic du classement general : comment chaque rencontre du planning est comptee.
+  const diagGeneral = (() => {
+    const teams = org.planningTeams || [];
+    const ffLive = new Set((org.equipes || []).filter((e) => e && e.forfait).map((e) => e.id));
+    const ffNomD = new Set((org.equipes || []).filter((e) => e && e.forfait).map((e) => e.nom));
+    const lignes = [];
+    (org.planning || []).forEach((s) => { if (s.repas) return; (s.matchs || []).forEach((m) => {
+      const vide = m.sa === "" || m.sa == null || m.sb === "" || m.sb == null;
+      const aFF = ffLive.has(m.aId) || ffNomD.has(m.a), bFF = ffLive.has(m.bId) || ffNomD.has(m.b);
+      // Une rencontre ne compte au classement que si elle a bien deux equipes (identifiant ou nom).
+      const exclu = !(m.aId || m.a) || !(m.bId || m.b);
+      let etat, score;
+      if (exclu) { etat = "exclu"; score = "adversaire manquant"; }
+      else if (!vide) { etat = "saisi"; score = `${m.sa} - ${m.sb}`; }
+      else if (aFF || bFF) { etat = "forfait"; score = aFF && bFF ? "0 - 0" : (aFF ? `0 - 3 pour ${nomTeamPlan(m.bId)}` : `3 - 0 pour ${nomTeamPlan(m.aId)}`); }
+      else { etat = "attente"; score = "non joue"; }
+      lignes.push({ id: m.id, aId: m.aId, bId: m.bId, a: m.a || nomTeamPlan(m.aId), b: m.b || nomTeamPlan(m.bId), sa: m.sa, sb: m.sb, forfaitEq: !!m.forfaitEq, etat, score });
+    }); });
+    const forfaits = (org.equipes || []).filter((e) => e && e.forfait);
+    const nbPlanning = lignes.length; // rencontres reelles du planning (avant ajout des forfaits synthetiques)
+    // Equipes dont une rencontre figure dans le planning.
+    const idsDansPlan = new Set();
+    lignes.forEach((l) => { if (l.aId) idsDansPlan.add(l.aId); if (l.bId) idsDansPlan.add(l.bId); });
+    const forfaitsHorsPlan = forfaits.filter((e) => !idsDansPlan.has(e.id));
+    // Victoires de forfait synthetiques (equipes forfait absentes du planning) : on les ajoute a la
+    // liste du diagnostic pour que l'attribution des 3-0 soit visible, pas seulement calculee.
+    {
+      const toutesEq = (org.planningTeams || []).concat((org.equipes || []).filter((e) => !((org.planningTeams || []).some((t) => t.id === e.id))));
+      const idsForfait = new Set(forfaits.map((e) => e.id));
+      const dejaVu = new Set(lignes.map((l) => [l.aId, l.bId].sort().join("|")));
+      forfaits.forEach((f) => {
+        toutesEq.forEach((t) => {
+          if (!t || t.id === f.id) return;
+          const k = [f.id, t.id].sort().join("|");
+          if (dejaVu.has(k)) return;
+          dejaVu.add(k);
+          const advFF = idsForfait.has(t.id);
+          lignes.push({ id: "synthdiag-" + f.id + "-" + t.id, aId: f.id, bId: t.id, a: f.nom, b: t.nom, sa: 0, sb: advFF ? 0 : 3, forfaitEq: true, etat: "forfait", score: advFF ? "0 - 0" : `3 - 0 pour ${t.nom}` });
+        });
+      });
+    }
+    const dump = [
+      `APP ${APP_VERSION} · format=${org.format || "(simple)"} · equipes=${(org.equipes || []).length} · planningTeams=${teams.length}`,
+      `Forfaits: ${forfaits.length ? forfaits.map((e) => `${e.nom}(${e.id})`).join(", ") : "aucun"}`,
+      `Forfaits hors planning: ${forfaitsHorsPlan.length ? forfaitsHorsPlan.map((e) => e.nom).join(", ") : "aucun"}`,
+      `planningTeams: ${teams.map((t) => `${t.nom}(${t.id})`).join(", ") || "vide"}`,
+      `Rencontres (${nbPlanning} au planning + ${lignes.length - nbPlanning} forfait) :`,
+      ...lignes.map((l) => `  ${l.a}[${l.aId || "?"}] vs ${l.b}[${l.bId || "?"}] sa=${l.sa === "" || l.sa == null ? "vide" : l.sa} sb=${l.sb === "" || l.sb == null ? "vide" : l.sb} forfaitEq=${l.forfaitEq} -> ${l.etat}`),
+    ].join("\n");
+    return {
+      nbEquipes: teams.length,
+      forfaits: forfaits.map((e) => e.nom),
+      forfaitsHorsPlan: forfaitsHorsPlan.map((e) => e.nom),
+      total: nbPlanning,
+      saisis: lignes.filter((l) => l.etat === "saisi").length,
+      forfaitsM: lignes.filter((l) => l.etat === "forfait").length,
+      attente: lignes.filter((l) => l.etat === "attente").length,
+      exclus: lignes.filter((l) => l.etat === "exclu").length,
+      lignes, dump,
+    };
+  })();
+  // On fait remonter l'etat du classement du tournoi dans le traceur global (bouton Diag),
+  // pour pouvoir le copier depuis le panneau habituel.
+  useEffect(() => { try { trace("tournoi " + (tournoi.nom || tournoi.titre || tournoi.adversaire || ""), diagGeneral.dump); } catch (e) {} }, [diagGeneral.dump]);
 
   // estimation en temps réel (durée des matchs et heure de fin) selon les réglages
   const estim = (() => {
@@ -16897,20 +18969,25 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
     <Btn variant="accent" full style={{ margin: "6px 0 14px" }} onClick={exporterPDF}><FileDown size={16} /> {label || "Exporter en PDF (planning et classements)"}</Btn>
   );
   const styleInputScore = { width: 42, textAlign: "center", border: `1px solid ${C.grisClair}`, borderRadius: 8, padding: "7px 0", fontSize: 15, fontWeight: 800, boxSizing: "border-box" };
+  // Garde-fou : un score ne peut jamais etre negatif (ni en tapant, ni avec les fleches, ni en collant).
+  const scoreOk = (v) => { if (v === "" || v == null) return ""; const n = parseInt(v, 10); if (Number.isNaN(n)) return ""; return String(Math.max(0, n)); };
   const styleSelEq = { flex: 1, minWidth: 0, border: `1px solid ${C.grisClair}`, borderRadius: 8, padding: "7px 8px", fontSize: 13, background: "#fff" };
   const titreSection = { fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "18px 0 8px" };
 
   return (
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 70, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
+        <button onClick={fermer} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontWeight: 800, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Plateau · {tournoi.nom || "Tournoi"}</div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Équipes, poules, phases finales et classement</div>
         </div>
         <button onClick={enregistrerManuel} style={{ border: "none", background: C.jaune, color: C.bleuNuit, borderRadius: 10, padding: "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 800, flex: "0 0 auto" }}><Save size={16} /> Enregistrer</button>
+        <button onClick={fermer} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={20} /></button>
       </header>
-      {msgSave && <div style={{ background: "#E2F4E9", color: C.vert, fontWeight: 700, fontSize: 13, textAlign: "center", padding: "8px 12px" }}>{msgSave}</div>}
+      {msgSave ? <div style={{ background: "#E2F4E9", color: C.vert, fontWeight: 700, fontSize: 13, textAlign: "center", padding: "8px 12px" }}>{msgSave}</div>
+        : nonEnregistre ? <div style={{ background: "#FFF3DA", color: "#8A6D00", fontWeight: 700, fontSize: 13, textAlign: "center", padding: "8px 12px" }}>Modifications non enregistrées. Touche « Enregistrer » (ou ferme la fenêtre) pour les sauvegarder.</div>
+        : null}
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
         <Btn variant="accent" full onClick={exporterPDF}><FileDown size={16} /> Exporter le planning et les classements en PDF</Btn>
@@ -16923,25 +19000,55 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
           <Inp value={nomEquipe} onChange={(e) => setNomEquipe(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") ajouterEquipe(); }} placeholder="Nom de l'équipe" style={{ flex: 1 }} />
           <Btn variant="accent" onClick={ajouterEquipe} disabled={!nomEquipe.trim() || org.equipes.length >= 20}><Plus size={16} /></Btn>
         </div>
-        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-          <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "9px 12px", fontWeight: 700, fontSize: 13, color: C.encre, background: "#fff" }}>
-            <Upload size={16} /> Importer un fichier
-            <input type="file" accept=".json,application/json,text/plain,text/json,*/*" onChange={importerEquipes} style={{ display: "none" }} />
-          </label>
-          <Btn variant="ghost" onClick={() => { setColler(true); setTexteColle(""); }}><ClipboardList size={16} /> Coller le JSON</Btn>
-        </div>
+        {jsonActif && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "9px 12px", fontWeight: 700, fontSize: 13, color: C.encre, background: "#fff" }}>
+              <Upload size={16} /> Importer un fichier
+              <input type="file" accept=".json,application/json,text/plain,text/json,*/*" onChange={importerEquipes} style={{ display: "none" }} />
+            </label>
+            <Btn variant="ghost" onClick={() => { setColler(true); setTexteColle(""); }}><ClipboardList size={16} /> Coller le JSON</Btn>
+          </div>
+        )}
         {importMsg && <div style={{ fontSize: 12.5, color: importMsg.includes("non valide") || importMsg.includes("impossible") ? C.rouge : C.vert, fontWeight: 700, marginBottom: 10, textAlign: "center" }}>{importMsg}</div>}
         {org.equipes.length === 0 ? (
           <div style={{ fontSize: 13, color: C.gris, marginBottom: 6 }}>Ajoute d'abord les équipes (jusqu'à 20), puis répartis-les en poules.</div>
         ) : (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 6 }}>
             {org.equipes.map((e) => (
-              <span key={e.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 20, padding: "6px 10px", fontSize: 13, fontWeight: 700 }}>
-                {e.nom}
-                <button onClick={() => suppEquipe(e.id)} style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", display: "grid", placeItems: "center", padding: 0 }}><X size={14} /></button>
-              </span>
+              editEquipe.id === e.id ? (
+                <span key={e.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", border: `1px solid ${C.bleu}`, borderRadius: 20, padding: "4px 8px" }}>
+                  <input autoFocus value={editEquipe.nom} onChange={(ev) => setEditEquipe({ id: e.id, nom: ev.target.value })}
+                    onKeyDown={(ev) => { if (ev.key === "Enter") { renommerEquipe(e.id, editEquipe.nom); setEditEquipe({ id: null, nom: "" }); } if (ev.key === "Escape") setEditEquipe({ id: null, nom: "" }); }}
+                    style={{ border: "none", outline: "none", fontSize: 13, fontWeight: 700, width: Math.max(90, (editEquipe.nom.length + 2) * 8), background: "transparent", color: C.encre }} />
+                  <button onClick={() => { renommerEquipe(e.id, editEquipe.nom); setEditEquipe({ id: null, nom: "" }); }} title="Valider" style={{ border: "none", background: "transparent", color: C.vert, cursor: "pointer", display: "grid", placeItems: "center", padding: 0 }}><Check size={15} /></button>
+                </span>
+              ) : suppEquipeId === e.id ? (
+                <span key={e.id} style={{ flexBasis: "100%", width: "100%", background: "#FFF6F6", border: `1px solid ${C.rouge}`, borderRadius: 14, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: C.rouge, marginBottom: 8 }}>{e.nom} {e.forfait ? "est en forfait." : "ne joue plus. Que faire ?"}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {e.forfait && (
+                      <button onClick={() => { annulerForfaitEquipe(e.id); setSuppEquipeId(null); }} style={{ border: "none", background: C.vert, color: "#fff", cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Annuler le forfait (revenir en arrière)</button>
+                    )}
+                    {!e.forfait && (
+                      <button onClick={() => { forfaitEquipe(e.id); setSuppEquipeId(null); }} style={{ border: "none", background: "#8A6D00", color: "#fff", cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Forfait (tournoi commencé)</button>
+                    )}
+                    <button onClick={() => { retirerReorganiser(e.id); setSuppEquipeId(null); }} style={{ border: "none", background: C.bleu, color: "#fff", cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Retirer et réorganiser (absente au départ)</button>
+                    <button onClick={() => setSuppEquipeId(null)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.gris, cursor: "pointer", borderRadius: 9, padding: "8px 11px", fontSize: 12.5, fontWeight: 800 }}>Annuler</button>
+                  </div>
+                  <div style={{ fontSize: 11, color: C.gris, marginTop: 7, lineHeight: 1.45 }}>{e.forfait ? "Annuler le forfait : l'équipe reprend sa place normale. Les vrais scores saisis avant le forfait sont restaurés automatiquement (et les rencontres non jouées redeviennent vides)." : `Forfait : l'équipe reste au classement mais toutes ses rencontres sont gagnées par l'adversaire (${FORFAIT_BUTS}-0). Les scores déjà saisis sont conservés et restaurés si tu annules le forfait. Réorganiser : l'équipe est retirée et le planning est recalculé avec les équipes présentes.`}</div>
+                </span>
+              ) : (
+                <span key={e.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", border: `1px solid ${e.forfait ? "#EBD3AE" : C.grisClair}`, borderRadius: 20, padding: "6px 10px", fontSize: 13, fontWeight: 700 }}>
+                  {e.nom}{e.forfait ? <span style={{ fontSize: 10, fontWeight: 800, color: "#8A6D00", background: "#FFF3DA", borderRadius: 6, padding: "1px 6px" }}>Forfait</span> : null}
+                  <button onClick={() => setEditEquipe({ id: e.id, nom: e.nom })} title="Modifier le nom" style={{ border: "none", background: "transparent", color: C.bleu, cursor: "pointer", display: "grid", placeItems: "center", padding: 0 }}><Edit3 size={13} /></button>
+                  <button onClick={() => setSuppEquipeId(e.id)} title="Retirer / forfait" style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", display: "grid", placeItems: "center", padding: 0 }}><X size={14} /></button>
+                </span>
+              )
             ))}
           </div>
+        )}
+        {org.equipes.length > 0 && (
+          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, marginBottom: 2, lineHeight: 1.45 }}>Crayon : renommer. Croix : gérer un départ, avec deux choix — « Forfait » si le tournoi a commencé (l'adversaire gagne {FORFAIT_BUTS}-0 à chaque rencontre) ou « Retirer et réorganiser » si l'équipe est absente au départ (le planning est recalculé avec les présentes).</div>
         )}
 
         {/* REGLE POINTS */}
@@ -17016,8 +19123,19 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
               );
             })}
           </div>
-          <Btn variant="accent" full onClick={genererPlanning}><ListOrdered size={16} /> Organiser le planning des rencontres</Btn>
-          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Toutes les équipes se rencontrent. Les matchs sont répartis sur les terrains, avec les horaires calculés, de façon qu'une même équipe ne joue jamais deux matchs en même temps.</div>
+          {(() => {
+            const manquantes = (org.equipes || []).filter((e) => e && !((org.planningTeams || []).some((t) => t.id === e.id)));
+            if (!(org.planning || []).length || !manquantes.length) return null;
+            return (
+              <div style={{ marginBottom: 10, background: "#FFF3E0", border: "1px solid #F0C98A", borderRadius: 10, padding: "10px 12px" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: C.jauneFonce, marginBottom: 4 }}>Équipe(s) absente(s) du planning</div>
+                <div style={{ fontSize: 11.5, color: C.encre, lineHeight: 1.5, marginBottom: 8 }}>{manquantes.map((e) => e.nom).join(", ")} ne figure(nt) pas dans les rencontres ci-dessous. Régénérez le planning pour l'ajouter (les scores déjà saisis seront remis à zéro).</div>
+                <Btn variant="accent" full size="sm" onClick={() => genererPlanning()}><ListOrdered size={15} /> Régénérer le planning avec toutes les équipes</Btn>
+              </div>
+            );
+          })()}
+          <Btn variant="accent" full onClick={() => genererPlanning()}><ListOrdered size={16} /> Organiser le planning des rencontres</Btn>
+          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Toutes les équipes se rencontrent, y compris une équipe en forfait (ses rencontres sont perdues 3-0). Les matchs sont répartis sur les terrains, avec les horaires calculés, de façon qu'une même équipe ne joue jamais deux matchs en même temps.</div>
         </Card>
 
         {/* ESTIMATION EN TEMPS RÉEL */}
@@ -17076,18 +19194,20 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
                   <div style={{ background: i === slotActifIdx ? C.vert : C.bleuNuit, color: "#fff", padding: "7px 11px", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}><Timer size={14} /> {s.heure}{i === slotActifIdx ? <span style={{ fontSize: 10.5, fontWeight: 800, background: "rgba(255,255,255,0.25)", borderRadius: 7, padding: "2px 7px" }}>EN COURS</span> : null}{s.phase ? <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,0.18)", borderRadius: 7, padding: "2px 8px" }}>{s.phase}</span> : null}</div>
                   <div style={{ display: "grid", gap: 1, background: C.grisClair }}>
                     {(s.matchs || []).map((m, k) => (
-                      <div key={m.id || k} style={{ background: "#fff", padding: "9px 11px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: m.aId ? 7 : 0 }}>
-                          <span style={{ flex: "0 0 auto", fontSize: 11, fontWeight: 800, color: C.bleu, background: "#EAF0F8", borderRadius: 7, padding: "3px 7px" }}>{nomTerrain(m.terrain)}</span>
-                          <span style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.a}</span>
-                          <span style={{ color: C.gris, fontWeight: 800, fontSize: 12 }}>contre</span>
-                          <span style={{ flex: 1, fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.b}</span>
+                      <div key={m.id || k} style={{ background: "#fff", padding: "10px 11px" }}>
+                        <div style={{ textAlign: "center", marginBottom: 6 }}>
+                          <span style={{ fontSize: 10.5, fontWeight: 800, color: C.bleu, background: "#EAF0F8", borderRadius: 7, padding: "3px 9px", letterSpacing: 0.3 }}>{nomTerrain(m.terrain)}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: m.aId ? 8 : 0 }}>
+                          <span style={{ flex: 1, textAlign: "right", fontSize: 15, fontWeight: 800, color: C.encre, minWidth: 0, overflowWrap: "anywhere", lineHeight: 1.25 }}>{m.a}</span>
+                          <span style={{ flex: "0 0 auto", color: C.gris, fontWeight: 800, fontSize: 12 }}>contre</span>
+                          <span style={{ flex: 1, textAlign: "left", fontSize: 15, fontWeight: 800, color: C.encre, minWidth: 0, overflowWrap: "anywhere", lineHeight: 1.25 }}>{m.b}</span>
                         </div>
                         {m.aId && (
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                            <input type="number" inputMode="numeric" value={m.sa ?? ""} onChange={(e) => majScorePlanning(i, m.id, { sa: e.target.value })} placeholder="-" style={styleInputScore} />
+                            <input type="number" inputMode="numeric" min={0} value={m.sa ?? ""} onChange={(e) => majScorePlanning(i, m.id, { sa: scoreOk(e.target.value) })} placeholder="-" style={styleInputScore} />
                             <span style={{ color: C.gris, fontWeight: 800 }}>-</span>
-                            <input type="number" inputMode="numeric" value={m.sb ?? ""} onChange={(e) => majScorePlanning(i, m.id, { sb: e.target.value })} placeholder="-" style={styleInputScore} />
+                            <input type="number" inputMode="numeric" min={0} value={m.sb ?? ""} onChange={(e) => majScorePlanning(i, m.id, { sb: scoreOk(e.target.value) })} placeholder="-" style={styleInputScore} />
                           </div>
                         )}
                       </div>
@@ -17127,7 +19247,49 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
                 </tbody>
               </table>
             </div>
-            <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Ce classement se calcule tout seul à partir des scores saisis sur le planning ci-dessus.</div>
+            <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Ce classement se calcule tout seul à partir des scores saisis sur le planning ci-dessus. Les équipes en forfait font gagner 3-0 à chacun de leurs adversaires, même si le match n'est pas encore saisi.</div>
+          </Card>
+        )}
+
+        {(org.planning || []).length > 0 && (
+          <Card style={{ marginBottom: 12, padding: 13 }}>
+            <details>
+              <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 800, color: C.bleu, listStyle: "none" }}>🔎 Diagnostic du classement (vérifier l'attribution des points)</summary>
+              <div style={{ marginTop: 8, background: C.fond, border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 10 }}>
+                <div style={{ fontSize: 11.5, color: C.encre, fontWeight: 700, marginBottom: 6 }}>
+                  {diagGeneral.nbEquipes} équipes · {diagGeneral.total} rencontres au planning
+                </div>
+                <div style={{ fontSize: 11, color: C.gris, marginBottom: 6, lineHeight: 1.5 }}>
+                  Scores saisis : {diagGeneral.saisis} · Comptées en forfait (3-0) : {diagGeneral.forfaitsM} · En attente (0 point) : {diagGeneral.attente}{diagGeneral.exclus > 0 ? ` · Non comptées : ${diagGeneral.exclus}` : ""}
+                </div>
+                {diagGeneral.forfaits.length > 0 && (
+                  <div style={{ fontSize: 11, color: C.rouge, fontWeight: 700, marginBottom: 6 }}>Équipes en forfait : {diagGeneral.forfaits.join(", ")}</div>
+                )}
+                {diagGeneral.forfaitsHorsPlan.length > 0 && (
+                  <div style={{ fontSize: 11, color: C.jauneFonce || C.jaune, fontWeight: 700, marginBottom: 6, lineHeight: 1.5 }}>Forfait absent du planning (comptée quand même, 3-0 pour toutes les autres) : {diagGeneral.forfaitsHorsPlan.join(", ")}</div>
+                )}
+                {diagGeneral.nbEquipes === 0 && (
+                  <div style={{ fontSize: 11, color: C.rouge, fontWeight: 700, marginBottom: 6 }}>Aucun planning généré : lancez « Organiser le planning » pour obtenir un classement.</div>
+                )}
+                {diagGeneral.exclus > 0 && (
+                  <div style={{ fontSize: 11, color: C.rouge, fontWeight: 700, marginBottom: 6, lineHeight: 1.5 }}>Attention : {diagGeneral.exclus} rencontre(s) ne sont pas comptées (adversaire manquant ou équipe absente de la liste du planning). Régénérez le planning avec « Organiser le planning ».</div>
+                )}
+                <div style={{ maxHeight: 220, overflowY: "auto" }}>
+                  {diagGeneral.lignes.map((l) => (
+                    <div key={l.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11, padding: "4px 0", borderTop: `1px solid ${C.grisClair}` }}>
+                      <span style={{ color: C.encre, flex: 1, minWidth: 0 }}>{l.a} contre {l.b}</span>
+                      <span style={{ fontWeight: 800, color: l.etat === "saisi" ? C.vert : l.etat === "forfait" ? C.jaune : l.etat === "exclu" ? C.rouge : C.gris, flex: "0 0 auto", textAlign: "right" }}>
+                        {l.etat === "saisi" ? l.score : l.etat === "forfait" ? "Forfait : " + l.score : l.etat === "exclu" ? "Non comptée : " + l.score : "En attente"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => { try { navigator.clipboard.writeText(diagGeneral.dump); setMsgSave("Diagnostic copié. Collez-le dans le message."); setTimeout(() => setMsgSave(null), 5000); } catch (e) { setMsgSave("Copie impossible sur ce navigateur."); } }}
+                  style={{ marginTop: 10, border: "none", cursor: "pointer", borderRadius: 9, padding: "8px 12px", fontSize: 12, fontWeight: 800, background: C.bleu, color: "#fff" }}
+                >Copier le diagnostic</button>
+              </div>
+            </details>
           </Card>
         )}
 
@@ -17166,16 +19328,21 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
 
               {(p.matchs || []).length > 0 && (
                 <div style={{ display: "grid", gap: 7, marginBottom: 12 }}>
-                  {p.matchs.map((m) => (
-                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                      <div style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.aId)}</div>
-                      <input type="number" value={m.sa} onChange={(e) => majMatchPoule(p.id, m.id, { sa: e.target.value })} style={styleInputScore} />
+                  {p.matchs.map((m) => {
+                    const ffA = (org.equipes.find((e) => e.id === m.aId) || {}).forfait;
+                    const ffB = (org.equipes.find((e) => e.id === m.bId) || {}).forfait;
+                    const badge = <span style={{ fontSize: 9.5, fontWeight: 800, color: "#8A6D00", background: "#FFF3DA", borderRadius: 5, padding: "1px 5px", marginLeft: 4 }}>forfait</span>;
+                    return (
+                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 7, background: (ffA || ffB) ? "#FFFBF0" : "transparent", borderRadius: 8, padding: (ffA || ffB) ? "3px 4px" : 0 }}>
+                      <div style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.aId)}{ffA ? badge : null}</div>
+                      <input type="number" min={0} value={m.sa} onChange={(e) => majMatchPoule(p.id, m.id, { sa: scoreOk(e.target.value) })} style={styleInputScore} />
                       <span style={{ color: C.gris, fontWeight: 800 }}>-</span>
-                      <input type="number" value={m.sb} onChange={(e) => majMatchPoule(p.id, m.id, { sb: e.target.value })} style={styleInputScore} />
-                      <div style={{ flex: 1, fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.bId)}</div>
+                      <input type="number" min={0} value={m.sb} onChange={(e) => majMatchPoule(p.id, m.id, { sb: scoreOk(e.target.value) })} style={styleInputScore} />
+                      <div style={{ flex: 1, fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.bId)}{ffB ? badge : null}</div>
                       <button onClick={() => suppMatchPoule(p.id, m.id)} style={{ border: "none", background: "transparent", color: C.gris, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={15} /></button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
@@ -17255,9 +19422,9 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
                       {p.matchs.map((m) => (
                         <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 7 }}>
                           <div style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.aId)}</div>
-                          <input type="number" value={m.sa} onChange={(e) => majMatchPoule(p.id, m.id, { sa: e.target.value })} style={styleInputScore} />
+                          <input type="number" min={0} value={m.sa} onChange={(e) => majMatchPoule(p.id, m.id, { sa: scoreOk(e.target.value) })} style={styleInputScore} />
                           <span style={{ color: C.gris, fontWeight: 800 }}>-</span>
-                          <input type="number" value={m.sb} onChange={(e) => majMatchPoule(p.id, m.id, { sb: e.target.value })} style={styleInputScore} />
+                          <input type="number" min={0} value={m.sb} onChange={(e) => majMatchPoule(p.id, m.id, { sb: scoreOk(e.target.value) })} style={styleInputScore} />
                           <div style={{ flex: 1, fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomDe(m.bId)}</div>
                         </div>
                       ))}
@@ -17305,6 +19472,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
 
         {/* PHASES FINALES */}
         <div style={titreSection}>Phases finales</div>
+        <div style={{ fontSize: 11.5, color: C.gris, margin: "0 0 10px", lineHeight: 1.45 }}>Si une équipe quitte à ce stade, tu as deux choix sous chaque rencontre : « Repêcher » (remplacée automatiquement par la mieux classée de la qualification encore disponible) ou « Forfait » (l'adversaire gagne la rencontre {FORFAIT_BUTS}-0). Le reste de la phase finale ne bouge pas.</div>
         <Btn variant="ghost" full style={{ marginBottom: 12 }} onClick={ajouterFinale}><Plus size={16} /> Ajouter une phase finale</Btn>
         {org.finales.map((f) => (
           <Card key={f.id} style={{ marginBottom: 14, padding: 13 }}>
@@ -17317,21 +19485,36 @@ function OrganiserPlateau({ tournoi, onClose, onSave }) {
               </div>
               <button onClick={() => suppFinale(f.id)} style={{ border: "none", background: "transparent", color: C.rouge, cursor: "pointer", display: "grid", placeItems: "center" }}><Trash2 size={17} /></button>
             </div>
-            <div style={{ display: "grid", gap: 7, marginBottom: 10 }}>
+            <div style={{ display: "grid", gap: 10, marginBottom: 10 }}>
               {(f.matchs || []).map((m) => (
-                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <select value={m.aId} onChange={(e) => majMatchFinale(f.id, m.id, { aId: e.target.value })} style={styleSelEq}>
-                    <option value="">Équipe A</option>
-                    {org.equipes.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
-                  </select>
-                  <input type="number" value={m.sa} onChange={(e) => majMatchFinale(f.id, m.id, { sa: e.target.value })} style={styleInputScore} />
-                  <span style={{ color: C.gris, fontWeight: 800 }}>-</span>
-                  <input type="number" value={m.sb} onChange={(e) => majMatchFinale(f.id, m.id, { sb: e.target.value })} style={styleInputScore} />
-                  <select value={m.bId} onChange={(e) => majMatchFinale(f.id, m.id, { bId: e.target.value })} style={styleSelEq}>
-                    <option value="">Équipe B</option>
-                    {org.equipes.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
-                  </select>
-                  <button onClick={() => suppMatchFinale(f.id, m.id)} style={{ border: "none", background: "transparent", color: C.gris, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={15} /></button>
+                <div key={m.id}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <select value={m.aId} onChange={(e) => majMatchFinale(f.id, m.id, { aId: e.target.value })} style={styleSelEq}>
+                      <option value="">Équipe A</option>
+                      {org.equipes.map((e) => <option key={e.id} value={e.id}>{e.nom}{e.forfait ? " (forfait)" : ""}</option>)}
+                    </select>
+                    <input type="number" min={0} value={m.sa} onChange={(e) => majMatchFinale(f.id, m.id, { sa: scoreOk(e.target.value) })} style={styleInputScore} />
+                    <span style={{ color: C.gris, fontWeight: 800 }}>-</span>
+                    <input type="number" min={0} value={m.sb} onChange={(e) => majMatchFinale(f.id, m.id, { sb: scoreOk(e.target.value) })} style={styleInputScore} />
+                    <select value={m.bId} onChange={(e) => majMatchFinale(f.id, m.id, { bId: e.target.value })} style={styleSelEq}>
+                      <option value="">Équipe B</option>
+                      {org.equipes.map((e) => <option key={e.id} value={e.id}>{e.nom}{e.forfait ? " (forfait)" : ""}</option>)}
+                    </select>
+                    <button onClick={() => suppMatchFinale(f.id, m.id)} style={{ border: "none", background: "transparent", color: C.gris, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><X size={15} /></button>
+                  </div>
+                  <div style={{ display: "flex", gap: 10, marginTop: 5, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3 }}>Si départ :</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ fontSize: 11, color: C.gris, fontWeight: 700 }}>A</span>
+                      <button onClick={() => repecher(f.id, m.id, "a")} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, cursor: "pointer", borderRadius: 8, padding: "4px 9px", fontSize: 11.5, fontWeight: 800 }}>Repêcher</button>
+                      <button onClick={() => forfaitMatchFinale(f.id, m.id, "a")} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: "#8A6D00", cursor: "pointer", borderRadius: 8, padding: "4px 9px", fontSize: 11.5, fontWeight: 800 }}>Forfait</button>
+                    </span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ fontSize: 11, color: C.gris, fontWeight: 700 }}>B</span>
+                      <button onClick={() => repecher(f.id, m.id, "b")} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, cursor: "pointer", borderRadius: 8, padding: "4px 9px", fontSize: 11.5, fontWeight: 800 }}>Repêcher</button>
+                      <button onClick={() => forfaitMatchFinale(f.id, m.id, "b")} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: "#8A6D00", cursor: "pointer", borderRadius: 8, padding: "4px 9px", fontSize: 11.5, fontWeight: 800 }}>Forfait</button>
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -17402,6 +19585,7 @@ function Tournois({ db, mutate, cat, onClose }) {
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Tournois · {cat}</div>
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto", marginLeft: "auto" }}><X size={17} /> Fermer</button>
       </header>
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
@@ -17444,7 +19628,7 @@ function Tournois({ db, mutate, cat, onClose }) {
       </div>
 
       {edit && <EditTournoi tournoi={edit} onClose={() => setEdit(null)} onSave={enregistrer} onDelete={edit.id ? () => supprimer(edit.id) : null} />}
-      {orga && <OrganiserPlateau tournoi={(db.tournois || []).find((x) => x.id === orga.id) || orga} onClose={() => setOrga(null)} onSave={(organisation) => enregistrerOrga(orga.id, organisation)} />}
+      {orga && <OrganiserPlateau tournoi={(db.tournois || []).find((x) => x.id === orga.id) || orga} jsonActif={jsonImportActif(db)} onClose={() => setOrga(null)} onSave={(organisation) => enregistrerOrga(orga.id, organisation)} />}
     </div>
   );
 }
@@ -17606,6 +19790,7 @@ function Reunions({ db, mutate, erreur, onClose, majEncadrement }) {
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={() => (sel ? setSelId(null) : onClose())} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>{sel ? "Détail de la réunion" : "Réunions"}</div>
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto", marginLeft: "auto" }}><X size={17} /> Fermer</button>
       </header>
 
       {!sel ? (
@@ -17777,6 +19962,7 @@ function Calendrier({ db, mutate, mutateReunions, peutValider, onClose, majEncad
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Calendrier du club</div>
+        <button onClick={onClose} title="Fermer la fenêtre" style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, padding: "0 14px", height: 34, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 800, flex: "0 0 auto", marginLeft: "auto" }}><X size={17} /> Fermer</button>
       </header>
 
       <div style={{ padding: "12px 14px", background: "#fff", borderBottom: `1px solid ${C.grisClair}`, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -17828,7 +20014,7 @@ function Calendrier({ db, mutate, mutateReunions, peutValider, onClose, majEncad
               })}
             </div>
             <div style={{ marginTop: 18 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8, textTransform: "capitalize" }}>{new Date(refStr + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, letterSpacing: 0.4, marginBottom: 8, textTransform: "capitalize" }}>{new Date(refStr + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}</div>
               {evDe(refStr).length === 0 ? <div style={{ fontSize: 13.5, color: C.gris }}>Aucun événement ce jour.</div> : <div style={{ display: "grid", gap: 9 }}>{evDe(refStr).map((e, i) => <CarteEv key={i} e={e} />)}</div>}
             </div>
           </>
@@ -18141,15 +20327,38 @@ function EditEssai({ fiche, db, onClose, onSave, onArchiver, onIntegrer, onDelet
     try { const jsPDF = await chargerJsPDF(); exporterEssaiPDF(jsPDF, f, db); setPdfMsg(null); }
     catch (err) { setPdfMsg("Module d'impression indisponible. Réessaie."); }
   }
+  // Périodes d'essai : historique des essais précédents. La période en cours = essaiDebut/essaiFin.
+  const periodesPrec = Array.isArray(f.periodes) ? f.periodes : [];
+  const numPeriode = periodesPrec.length + 1;
+  // Le joueur revient pour un nouvel essai : on archive la période actuelle dans l'historique
+  // et on repart sur une nouvelle période (statut actif, dates à renseigner).
+  function nouvellePeriode() {
+    setF((p) => {
+      const hist = Array.isArray(p.periodes) ? [...p.periodes] : [];
+      if (p.essaiDebut || p.essaiFin) hist.push({ debut: p.essaiDebut || "", fin: p.essaiFin || "" });
+      return { ...p, periodes: hist, essaiDebut: hoyISO(), essaiFin: "", statut: "actif" };
+    });
+  }
   return (
     <Modal title={existe ? (nomComplet || "Joueur à l'essai") : "Nouveau joueur à l'essai"} onClose={onClose}
-      footer={<>
-        <Btn variant="accent" full disabled={!valide || periodeInvalide} onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>
-        {existe && <Btn variant="primary" full onClick={exporterPDF}><FileDown size={16} /> Rapport PDF</Btn>}
-        {existe && onIntegrer && <Btn variant="ghost" full onClick={onIntegrer}><Plus size={16} /> Intégrer à l'effectif</Btn>}
-        {existe && onArchiver && <Btn variant="ghost" full onClick={() => onArchiver(!archive)}>{archive ? "Réactiver l'essai" : "Archiver l'essai"}</Btn>}
-        {existe && onDelete && <BtnSuppr nom={"l'essai de " + (nomComplet || "ce joueur")} onConfirm={onDelete} />}
-      </>}>
+      footer={
+        <div style={{ width: "100%", display: "grid", gap: 8 }}>
+          <Btn variant="accent" full disabled={!valide || periodeInvalide} onClick={() => onSave(f)}><Save size={16} /> Enregistrer</Btn>
+          {existe && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <Btn variant="primary" full onClick={exporterPDF}><FileDown size={15} /> Rapport PDF</Btn>
+                {onIntegrer && <Btn variant="ghost" full onClick={onIntegrer}><Plus size={15} /> Intégrer à l'effectif</Btn>}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <Btn variant="ghost" full onClick={nouvellePeriode}><Plus size={15} /> Nouvelle période d'essai</Btn>
+                {onArchiver && <Btn variant="ghost" full onClick={() => onArchiver(!archive)}>{archive ? <><RefreshCw size={15} /> Réactiver l'essai</> : "Archiver l'essai"}</Btn>}
+              </div>
+              {onDelete && <BtnSuppr nom={"l'essai de " + (nomComplet || "ce joueur")} onConfirm={onDelete} full />}
+            </>
+          )}
+        </div>
+      }>
       {existe && (
         <div style={{ fontSize: 12.5, fontWeight: 800, color: archive ? C.gris : (essaiEnCours(f) ? "#1E7A46" : "#B87A2B"), background: archive ? "#F1F4F8" : (essaiEnCours(f) ? "#E2F4E9" : "#FFF3DA"), border: `1px solid ${archive ? C.grisClair : (essaiEnCours(f) ? "#BFE3CC" : "#EBD3AE")}`, borderRadius: 10, padding: "8px 11px", marginBottom: 10 }}>{essaiStatutLabel(f)}{min > 0 ? ` · ${min} min de jeu à l'essai` : ""}</div>
       )}
@@ -18191,11 +20400,22 @@ function EditEssai({ fiche, db, onClose, onSave, onArchiver, onIntegrer, onDelet
         <Field label="Taille (cm)"><Inp type="number" inputMode="numeric" value={f.taille ?? ""} onChange={(e) => set("taille", e.target.value)} placeholder="0" /></Field>
         <Field label="Poids (kg)"><Inp type="number" inputMode="numeric" value={f.poids ?? ""} onChange={(e) => set("poids", e.target.value)} placeholder="0" /></Field>
       </div>
+      {existe && numPeriode > 1 && (
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: C.bleu, background: "#EAF0F7", border: "1px solid #D4E2F5", borderRadius: 10, padding: "8px 11px", marginBottom: 8, display: "inline-flex", alignItems: "center", gap: 6 }}><RefreshCw size={14} /> Période d'essai n°{numPeriode}</div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        <Field label="Début de l'essai"><Inp type="date" value={f.essaiDebut || ""} onChange={(e) => set("essaiDebut", e.target.value)} /></Field>
-        <Field label="Fin de l'essai"><Inp type="date" value={f.essaiFin || ""} onChange={(e) => set("essaiFin", e.target.value)} /></Field>
+        <Field label={numPeriode > 1 ? `Début (période n°${numPeriode})` : "Début de l'essai"}><Inp type="date" value={f.essaiDebut || ""} onChange={(e) => set("essaiDebut", e.target.value)} /></Field>
+        <Field label={numPeriode > 1 ? `Fin (période n°${numPeriode})` : "Fin de l'essai"}><Inp type="date" value={f.essaiFin || ""} onChange={(e) => set("essaiFin", e.target.value)} /></Field>
       </div>
       {periodeInvalide && <div style={{ fontSize: 11.5, color: C.rouge, fontWeight: 700, marginTop: -4, marginBottom: 8 }}>La fin de l'essai doit être après le début.</div>}
+      {periodesPrec.length > 0 && (
+        <div style={{ background: "#F7F9FC", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "8px 11px", marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 4 }}>Périodes d'essai précédentes</div>
+          {periodesPrec.map((pp, i) => (
+            <div key={i} style={{ fontSize: 12.5, color: C.encre }}>Période n°{i + 1} : {pp.debut ? new Date(pp.debut + "T00:00:00").toLocaleDateString("fr-FR") : "?"}{pp.fin ? ` au ${new Date(pp.fin + "T00:00:00").toLocaleDateString("fr-FR")}` : ""}</div>
+          ))}
+        </div>
+      )}
 
       <div style={{ fontSize: 11.5, fontWeight: 800, color: C.gris, textTransform: "uppercase", letterSpacing: 0.3, margin: "6px 0 6px" }}>Test jonglage</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
