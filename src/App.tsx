@@ -1362,7 +1362,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.19";
+const APP_VERSION = "16.19.20";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -9342,7 +9342,7 @@ async function exporterCompositionPDF(jsPDF, fmt, data) {
   telechargerDoc(doc, nomPdf(data.titre || "Composition", fmt.toUpperCase()));
 }
 
-const FORMATS_MULTI = { U13: [8, 10, 11], "Foot loisirs": [11, 9, 8], "Foot santé": [6, 5] };
+const FORMATS_MULTI = { U9: [8, 9], U10: [8, 9], U11: [8, 9], U12: [8, 9], U13: [8, 9, 10, 11], "Foot loisirs": [11, 9, 8], "Foot santé": [6, 5] };
 function Compo({ demo, players, cat, catInfo, db, mutate }) {
   const matchsCat = (db.matches || []).filter((m) => m.cat === cat).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const aujourdhui = hoyISO();
