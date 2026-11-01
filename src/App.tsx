@@ -1362,7 +1362,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.20";
+const APP_VERSION = "16.19.23";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -2878,6 +2878,24 @@ function BtnSuppr({ nom, onConfirm, label, size = "md", full, style }) {
   );
 }
 
+// Bouton d'enregistrement manuel réutilisable : envoie tout de suite au serveur les
+// modifications en attente (en complément de l'enregistrement automatique et de la
+// sauvegarde à la fermeture de la fenêtre). Rendu uniquement si une fonction de
+// sauvegarde est disponible dans le contexte.
+function BoutonSauver({ size = "md", full, style }) {
+  const { sauver } = useContext(AdminCtx);
+  if (!sauver) return null;
+  const sm = size === "sm";
+  return (
+    <button type="button" onClick={() => { try { sauver(); } catch (e) {} }} style={{
+      background: C.jaune, border: "none", color: C.bleuNuit, borderRadius: sm ? 10 : 11,
+      padding: sm ? "8px 15px" : "11px 20px", cursor: "pointer", display: "inline-flex",
+      alignItems: "center", justifyContent: "center", gap: 7, fontSize: sm ? 13 : 14,
+      fontWeight: 800, whiteSpace: "nowrap", flex: "0 0 auto", width: full ? "100%" : undefined, ...style,
+    }}><Save size={sm ? 15 : 16} /> Enregistrer</button>
+  );
+}
+
 function Card({ children, style, onClick }) {
   return (
     <div onClick={onClick} style={{
@@ -4209,12 +4227,12 @@ export default function App() {
     });
     if (demo || !session || !cat) return;
     // La modification apparaît tout de suite ; elle est aussi envoyée au serveur
-    // automatiquement peu après (filet de sécurité pour ne jamais perdre une saisie),
-    // en plus du bouton « Enregistrer » qui envoie immédiatement.
+    // automatiquement 4 secondes après la dernière saisie (filet de sécurité pour ne jamais
+    // perdre une saisie), en plus du bouton « Enregistrer » qui envoie immédiatement.
     dirtyCatsRef.current.add(cat);
     setDirty(true);
     if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
-    autoSaveRef.current = setTimeout(() => { autoSaveRef.current = null; try { if (dirtyCatsRef.current.size > 0) enregistrerManuel(); } catch (e) {} }, 2500);
+    autoSaveRef.current = setTimeout(() => { autoSaveRef.current = null; try { if (dirtyCatsRef.current.size > 0) enregistrerManuel(); } catch (e) {} }, 4000);
   }
 
   function enregistrerManuel() {
@@ -9623,7 +9641,10 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
 
   return (
     <div>
-      <h2 style={{ margin: "4px 0 12px", fontSize: 20, fontWeight: 900 }}>Composition {cat}</h2>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 12px" }}>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, flex: 1 }}>Composition {cat}</h2>
+        <BoutonSauver size="sm" />
+      </div>
 
       {matchsCat.length > 0 && (
         <div style={{ marginBottom: 12 }}>
@@ -16556,7 +16577,8 @@ function SuiviMedical({ db, mutate, cat, estMedical, onSignalerBlessure, onClose
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
-        <div style={{ fontWeight: 800, fontSize: 16 }}>Suivi médical · {cat}</div>
+        <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Suivi médical · {cat}</div>
+        <BoutonSauver size="sm" />
       </header>
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
         <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 14, lineHeight: 1.5 }}>Rubrique de l'équipe médicale : joueurs pris en charge par le club, en réathlétisation ou convalescence. {sousType === "pro" ? "Catégorie professionnelle." : sousType === "formation" ? "Centre de formation." : "Cette catégorie est normalement suivie par les parents ; un joueur n'apparaît ici que si le coach a choisi une prise en charge par le club."}{!estMedical ? " Consultation seule : seule l'équipe médicale peut renseigner ce dossier." : ""}</div>
@@ -17068,7 +17090,8 @@ function DocumentsAdmin({ players, cat, db, mutate, lectureSeule, demo, adminUnl
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
-        <div style={{ fontWeight: 800, fontSize: 16 }}>Documents administratifs · {cat}</div>
+        <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Documents administratifs · {cat}</div>
+        <BoutonSauver size="sm" />
       </header>
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
@@ -17929,7 +17952,8 @@ function BilanEquipe({ db, players, cat, mutate, onClose, onTournois }) {
     <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
-        <div style={{ fontWeight: 800, fontSize: 16 }}>Bilan de saison · {catSel}</div>
+        <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Bilan de saison · {catSel}</div>
+        <BoutonSauver size="sm" />
       </header>
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
