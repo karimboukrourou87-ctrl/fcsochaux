@@ -1001,13 +1001,75 @@ function AttribuerVestiaire({ dem, onConfirm, onClose }) {
   );
 }
 
-function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider, onRefuser, onRafraichir, onDemanderDeverrouillage, onClose }) {
+// Attribution directe par la direction (sans demande d'un coach), vestiaire ou terrain.
+function AttributionDirecte({ onConfirm, onClose, matchs, cat }) {
+  const [typeLieu, setTypeLieu] = useState("vestiaires");
+  const [matchId, setMatchId] = useState("");
+  const [adversaire, setAdversaire] = useState("");
+  const [equipe, setEquipe] = useState("");
+  const [catPrevenir, setCatPrevenir] = useState("");
+  const [date, setDate] = useState("");
+  const options = typeLieu === "terrains" ? TERRAINS : VESTIAIRES;
+  const [vestiaire, setVestiaire] = useState(options[0]);
+  const [debut, setDebut] = useState(CRENEAUX_DEFAUT[2] || CRENEAUX_DEFAUT[0]);
+  const [fin, setFin] = useState("");
+  const [liberation, setLiberation] = useState("");
+  const changerType = (t) => { setTypeLieu(t); const opts = t === "terrains" ? TERRAINS : VESTIAIRES; setVestiaire(opts[0]); };
+  const choisirMatch = (id) => {
+    setMatchId(id);
+    const m = (matchs || []).find((x) => String(x.id) === String(id));
+    if (m) { setAdversaire(m.adversaire || ""); setDate(m.date || ""); if (!equipe.trim() && cat) setEquipe(cat); if (!catPrevenir && cat) setCatPrevenir(cat); }
+    else { setAdversaire(""); }
+  };
+  const pret = !!equipe.trim() && !!date && !!vestiaire && !!debut;
+  return (
+    <Modal title="Attribution directe" onClose={onClose}
+      footer={<Btn variant="accent" full disabled={!pret} onClick={() => onConfirm({ typeLieu, matchId, adversaire, equipe: equipe.trim(), catPrevenir, date, vestiaire, debut, fin: fin || "", liberation: liberation || "" })}><Check size={16} /> Attribuer</Btn>}>
+      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.45 }}>La direction réserve directement, sans attendre de demande. La réservation s'affiche verrouillée sur le planning, et le coach de la catégorie choisie est alerté par une bannière.</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        {[["vestiaires", "Vestiaire"], ["terrains", "Terrain"]].map(([v, l]) => { const on = typeLieu === v; return <button key={v} type="button" onClick={() => changerType(v)} style={{ flex: 1, border: `1px solid ${on ? C.bleu : C.grisClair}`, background: on ? C.bleu : "#fff", color: on ? "#fff" : C.encre, fontWeight: 800, fontSize: 13, borderRadius: 10, padding: "10px 8px", cursor: "pointer" }}>{l}</button>; })}
+      </div>
+      {(matchs && matchs.length > 0) && (
+        <Field label="Match à domicile (optionnel, pré-remplit la date)">
+          <Sel value={matchId} onChange={(e) => choisirMatch(e.target.value)}>
+            <option value="">— Saisie libre (sans match) —</option>
+            {matchs.map((m) => <option key={m.id} value={m.id}>{m.date ? jjmm(m.date) : "date ?"}{m.heure ? ` · ${m.heure}` : ""} · vs {m.adversaire || "adversaire ?"}</option>)}
+          </Sel>
+        </Field>
+      )}
+      <Field label="Équipe (affichée sur le planning)"><Inp value={equipe} onChange={(e) => setEquipe(e.target.value)} placeholder="Ex : U10, AS AUDINCOURT..." /></Field>
+      <Field label="Prévenir le coach de la catégorie (optionnel)">
+        <Sel value={catPrevenir} onChange={(e) => setCatPrevenir(e.target.value)}>
+          <option value="">— Aucune alerte —</option>
+          {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.id}</option>)}
+        </Sel>
+      </Field>
+      <Field label="Date"><Inp type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+      <Field label={typeLieu === "terrains" ? "Terrain" : "Vestiaire"}>
+        <Sel value={vestiaire} onChange={(e) => setVestiaire(e.target.value)}>
+          {options.map((v) => <option key={v} value={v}>{typeLieu === "terrains" ? v : `Vestiaire ${v}`}</option>)}
+        </Sel>
+      </Field>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1 }}><Field label="De (début)"><Sel value={debut} onChange={(e) => setDebut(e.target.value)}>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field></div>
+        <div style={{ flex: 1 }}><Field label="À (fin)"><Sel value={fin} onChange={(e) => setFin(e.target.value)}><option value="">—</option>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field></div>
+      </div>
+      <Field label="Libération (optionnel)"><Sel value={liberation} onChange={(e) => setLiberation(e.target.value)}><option value="">— (optionnel) —</option>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field>
+    </Modal>
+  );
+}
+
+function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider, onRefuser, onAttribuerDirect, onRafraichir, onDemanderDeverrouillage, onClose }) {
   const [nouveau, setNouveau] = useState(false);
   const [attrib, setAttrib] = useState(null);
   const [refus, setRefus] = useState(null);
   const [cause, setCause] = useState("");
   const [confirmSuppr, setConfirmSuppr] = useState(null);
+  const [directe, setDirecte] = useState(false);
   const [majMsg, setMajMsg] = useState("");
+  // À l'ouverture, on recharge le planning du serveur pour voir les demandes faites par les autres
+  // (ex : la direction voit tout de suite les demandes des coachs).
+  useEffect(() => { if (onRafraichir) { try { onRafraichir(true); } catch (e) {} } }, []);
   const moi = (profil && profil.nom) || "Éducateur";
   const toutes = ((store && store.demandesVestiaire) || []).slice().sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""));
   const liste = peutValider ? toutes : toutes.filter((x) => (x.demandeur || "") === moi);
@@ -1027,8 +1089,10 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
   }
   return (
     <Modal title="Demandes de vestiaire et terrain" onClose={onClose} fullscreen={peutValider}
-      footer={<Btn variant="accent" full onClick={() => setNouveau(true)}><Plus size={16} /> Nouvelle demande</Btn>}>
-      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>L'éducateur demande un vestiaire ou un terrain pour un match à domicile, la direction attribue le lieu et les créneaux. {peutValider ? "Touche Attribuer pour choisir, ou Refuser." : "Ta demande reste « en traitement » jusqu'à l'attribution par la direction. La réservation apparaît ensuite sur le planning."}</div>
+      footer={peutValider
+        ? <><Btn variant="ghost" full onClick={() => setNouveau(true)}><Plus size={16} /> Nouvelle demande</Btn><Btn variant="accent" full onClick={() => setDirecte(true)}><Check size={16} /> Attribution directe</Btn></>
+        : <Btn variant="accent" full onClick={() => setNouveau(true)}><Plus size={16} /> Nouvelle demande</Btn>}>
+      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>L'éducateur demande un vestiaire ou un terrain pour un match à domicile, la direction attribue le lieu et les créneaux. {peutValider ? "Touche Attribuer pour choisir, ou Refuser. « Attribution directe » permet de réserver sans attendre une demande." : "Ta demande reste « en traitement » jusqu'à l'attribution par la direction. La réservation apparaît ensuite sur le planning."}</div>
       {onRafraichir && <div style={{ marginBottom: 12 }}><Btn variant="ghost" size="sm" full disabled={majMsg === "Actualisation..."} onClick={rafraichirMaintenant}><RefreshCw size={15} style={{ animation: majMsg === "Actualisation..." ? "spin 0.6s linear infinite" : "none" }} /> {majMsg || "Rafraîchir les demandes"}</Btn></div>}
       {liste.length === 0 ? (
         <div style={{ textAlign: "center", color: C.gris, fontSize: 13, padding: "24px 0" }}>Aucune demande pour l'instant.</div>
@@ -1040,7 +1104,7 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
                 <span style={{ fontSize: 12, color: C.gris, fontWeight: 800 }}>{x.cat || "?"} · {x.typeLieu === "terrains" ? "Terrain" : "Vestiaire"} · {x.date ? fmtDate(x.date) : "date ?"}</span>
                 {x.statut === "acceptee" ? <Pastille bg="#E2F4E9" color={C.vert}>Attribuée</Pastille> : x.statut === "refusee" ? <Pastille bg="#FBE3E3" color={C.rouge}>Refusée</Pastille> : <Pastille bg={C.jaune} color={C.bleuNuit}>En attente</Pastille>}
               </div>
-              <div style={{ fontWeight: 800, marginTop: 3 }}>{CLUB} contre {x.adversaire || "adversaire ?"}</div>
+              <div style={{ fontWeight: 800, marginTop: 3 }}>{x.adversaire ? `${CLUB} contre ${x.adversaire}` : (x.directe ? `${x.cat || "Réservation"}${x.catPrevenir && x.catPrevenir !== x.cat ? " · " + x.catPrevenir : ""} · attribution directe` : `${CLUB} contre adversaire ?`)}</div>
               <div style={{ fontSize: 12, color: C.gris, marginTop: 3 }}>{x.heureArrivee ? `Arrivée souhaitée ${x.heureArrivee}` : ""}{x.nbJoueurs ? `${x.heureArrivee ? " · " : ""}${x.nbJoueurs} joueurs` : ""}{x.nbStaff ? ` · ${x.nbStaff} staff` : ""}{x.note ? ` · ${x.note}` : ""}</div>
               {x.statut === "acceptee" && <div style={{ fontSize: 12.5, color: C.bleu, fontWeight: 800, marginTop: 5, display: "flex", alignItems: "center", gap: 5 }}><Lock size={13} /> {resumeVestiaire(x)}</div>}
               {x.statut === "refusee" && x.cause && <div style={{ fontSize: 12, color: C.rouge, marginTop: 5 }}>Motif : {x.cause}</div>}
@@ -1056,6 +1120,7 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
         </div>
       )}
       {nouveau && <FormVestiaire matchs={matchsDom} onSubmit={creer} onClose={() => setNouveau(false)} />}
+      {directe && <AttributionDirecte matchs={matchsDom} cat={cat} onConfirm={(info) => { if (onAttribuerDirect) onAttribuerDirect(info); setDirecte(false); }} onClose={() => setDirecte(false)} />}
       {attrib && <AttribuerVestiaire dem={attrib} onConfirm={(attribution) => { onValider(attrib, attribution); setAttrib(null); }} onClose={() => setAttrib(null)} />}
       {refus && (
         <Modal title="Refuser la demande" onClose={() => setRefus(null)} footer={<Btn variant="danger" full disabled={!cause.trim()} onClick={() => { onRefuser(refus, cause.trim()); setRefus(null); setCause(""); }}><X size={16} /> Confirmer le refus</Btn>}>
@@ -1528,7 +1593,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.29";
+const APP_VERSION = "16.19.34";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -2570,6 +2635,27 @@ function fusionnerPlanning(cible, source) {
   });
   return cible;
 }
+// Fusionne les listes de demandes/notifs du planning (demandes de vestiaire/terrain, notifications,
+// accusés) entre le serveur (le plus à jour) et la version locale, pour ne jamais écraser une
+// demande ajoutée par un autre utilisateur (ex : un coach) entre-temps. Les grilles (vestiaires,
+// terrains) restent la version locale (comportement historique).
+function fusionnerPlanningDemandes(serveur, avant, apres) {
+  const out = { ...apres };
+  ["demandesVestiaire", "demandes", "notifs", "accuses"].forEach((champ) => {
+    const sv = (serveur && serveur[champ]) || [];
+    const av = (avant && avant[champ]) || [];
+    const ap = (apres && apres[champ]) || [];
+    if (!sv.length && !ap.length) return;
+    const idsAv = new Set(av.map((x) => x && x.id).filter(Boolean));
+    const idsAp = new Set(ap.map((x) => x && x.id).filter(Boolean));
+    const supprimes = new Set([...idsAv].filter((id) => !idsAp.has(id)));
+    const parId = new Map();
+    sv.forEach((x) => { if (x && x.id && !supprimes.has(x.id)) parId.set(x.id, x); });
+    ap.forEach((x) => { if (x && x.id) parId.set(x.id, x); });
+    out[champ] = [...parId.values()];
+  });
+  return out;
+}
 // Charge, une seule fois, le planning officiel des entraînements (PLANNING_HEBDO) comme séances hebdomadaires récurrentes verrouillées.
 function seedPlanningOfficiel(pl) {
   pl = pl || { creneaux: null, vestiaires: {}, terrains: {} };
@@ -2667,9 +2753,9 @@ function usePlanningClub(demo, db, mutate, cats) {
     return () => { annule = true; };
   }, [demo, cats]);
   // Recharge le planning commun depuis la base (pour voir les demandes et validations des autres sans quitter l'app)
-  const rafraichir = useCallback(async () => {
+  const rafraichir = useCallback(async (force) => {
     if (demo) return;
-    if (Date.now() - dernierSaveRef.current < 4000) return; // on n'écrase pas une sauvegarde locale toute récente
+    if (!force && Date.now() - dernierSaveRef.current < 4000) return; // on n'écrase pas une sauvegarde locale toute récente
     try {
       let pl = await loadPlanningClub();
       if (pl) { const rep = reparerPlages(pl); setRemote(rep.pl); }
@@ -2688,10 +2774,22 @@ function usePlanningClub(demo, db, mutate, cats) {
   const maj = (fn) => {
     if (demo) { mutate((d) => { d.planning = fn(d.planning || { vestiaires: {}, terrains: {} }); return d; }); return; }
     setRemote((prev) => {
+      const avant = prev ? JSON.parse(JSON.stringify(prev)) : { creneaux: null, vestiaires: {}, terrains: {} };
       const base = prev ? JSON.parse(JSON.stringify(prev)) : { creneaux: null, vestiaires: {}, terrains: {} };
       const next = fn(base);
       dernierSaveRef.current = Date.now();
-      savePlanningClub(next).then(() => setErreur(null)).catch((e) => setErreur((e && (e.message || e.details || e.hint)) || String(e)));
+      // Enregistrement sûr : on relit d'abord le serveur et on fusionne les demandes/notifs, pour ne
+      // jamais effacer une demande (ex : vestiaire/terrain d'un coach) ajoutée entre-temps par un autre.
+      (async () => {
+        try {
+          const serveur = await loadPlanningClub();
+          const fusionne = serveur ? fusionnerPlanningDemandes(serveur, avant, next) : next;
+          await savePlanningClub(fusionne);
+          dernierSaveRef.current = Date.now();
+          setRemote(fusionne);
+          setErreur(null);
+        } catch (e) { setErreur((e && (e.message || e.details || e.hint)) || String(e)); }
+      })();
       return next;
     });
   };
@@ -4672,6 +4770,7 @@ export default function App() {
       d.demandesVestiaire = d.demandesVestiaire || [];
       const x = d.demandesVestiaire.find((y) => y.id === dem.id);
       if (x) { Object.assign(x, att); x.statut = "acceptee"; x.cause = ""; x.traiteLe = new Date().toISOString(); }
+      else { d.demandesVestiaire.push({ ...dem, ...att, statut: "acceptee", cause: "", traiteLe: new Date().toISOString(), creeLe: dem.creeLe || new Date().toISOString() }); }
       if (dem.date && att.vestiaire && att.debut) {
         d[tl] = d[tl] || {};
         d[tl][dem.date] = d[tl][dem.date] || {};
@@ -4680,8 +4779,9 @@ export default function App() {
           d[tl][dem.date][`${cr}__${att.vestiaire}`] = { equipe: dem.cat, cat: dem.cat, activite: "match", statut: "valide", verrou: true, debut: att.debut, fin: att.fin || undefined, liberation: att.liberation || undefined, matchId: dem.matchId || undefined, adversaire: dem.adversaire || undefined, demandeur: dem.demandeur || undefined, origineVestiaire: dem.id };
         });
       }
+      const prevenir = (dem.catPrevenir || dem.cat) || "";
       d.notifs = d.notifs || [];
-      d.notifs.push({ id: uid(), genre: "vestiaire", pour: dem.demandeur || "", pourCat: dem.cat || "", statut: dejaAcceptee ? "modifie" : "valide", raison: "", resume: resumeVestiaire({ ...dem, ...att }), date: dem.date || "", cat: dem.cat || "", creeLe: new Date().toISOString() });
+      d.notifs.push({ id: uid(), genre: "vestiaire", pour: dem.demandeur || "", pourCat: prevenir, statut: dejaAcceptee ? "modifie" : "valide", raison: "", resume: resumeVestiaire({ ...dem, ...att }), date: dem.date || "", cat: dem.cat || "", creeLe: new Date().toISOString() });
       return d;
     });
     ajouterEntreeJournal({ action: dejaAcceptee ? "vestiaire_modif" : "vestiaire_valide", cat: dem.cat || "", detail: resumeVestiaire({ ...dem, ...att }), date: dem.date || "", destination: dem.adversaire || "", demandeur: dem.demandeur || "", auteur: monNom, role: monRole });
@@ -4700,6 +4800,13 @@ export default function App() {
       return d;
     });
     ajouterEntreeJournal({ action: "vestiaire_refus", cat: dem.cat || "", detail: cause || "", date: dem.date || "", destination: dem.adversaire || "", demandeur: dem.demandeur || "", auteur: monNom, role: monRole });
+  };
+  // Attribution directe par la direction (sans demande préalable d'un coach) : crée la réservation
+  // verrouillée sur le planning et alerte le coach de la catégorie concernée par une bannière.
+  const attribuerVestiaireDirect = (info) => {
+    const i = info || {};
+    const dem = { id: uid(), typeLieu: i.typeLieu === "terrains" ? "terrains" : "vestiaires", cat: i.equipe || i.cat || "", catPrevenir: i.catPrevenir || "", demandeur: "", matchId: i.matchId || "", adversaire: i.adversaire || "", date: i.date || "", statut: "direct", directe: true, creeLe: new Date().toISOString() };
+    validerVestiaire(dem, { vestiaire: i.vestiaire, debut: i.debut, fin: i.fin || "", liberation: i.liberation || "" });
   };
   const rafraichirTout = () => {
     const taches = [];
@@ -4898,7 +5005,7 @@ export default function App() {
       {showDemandes && <Demandes demo={demo} db={db} mutate={mutate} cat={cat} session={session} onNotifierJoueur={notifierJoueur} onVu={() => setDemTick((t) => t + 1)} onClose={() => { setDemTick((t) => t + 1); setShowDemandes(false); }} />}
       {showClassement && <Classement cat={cat} db={db} mutate={mutate} onClose={() => setShowClassement(false)} />}
       {showTransport && <Transports store={transportClub} maj={majTransportClub} chargement={chargementTransport} peutValider={peutValider} profil={profil} cat={cat} encadrement={encadrementClub} majEncadrement={majEncadrementClub} onValiderDem={validerTransport} onRefuserDem={refuserTransport} db={db} mutate={mutate} onRafraichir={rafraichirTransport} onDemanderDeverrouillage={demanderDeverrouillageAdmin} onClose={() => setShowTransport(false)} />}
-      {showVestiaire && <DemandesVestiaire store={planningClub} maj={majPlanningClub} peutValider={peutValider} profil={profil} cat={cat} db={db} onValider={validerVestiaire} onRefuser={refuserVestiaire} onRafraichir={rafraichirPlanning} onDemanderDeverrouillage={demanderDeverrouillageAdmin} onClose={() => setShowVestiaire(false)} />}
+      {showVestiaire && <DemandesVestiaire store={planningClub} maj={majPlanningClub} peutValider={peutValider} profil={profil} cat={cat} db={db} onValider={validerVestiaire} onRefuser={refuserVestiaire} onAttribuerDirect={attribuerVestiaireDirect} onRafraichir={rafraichirPlanning} onDemanderDeverrouillage={demanderDeverrouillageAdmin} onClose={() => setShowVestiaire(false)} />}
       {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
       {apercuPDF && <ApercuPDF url={apercuPDF.url} nom={apercuPDF.nom} onClose={() => { try { URL.revokeObjectURL(apercuPDF.url); } catch (e) {} setApercuPDF(null); }} />}
@@ -15306,14 +15413,14 @@ function exporterPlanningVestiairesJourPDF(jsPDF, pl, jours, type, typeLabel, li
   function jourData(dstr) {
     const cases = (pl[type] && pl[type][dstr]) || {};
     const map = {}; const crSet = new Set();
-    Object.keys(cases).forEach((kk) => { const idx = kk.indexOf("__"); if (idx < 0) return; const cr = kk.slice(0, idx); const col = kk.slice(idx + 2); const c = cases[kk]; map[cr] = map[cr] || {}; map[cr][col] = (c.equipe || "") + (c.statut && c.statut !== "valide" ? " (att.)" : ""); crSet.add(cr); });
-    if (!estVac(dstr)) { const jour = (new Date(dstr + "T00:00:00").getDay() + 6) % 7; Object.keys(hebdo).forEach((kk) => { const parts = kk.split("__"); const j = +parts[0], cr = parts[1], col = parts.slice(2).join("__"); if (j === jour) { map[cr] = map[cr] || {}; if (!map[cr][col]) map[cr][col] = hebdo[kk].equipe || ""; crSet.add(cr); } }); }
+    Object.keys(cases).forEach((kk) => { const idx = kk.indexOf("__"); if (idx < 0) return; const cr = kk.slice(0, idx); const col = kk.slice(idx + 2); const c = cases[kk]; map[cr] = map[cr] || {}; map[cr][col] = { eq: (c.equipe || "") + (c.statut && c.statut !== "valide" ? " (att.)" : ""), deb: c.debut || cr, fin: c.fin || "" }; crSet.add(cr); });
+    if (!estVac(dstr)) { const jour = (new Date(dstr + "T00:00:00").getDay() + 6) % 7; Object.keys(hebdo).forEach((kk) => { const parts = kk.split("__"); const j = +parts[0], cr = parts[1], col = parts.slice(2).join("__"); if (j === jour) { const c = hebdo[kk]; map[cr] = map[cr] || {}; if (!map[cr][col]) map[cr][col] = { eq: c.equipe || "", deb: c.debut || cr, fin: c.fin || "" }; crSet.add(cr); } }); }
     return { creneaux: [...crSet].sort((a, b) => a.localeCompare(b)), map };
   }
   const joursAvec = jours.map((d) => ({ d, ...jourData(d) })).filter((o) => o.creneaux.length);
   function pageJour(o) {
-    try { doc.addImage(LOGO_CLUB, "PNG", M, 14, 46, 46); } catch (e) {}
-    const tx = M + 56;
+    try { const pr = doc.getImageProperties(LOGO_CLUB); const lh = 40, lw = lh * (pr.width / pr.height); doc.addImage(LOGO_CLUB, "PNG", M, 14, lw, lh); } catch (e) {}
+    const tx = M + 44;
     sf(jaune); doc.rect(tx, 18, W - M - tx, 34, "F"); sd(trait); doc.rect(tx, 18, W - M - tx, 34);
     sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.text(titreJour(o.d), (tx + W - M) / 2, 40, { align: "center" });
     const nCol = liste.length, x0 = M, horW = 66, colW = (W - 2 * M - horW) / nCol;
@@ -15332,8 +15439,13 @@ function exporterPlanningVestiairesJourPDF(jsPDF, pl, jours, type, typeLabel, li
       liste.forEach((v, i) => {
         const x = x0 + horW + i * colW;
         sf(bg); doc.rect(x, y, colW, rowH, "F"); sd(trait); doc.rect(x, y, colW, rowH);
-        const eq = (o.map[cr] && o.map[cr][v]) || "";
-        if (eq) { sc(navy); doc.setFont("helvetica", "bold"); doc.setFontSize(fRow); doc.text(doc.splitTextToSize(eq, colW - 6)[0], x + colW / 2, y + rowH / 2 + fRow * 0.35, { align: "center" }); }
+        const cell = o.map[cr] && o.map[cr][v];
+        if (cell && cell.eq) {
+          const deux = rowH >= 20 && cell.deb && cell.fin && cell.fin !== cell.deb;
+          sc(navy); doc.setFont("helvetica", "bold"); doc.setFontSize(fRow);
+          doc.text(doc.splitTextToSize(cell.eq, colW - 6)[0], x + colW / 2, y + (deux ? rowH * 0.40 + 1 : rowH / 2 + fRow * 0.35), { align: "center" });
+          if (deux) { sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(Math.max(5, fRow - 2)); doc.text(cell.deb + " - " + cell.fin, x + colW / 2, y + rowH * 0.74, { align: "center" }); }
+        }
       });
       y += rowH;
     });
