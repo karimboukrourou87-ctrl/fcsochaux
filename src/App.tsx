@@ -1024,7 +1024,7 @@ function AttribuerVestiaire({ dem, onConfirm, onClose }) {
 }
 
 // Un bloc d'attribution autonome : une équipe, son match, son vestiaire/terrain, ses horaires.
-function BlocAttribution({ typeLieu, alerter, visiteur, onReservation }) {
+function BlocAttribution({ typeLieu, alerter, visiteur, recevante, onReservation }) {
   const [equipeSel, setEquipeSel] = useState("");
   const [equipeLibre, setEquipeLibre] = useState("");
   const [matchsListe, setMatchsListe] = useState([]);
@@ -1036,7 +1036,24 @@ function BlocAttribution({ typeLieu, alerter, visiteur, onReservation }) {
   const [debut, setDebut] = useState(CRENEAUX_DEFAUT[2] || CRENEAUX_DEFAUT[0]);
   const [fin, setFin] = useState("");
   const [liberation, setLiberation] = useState("");
+  const [partage, setPartage] = useState(false); // visiteur : partage le vestiaire de l'équipe recevante
+  const sugRef = useRef("");
   useEffect(() => { setVestiaire((typeLieu === "terrains" ? TERRAINS : VESTIAIRES)[0]); }, [typeLieu]);
+  // Visiteur : quand l'équipe recevante a choisi son match, on pré-remplit le nom de l'adversaire, la date
+  // et on propose un vestiaire dédié (différent de celui de la recevante), prêt à être ajusté ou partagé.
+  const recevNom = (visiteur && recevante && recevante.adversaire) ? recevante.adversaire : "";
+  const recevDate = (visiteur && recevante && recevante.date) ? recevante.date : "";
+  const recevVest = (visiteur && recevante && recevante.vestiaire) ? recevante.vestiaire : "";
+  useEffect(() => {
+    if (!visiteur) return;
+    const sig = recevNom + "|" + recevDate + "|" + recevVest;
+    if (!recevNom || sugRef.current === sig) return;
+    sugRef.current = sig;
+    setEquipeSel("__autre__"); setEquipeLibre(recevNom);
+    if (recevDate) setDate(recevDate);
+    const libre = VESTIAIRES.find((v) => v !== recevVest) || VESTIAIRES[0];
+    setVestiaire(libre);
+  }, [visiteur, recevNom, recevDate, recevVest]);
   useEffect(() => {
     let annule = false;
     if (!equipeSel || equipeSel === "__autre__") { setMatchsListe([]); setMatchId(""); return; }
@@ -1052,10 +1069,15 @@ function BlocAttribution({ typeLieu, alerter, visiteur, onReservation }) {
   }, [equipeSel]);
   const choisirMatch = (id) => { setMatchId(id); const m = matchsListe.find((x) => String(x.id) === String(id)); if (m) { setAdversaire(m.adversaire || ""); setDate(m.date || ""); } else setAdversaire(""); };
   const equipe = equipeSel === "__autre__" ? equipeLibre.trim() : (equipeSel || "");
+  const partageActif = !!(visiteur && partage && recevVest);
   useEffect(() => {
-    const ok = !!equipe && !!date && !!vestiaire && !!debut;
-    onReservation(ok ? { equipe, catPrevenir: (equipeSel && equipeSel !== "__autre__" && alerter) ? equipeSel : "", matchId, adversaire, date, vestiaire, debut, fin: fin || "", liberation: liberation || "" } : null);
-  }, [equipe, equipeSel, date, vestiaire, debut, fin, liberation, matchId, adversaire, alerter]);
+    const vst = partageActif ? recevVest : vestiaire;
+    const deb = partageActif ? ((recevante && recevante.debut) || debut) : debut;
+    const finV = partageActif ? ((recevante && recevante.fin) || fin) : fin;
+    const libV = partageActif ? ((recevante && recevante.liberation) || liberation) : liberation;
+    const ok = !!equipe && !!date && !!vst && !!deb;
+    onReservation(ok ? { equipe, catPrevenir: (equipeSel && equipeSel !== "__autre__" && alerter) ? equipeSel : "", matchId, adversaire, date, vestiaire: vst, debut: deb, fin: finV || "", liberation: libV || "", visiteur: !!visiteur, partage: partageActif } : null);
+  }, [equipe, equipeSel, date, vestiaire, debut, fin, liberation, matchId, adversaire, alerter, partage, partageActif, visiteur, recevVest, recevante]);
   return (
     <div style={{ border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "10px 12px", marginBottom: 12, background: "#FAFBFD" }}>
       <Field label={visiteur ? "Équipe visiteuse" : "Catégorie / équipe (affichée sur le planning)"}>
@@ -1074,19 +1096,30 @@ function BlocAttribution({ typeLieu, alerter, visiteur, onReservation }) {
           </Sel>
         </Field>
       )}
+      {equipe && visiteur && recevVest && (
+        <div style={{ display: "flex", gap: 8, margin: "2px 0 10px" }}>
+          {[[false, "Vestiaire dédié"], [true, "Partage avec nos joueurs"]].map(([v, l]) => { const on = partage === v; return <button key={String(v)} type="button" onClick={() => setPartage(v)} style={{ flex: 1, border: `1px solid ${on ? C.bleu : C.grisClair}`, background: on ? C.bleu : "#fff", color: on ? "#fff" : C.encre, fontWeight: 800, fontSize: 12.5, borderRadius: 10, padding: "9px 8px", cursor: "pointer" }}>{l}</button>; })}
+        </div>
+      )}
       {equipe && (
         <>
           <Field label="Date"><Inp type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-          <Field label={typeLieu === "terrains" ? "Terrain" : "Vestiaire"}>
-            <Sel value={vestiaire} onChange={(e) => setVestiaire(e.target.value)}>
-              {lieuOpts.map((v) => <option key={v} value={v}>{typeLieu === "terrains" ? v : `Vestiaire ${v}`}</option>)}
-            </Sel>
-          </Field>
-          <div style={{ display: "flex", gap: 10 }}>
-            <div style={{ flex: 1 }}><Field label="De (début)"><Sel value={debut} onChange={(e) => setDebut(e.target.value)}>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field></div>
-            <div style={{ flex: 1 }}><Field label="À (fin)"><Sel value={fin} onChange={(e) => setFin(e.target.value)}><option value="">—</option>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field></div>
-          </div>
-          <Field label="Libération (optionnel)"><Sel value={liberation} onChange={(e) => setLiberation(e.target.value)}><option value="">— (optionnel) —</option>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field>
+          {partageActif ? (
+            <div style={{ fontSize: 12.5, color: C.bleu, fontWeight: 700, background: "#E7F0FB", border: `1px solid ${C.bleu}`, borderRadius: 10, padding: "9px 11px", lineHeight: 1.4 }}>Les visiteurs partagent le vestiaire de l'équipe recevante (Vestiaire {recevVest}){(recevante && recevante.debut) ? ` · ${recevante.debut}${recevante.fin ? " à " + recevante.fin : ""}` : ""}. La case du planning affichera les deux équipes.</div>
+          ) : (
+            <>
+              <Field label={typeLieu === "terrains" ? "Terrain" : "Vestiaire"}>
+                <Sel value={vestiaire} onChange={(e) => setVestiaire(e.target.value)}>
+                  {lieuOpts.map((v) => <option key={v} value={v}>{typeLieu === "terrains" ? v : `Vestiaire ${v}`}</option>)}
+                </Sel>
+              </Field>
+              <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ flex: 1 }}><Field label="De (début)"><Sel value={debut} onChange={(e) => setDebut(e.target.value)}>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field></div>
+                <div style={{ flex: 1 }}><Field label="À (fin)"><Sel value={fin} onChange={(e) => setFin(e.target.value)}><option value="">—</option>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field></div>
+              </div>
+              <Field label="Libération (optionnel)"><Sel value={liberation} onChange={(e) => setLiberation(e.target.value)}><option value="">— (optionnel) —</option>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field>
+            </>
+          )}
         </>
       )}
     </div>
@@ -1121,7 +1154,7 @@ function AttributionDirecte({ onConfirm, onClose }) {
       {typeLieu === "vestiaires" && (
         <>
           <div style={{ fontSize: 11.5, fontWeight: 800, color: C.bleu, letterSpacing: 0.3, margin: "2px 0 6px" }}>Équipe visiteuse (optionnel)</div>
-          <BlocAttribution typeLieu="vestiaires" alerter={alerter} visiteur onReservation={setResC} />
+          <BlocAttribution typeLieu="vestiaires" alerter={alerter} visiteur recevante={resA || resB} onReservation={setResC} />
         </>
       )}
     </Modal>
@@ -1732,7 +1765,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.47";
+const APP_VERSION = "16.19.48";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -4981,7 +5014,7 @@ export default function App() {
             d[tl][r.date][kk] = { equipe: r.equipe, cat: r.equipe, activite: "match", statut: "valide", verrou: true, debut: r.debut, fin: r.fin || undefined, liberation: r.liberation || undefined, matchId: r.matchId || undefined, adversaire: r.adversaire || undefined, demandeur: undefined, origineVestiaire: rid };
           }
         });
-        d.demandesVestiaire.push({ id: rid, typeLieu: tl, cat: r.equipe, catsPrevenir: r.catPrevenir ? [r.catPrevenir] : [], demandeur: "", matchId: r.matchId || "", adversaire: r.adversaire || "", date: r.date || "", vestiaire: r.vestiaire, debut: r.debut, fin: r.fin || "", liberation: r.liberation || "", statut: "acceptee", directe: true, traiteLe: new Date().toISOString(), creeLe: new Date().toISOString() });
+        d.demandesVestiaire.push({ id: rid, typeLieu: tl, cat: r.equipe, catsPrevenir: r.catPrevenir ? [r.catPrevenir] : [], demandeur: "", matchId: r.matchId || "", adversaire: r.adversaire || "", date: r.date || "", vestiaire: r.vestiaire, debut: r.debut, fin: r.fin || "", liberation: r.liberation || "", visiteur: !!r.visiteur, partage: !!r.partage, statut: "acceptee", directe: true, traiteLe: new Date().toISOString(), creeLe: new Date().toISOString() });
         if (r.catPrevenir) d.notifs.push({ id: uid(), genre: "vestiaire", pour: "", pourCat: r.catPrevenir, statut: "valide", raison: "", resume: resumeVestiaire({ cat: r.equipe, vestiaire: r.vestiaire, debut: r.debut, fin: r.fin, liberation: r.liberation, typeLieu: tl }), origine: rid, date: r.date || "", cat: r.equipe || "", creeLe: new Date().toISOString() });
       });
       return d;
@@ -11881,11 +11914,21 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) 
   }, [planning, cur.cat, cur.date, cur.adversaire]);
   const attribTerrains = attribsDirection.filter((x) => x.typeLieu === "terrains");
   const attribVestiaires = attribsDirection.filter((x) => x.typeLieu !== "terrains");
+  // Vestiaire de l'équipe visiteuse : réservé au nom de l'adversaire du match (même date).
+  const attribVisiteurs = useMemo(() => {
+    const toutes = (planning && planning.demandesVestiaire) || [];
+    const d = cur.date || "";
+    const adv = (cur.adversaire || "").trim().toLowerCase();
+    if (!adv) return [];
+    return toutes.filter((x) => x && x.statut === "acceptee" && x.typeLieu !== "terrains" && x.vestiaire && (x.date || "") === d && (x.cat || "").trim().toLowerCase() === adv);
+  }, [planning, cur.adversaire, cur.date]);
   const terLock = attribTerrains.length > 0;
   const vestLock = attribVestiaires.length > 0;
-  const aAttribution = terLock || vestLock;
+  const vestVisLock = attribVisiteurs.length > 0;
+  const aAttribution = terLock || vestLock || vestVisLock;
   const nomsTerrainsAttrib = attribTerrains.map((x) => x.vestiaire);
   const nomsVestiairesAttrib = attribVestiaires.map((x) => x.vestiaire);
+  const nomsVisiteursAttrib = attribVisiteurs.map((x) => x.vestiaire);
   // Diagnostic transport : on fait remonter l'etat du transport de ce match dans le traceur (bouton Diag),
   // pour verifier la liaison demande -> match et ce qui a ete attribue.
   const diagTransport = `match ${cur.date || "?"} ${cur.adversaire || "?"} (${cur.cat || "?"}) lieu=${cur.lieu || "?"} | mode=${t.mode || "aucun"} statut=${t.statut || "-"} minibus=${normMinis(t.minibus).join("/") || "-"} loueur=${t.loueur || "-"} voitures=${t.nbVoitures || "-"} origineDemande=${t.origineDemande || "non"}`;
@@ -11971,12 +12014,15 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) 
 
           {aAttribution && (
             <div style={{ background: "#E7F0FB", border: `1px solid ${C.bleu}`, borderRadius: 12, padding: "11px 13px", marginBottom: 14 }}>
-              <div style={{ fontSize: 13, fontWeight: 900, color: C.bleuNuit, display: "flex", alignItems: "center", gap: 7, marginBottom: nomsVestiairesAttrib.length ? 6 : 0 }}><Lock size={15} /> Attribué par la direction</div>
+              <div style={{ fontSize: 13, fontWeight: 900, color: C.bleuNuit, display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}><Lock size={15} /> Attribué par la direction</div>
               {attribVestiaires.map((a, i) => (
                 <div key={"av" + i} style={{ fontSize: 12.5, color: C.bleu, fontWeight: 800 }}>{resumeVestiaire(a)}</div>
               ))}
               {attribTerrains.map((a, i) => (
                 <div key={"at" + i} style={{ fontSize: 12.5, color: C.bleu, fontWeight: 800 }}>{resumeVestiaire(a)}</div>
+              ))}
+              {attribVisiteurs.map((a, i) => (
+                <div key={"vis" + i} style={{ fontSize: 12.5, color: C.bleu, fontWeight: 800 }}>Visiteurs ({cur.adversaire}) : {a.partage ? `partagé avec nos joueurs · Vestiaire ${a.vestiaire}` : resumeVestiaire(a)}</div>
               ))}
               <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6, lineHeight: 1.4 }}>Réservation gérée dans l'onglet « Demandes de vestiaire et terrain ». Les cases ci-dessous ne sont pas modifiables ici.</div>
             </div>
@@ -12008,18 +12054,19 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) 
             })}
           </div>
 
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Vestiaires visiteurs</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Vestiaires visiteurs{vestVisLock ? (attribVisiteurs.some((a) => a.partage) ? " (partagé)" : " (attribué)") : ""}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 12 }}>
             {VESTIAIRES.map((v) => {
-              const on = (r.vestiairesVisiteurs || []).includes(v);
+              const on = vestVisLock ? nomsVisiteursAttrib.includes(v) : (r.vestiairesVisiteurs || []).includes(v);
               return (
-                <button key={v} onClick={() => toggleVestiaire("vestiairesVisiteurs", v)} style={{
-                  border: `1px solid ${on ? C.jaune : C.grisClair}`, cursor: "pointer", borderRadius: 10, padding: "9px 13px", fontWeight: 800, fontSize: 13.5,
-                  background: on ? C.jaune : "#fff", color: on ? C.bleuNuit : C.gris,
+                <button key={v} disabled={vestVisLock} onClick={vestVisLock ? undefined : () => toggleVestiaire("vestiairesVisiteurs", v)} style={{
+                  border: `1px solid ${on ? C.jaune : C.grisClair}`, cursor: vestVisLock ? "default" : "pointer", borderRadius: 10, padding: "9px 13px", fontWeight: 800, fontSize: 13.5,
+                  background: on ? C.jaune : "#fff", color: on ? C.bleuNuit : C.gris, opacity: vestVisLock && !on ? 0.4 : 1,
                 }}>{v}</button>
               );
             })}
           </div>
+          {vestVisLock && attribVisiteurs.some((a) => a.partage) && <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 700, marginTop: -4, marginBottom: 12 }}>Les visiteurs ({cur.adversaire}) partagent le vestiaire de nos joueurs.</div>}
 
           <div style={{ background: "#F4F7FB", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: 12, marginBottom: 18 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
