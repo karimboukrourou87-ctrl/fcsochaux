@@ -1690,7 +1690,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.39";
+const APP_VERSION = "16.19.41";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -4783,11 +4783,15 @@ export default function App() {
     }
   };
   // Transport : validation / refus par le directeur, avec notification à l'éducateur via le même circuit que le planning
-  const notifTransport = (dem, statut, raison) => majPlanningClub((d) => {
+  const notifTransport = (dem, statut, raison, extra) => majPlanningClub((d) => {
+    const ex = extra || {};
     d.notifs = d.notifs || [];
+    // Une seule alarme par demande : on retire l'éventuelle notification précédente de ce transport
+    // avant d'ajouter la nouvelle (évite d'empiler plusieurs alarmes pour le même transport).
+    if (ex.origine) d.notifs = d.notifs.filter((n) => !(n && n.genre === "transport" && n.origine && n.origine === ex.origine));
     d.notifs.push({
       id: uid(), genre: "transport", pour: dem.demandeur || "", pourCat: dem.cat || "", statut, raison: raison || "",
-      resume: resumeTransport(dem), destination: dem.destination || "", date: dem.date || "", cat: dem.cat || "",
+      resume: ex.resume || resumeTransport(dem), origine: ex.origine || "", destination: dem.destination || "", date: dem.date || "", cat: dem.cat || "",
       creeLe: new Date().toISOString(),
     });
     return d;
@@ -4846,13 +4850,15 @@ export default function App() {
   const validerTransport = (dem, attribution) => {
     const dejaAcceptee = dem && dem.statut === "acceptee";
     majTransportClub((s) => { const x = (s.demandes || []).find((y) => y.id === dem.id); if (x) { if (attribution) Object.assign(x, attribution); x.statut = "acceptee"; x.cause = ""; x.traiteLe = new Date().toISOString(); } return s; });
-    notifTransport({ ...dem, ...(attribution || {}) }, dejaAcceptee ? "modifie" : "valide", "");
+    const exTr = { origine: dem.id || "" };
+    if (dejaAcceptee) { const ancien = resumeTransport(dem); const nouveau = resumeTransport({ ...dem, ...(attribution || {}) }); exTr.resume = (ancien && nouveau && ancien !== nouveau) ? `${ancien} → ${nouveau}` : nouveau; }
+    notifTransport({ ...dem, ...(attribution || {}) }, dejaAcceptee ? "modifie" : "valide", "", exTr);
     lierTransportAuMatch(dem, attribution);
     ajouterEntreeJournal({ action: dejaAcceptee ? "transport_modif" : "transport_valide", cat: dem.cat || "", detail: resumeTransport({ ...dem, ...(attribution || {}) }), date: dem.date || "", destination: dem.destination || "", demandeur: dem.demandeur || "", auteur: monNom, role: monRole });
   };
   const refuserTransport = (dem, cause) => {
     majTransportClub((s) => { const x = (s.demandes || []).find((y) => y.id === dem.id); if (x) { x.statut = "refusee"; x.cause = cause || ""; } return s; });
-    notifTransport(dem, "refus", cause || "");
+    notifTransport(dem, "refus", cause || "", { origine: dem.id || "" });
     ajouterEntreeJournal({ action: "transport_refus", cat: dem.cat || "", detail: cause || "", date: dem.date || "", destination: dem.destination || "", demandeur: dem.demandeur || "", auteur: monNom, role: monRole });
   };
   // VESTIAIRES : demandes stockées dans le planning du club ; l'attribution écrit directement
@@ -4878,7 +4884,11 @@ export default function App() {
       }
       const cibles = Array.isArray(dem.catsPrevenir) ? dem.catsPrevenir : [(dem.catPrevenir || dem.cat) || ""];
       d.notifs = d.notifs || [];
-      cibles.forEach((pc) => { d.notifs.push({ id: uid(), genre: "vestiaire", pour: dem.demandeur || "", pourCat: pc || "", statut: dejaAcceptee ? "modifie" : "valide", raison: "", resume: resumeVestiaire({ ...dem, ...att }), date: dem.date || "", cat: dem.cat || "", creeLe: new Date().toISOString() }); });
+      // Une seule alarme par demande : on retire la précédente avant d'ajouter la nouvelle.
+      if (dem.id) d.notifs = d.notifs.filter((n) => !(n && n.genre === "vestiaire" && n.origine && n.origine === dem.id));
+      const ancienV = resumeVestiaire(dem); const nouveauV = resumeVestiaire({ ...dem, ...att });
+      const resumeV = (dejaAcceptee && ancienV && nouveauV && ancienV !== nouveauV) ? `${ancienV} → ${nouveauV}` : nouveauV;
+      cibles.forEach((pc) => { d.notifs.push({ id: uid(), genre: "vestiaire", pour: dem.demandeur || "", pourCat: pc || "", statut: dejaAcceptee ? "modifie" : "valide", raison: "", resume: resumeV, origine: dem.id || "", date: dem.date || "", cat: dem.cat || "", creeLe: new Date().toISOString() }); });
       return d;
     });
     ajouterEntreeJournal({ action: dejaAcceptee ? "vestiaire_modif" : "vestiaire_valide", cat: dem.cat || "", detail: resumeVestiaire({ ...dem, ...att }), date: dem.date || "", destination: dem.adversaire || "", demandeur: dem.demandeur || "", auteur: monNom, role: monRole });
@@ -4893,7 +4903,8 @@ export default function App() {
         Object.keys(d[tl][dem.date]).forEach((k) => { const c = d[tl][dem.date][k]; if (c && c.origineVestiaire === dem.id) delete d[tl][dem.date][k]; });
       }
       d.notifs = d.notifs || [];
-      d.notifs.push({ id: uid(), genre: "vestiaire", pour: dem.demandeur || "", pourCat: dem.cat || "", statut: "refus", raison: cause || "", resume: dem.typeLieu === "terrains" ? "Demande de terrain" : "Demande de vestiaire", date: dem.date || "", cat: dem.cat || "", creeLe: new Date().toISOString() });
+      if (dem.id) d.notifs = d.notifs.filter((n) => !(n && n.genre === "vestiaire" && n.origine && n.origine === dem.id));
+      d.notifs.push({ id: uid(), genre: "vestiaire", pour: dem.demandeur || "", pourCat: dem.cat || "", statut: "refus", raison: cause || "", resume: dem.typeLieu === "terrains" ? "Demande de terrain" : "Demande de vestiaire", origine: dem.id || "", date: dem.date || "", cat: dem.cat || "", creeLe: new Date().toISOString() });
       return d;
     });
     ajouterEntreeJournal({ action: "vestiaire_refus", cat: dem.cat || "", detail: cause || "", date: dem.date || "", destination: dem.adversaire || "", demandeur: dem.demandeur || "", auteur: monNom, role: monRole });
@@ -4924,7 +4935,7 @@ export default function App() {
           }
         });
         d.demandesVestiaire.push({ id: rid, typeLieu: tl, cat: r.equipe, catsPrevenir: r.catPrevenir ? [r.catPrevenir] : [], demandeur: "", matchId: r.matchId || "", adversaire: r.adversaire || "", date: r.date || "", vestiaire: r.vestiaire, debut: r.debut, fin: r.fin || "", liberation: r.liberation || "", statut: "acceptee", directe: true, traiteLe: new Date().toISOString(), creeLe: new Date().toISOString() });
-        if (r.catPrevenir) d.notifs.push({ id: uid(), genre: "vestiaire", pour: "", pourCat: r.catPrevenir, statut: "valide", raison: "", resume: resumeVestiaire({ cat: r.equipe, vestiaire: r.vestiaire, debut: r.debut, fin: r.fin, liberation: r.liberation, typeLieu: tl }), date: r.date || "", cat: r.equipe || "", creeLe: new Date().toISOString() });
+        if (r.catPrevenir) d.notifs.push({ id: uid(), genre: "vestiaire", pour: "", pourCat: r.catPrevenir, statut: "valide", raison: "", resume: resumeVestiaire({ cat: r.equipe, vestiaire: r.vestiaire, debut: r.debut, fin: r.fin, liberation: r.liberation, typeLieu: tl }), origine: rid, date: r.date || "", cat: r.equipe || "", creeLe: new Date().toISOString() });
       });
       return d;
     });
@@ -6027,6 +6038,25 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {lstDemVestiaire.length > 0 && (
+        <div style={{ background: "#FFF3DA", border: `1px solid #E3C07A`, borderRadius: 14, padding: "12px 14px", marginBottom: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: "#B87A2B", fontSize: 13.5, marginBottom: 8 }}>
+            <Home size={16} /> {lstDemVestiaire.length} demande{lstDemVestiaire.length > 1 ? "s" : ""} de vestiaire / terrain à traiter
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {lstDemVestiaire.map((dm) => (
+              <div key={dm.id} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "10px 12px" }}>
+                <div style={{ fontSize: 13.5, fontWeight: 800, color: C.encre }}>{dm.cat ? dm.cat + " · " : ""}{dm.typeLieu === "terrains" ? "Terrain" : "Vestiaire"}{dm.adversaire ? " · " + CLUB + " contre " + dm.adversaire : ""}</div>
+                <div style={{ fontSize: 12.5, color: C.gris, marginTop: 2 }}>{dm.date ? "Le " + jjmm(dm.date) : "Date à définir"}{dm.heureArrivee ? " · arrivée " + dm.heureArrivee : ""}{dm.nbJoueurs ? " · " + dm.nbJoueurs + " joueurs" : ""}{dm.demandeur ? " · demandé par " + dm.demandeur : ""}</div>
+                <div style={{ display: "flex", gap: 8, marginTop: 9 }}>
+                  <button onClick={() => onVestiaire && onVestiaire()} style={{ flex: 1, border: "none", background: "#B87A2B", color: "#fff", borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Home size={15} /> Ouvrir pour attribuer</button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
