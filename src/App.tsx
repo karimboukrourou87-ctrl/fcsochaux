@@ -1791,7 +1791,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.51";
+const APP_VERSION = "16.19.52";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -4448,8 +4448,24 @@ export default function App() {
     // toutes les catégories. Elle suit ces demandes via les bannières et les accusés de réception.
     const estDir = demo || (profil && (profil.role === "responsable" || profil.role === "direction"));
     const list = (pl.notifs || []).filter((n) => n && ((n.pour && monNom && n.pour === monNom) || (!estDir && n.pourCat && mc.includes(n.pourCat)) || (n.pourRole && monRole && n.pourRole === monRole) || (!estDir && n.genre === "transport" && n.cat && mc.includes(n.cat))));
-    list.sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""));
-    return list;
+    // On regroupe les alarmes vestiaire/terrain d'un même match (même date + même catégorie + même sens) en une
+    // seule, pour éviter que le coach reçoive 3 ou 4 alarmes (terrain + vestiaire + visiteur) pour une seule rencontre.
+    const vest = list.filter((n) => n.genre === "vestiaire");
+    const autres = list.filter((n) => n.genre !== "vestiaire");
+    const groupes = {};
+    vest.forEach((n) => {
+      const sens = n.statut === "refus" ? "refus" : "ok";
+      const k = (n.date || "") + "|" + (n.cat || "") + "|" + sens;
+      if (!groupes[k]) groupes[k] = { ...n, resumes: [], mergedIds: [] };
+      const g = groupes[k];
+      if (n.resume && !g.resumes.includes(n.resume)) g.resumes.push(n.resume);
+      g.mergedIds.push(n.id);
+      if ((n.creeLe || "") >= (g.creeLe || "")) { g.creeLe = n.creeLe; g.statut = n.statut; g.raison = n.raison; }
+    });
+    const vestMerged = Object.keys(groupes).map((k) => { const g = groupes[k]; return { ...g, resume: g.resumes.join(" · "), id: g.mergedIds[0] }; });
+    const finalList = [...autres, ...vestMerged];
+    finalList.sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""));
+    return finalList;
   }, [planningClub, monNom, monRole, catsPlanning, profil, demo]);
   // Accusés de réception (destinés au responsable / directeur) : preuve qu'un éducateur a bien lu la réponse
   const accusesClub = useMemo(() => {
@@ -4822,7 +4838,10 @@ export default function App() {
   };
   // L'utilisateur confirme avoir lu : on retire la notification et on enregistre un accusé de réception horodaté (conservé en mémoire)
   const confirmerLectureNotif = (n) => majPlanningClub((d) => {
-    d.notifs = (d.notifs || []).filter((x) => x.id !== n.id);
+    // Une alarme vestiaire/terrain peut regrouper plusieurs notifications (terrain + vestiaire + visiteur) :
+    // on les retire toutes d'un coup quand le coach confirme « j'ai vu ».
+    const ids = (n.mergedIds && n.mergedIds.length) ? n.mergedIds : [n.id];
+    d.notifs = (d.notifs || []).filter((x) => !ids.includes(x.id));
     d.accuses = d.accuses || [];
     const quiLit = n.pour || n.pourCat || (n.pourRole === "medical" ? "L'équipe médicale" : monNom);
     d.accuses.push({
