@@ -1006,8 +1006,11 @@ function AttributionDirecte({ onConfirm, onClose, matchs, cat }) {
   const [typeLieu, setTypeLieu] = useState("vestiaires");
   const [matchId, setMatchId] = useState("");
   const [adversaire, setAdversaire] = useState("");
-  const [equipe, setEquipe] = useState("");
-  const [catPrevenir, setCatPrevenir] = useState("");
+  const [cat1, setCat1] = useState("");
+  const [cat1Libre, setCat1Libre] = useState("");
+  const [cat2, setCat2] = useState("");
+  const [cat2Libre, setCat2Libre] = useState("");
+  const [alerter, setAlerter] = useState(true);
   const [date, setDate] = useState("");
   const options = typeLieu === "terrains" ? TERRAINS : VESTIAIRES;
   const [vestiaire, setVestiaire] = useState(options[0]);
@@ -1018,14 +1021,30 @@ function AttributionDirecte({ onConfirm, onClose, matchs, cat }) {
   const choisirMatch = (id) => {
     setMatchId(id);
     const m = (matchs || []).find((x) => String(x.id) === String(id));
-    if (m) { setAdversaire(m.adversaire || ""); setDate(m.date || ""); if (!equipe.trim() && cat) setEquipe(cat); if (!catPrevenir && cat) setCatPrevenir(cat); }
+    if (m) { setAdversaire(m.adversaire || ""); setDate(m.date || ""); if (!cat1 && cat) setCat1(cat); }
     else { setAdversaire(""); }
   };
-  const pret = !!equipe.trim() && !!date && !!vestiaire && !!debut;
+  const resoudre = (v, libre) => v === "__autre__" ? (libre || "").trim() : (v || "");
+  const eq1 = resoudre(cat1, cat1Libre), eq2 = resoudre(cat2, cat2Libre);
+  const equipe = [eq1, eq2].filter(Boolean).join(" / ");
+  const catsPrevenir = alerter ? [cat1, cat2].filter((c) => c && c !== "__autre__") : [];
+  const pret = !!eq1 && !!date && !!vestiaire && !!debut;
+  const selCat = (val, setVal, libre, setLibre, label, vide) => (
+    <>
+      <Field label={label}>
+        <Sel value={val} onChange={(e) => setVal(e.target.value)}>
+          <option value="">{vide}</option>
+          {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.id}</option>)}
+          <option value="__autre__">Autre (adversaire)…</option>
+        </Sel>
+      </Field>
+      {val === "__autre__" && <Field label="Nom de l'équipe (adversaire)"><Inp value={libre} onChange={(e) => setLibre(e.target.value)} placeholder="Ex : AS AUDINCOURT" /></Field>}
+    </>
+  );
   return (
     <Modal title="Attribution directe" onClose={onClose}
-      footer={<Btn variant="accent" full disabled={!pret} onClick={() => onConfirm({ typeLieu, matchId, adversaire, equipe: equipe.trim(), catPrevenir, date, vestiaire, debut, fin: fin || "", liberation: liberation || "" })}><Check size={16} /> Attribuer</Btn>}>
-      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.45 }}>La direction réserve directement, sans attendre de demande. La réservation s'affiche verrouillée sur le planning, et le coach de la catégorie choisie est alerté par une bannière.</div>
+      footer={<Btn variant="accent" full disabled={!pret} onClick={() => onConfirm({ typeLieu, matchId, adversaire, equipe, catsPrevenir, date, vestiaire, debut, fin: fin || "", liberation: liberation || "" })}><Check size={16} /> Attribuer</Btn>}>
+      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.45 }}>La direction réserve directement, sans attendre de demande. La réservation s'affiche verrouillée sur le planning. Tu peux rattacher une ou deux catégories au même vestiaire/terrain (même créneau), ou saisir une équipe adverse.</div>
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         {[["vestiaires", "Vestiaire"], ["terrains", "Terrain"]].map(([v, l]) => { const on = typeLieu === v; return <button key={v} type="button" onClick={() => changerType(v)} style={{ flex: 1, border: `1px solid ${on ? C.bleu : C.grisClair}`, background: on ? C.bleu : "#fff", color: on ? "#fff" : C.encre, fontWeight: 800, fontSize: 13, borderRadius: 10, padding: "10px 8px", cursor: "pointer" }}>{l}</button>; })}
       </div>
@@ -1037,13 +1056,12 @@ function AttributionDirecte({ onConfirm, onClose, matchs, cat }) {
           </Sel>
         </Field>
       )}
-      <Field label="Équipe (affichée sur le planning)"><Inp value={equipe} onChange={(e) => setEquipe(e.target.value)} placeholder="Ex : U10, AS AUDINCOURT..." /></Field>
-      <Field label="Prévenir le coach de la catégorie (optionnel)">
-        <Sel value={catPrevenir} onChange={(e) => setCatPrevenir(e.target.value)}>
-          <option value="">— Aucune alerte —</option>
-          {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.id}</option>)}
-        </Sel>
-      </Field>
+      {selCat(cat1, setCat1, cat1Libre, setCat1Libre, "Catégorie / équipe (affichée sur le planning)", "— Choisir une catégorie —")}
+      {selCat(cat2, setCat2, cat2Libre, setCat2Libre, "Deuxième catégorie / équipe (optionnel, même vestiaire)", "— Aucune (une seule) —")}
+      <label style={{ display: "flex", alignItems: "center", gap: 9, margin: "2px 0 12px", cursor: "pointer", fontSize: 13, fontWeight: 700, color: C.encre }}>
+        <input type="checkbox" checked={alerter} onChange={(e) => setAlerter(e.target.checked)} style={{ width: 17, height: 17 }} />
+        Prévenir les coachs des catégories choisies
+      </label>
       <Field label="Date"><Inp type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
       <Field label={typeLieu === "terrains" ? "Terrain" : "Vestiaire"}>
         <Sel value={vestiaire} onChange={(e) => setVestiaire(e.target.value)}>
@@ -1593,7 +1611,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.34";
+const APP_VERSION = "16.19.35";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -4779,9 +4797,9 @@ export default function App() {
           d[tl][dem.date][`${cr}__${att.vestiaire}`] = { equipe: dem.cat, cat: dem.cat, activite: "match", statut: "valide", verrou: true, debut: att.debut, fin: att.fin || undefined, liberation: att.liberation || undefined, matchId: dem.matchId || undefined, adversaire: dem.adversaire || undefined, demandeur: dem.demandeur || undefined, origineVestiaire: dem.id };
         });
       }
-      const prevenir = (dem.catPrevenir || dem.cat) || "";
+      const cibles = Array.isArray(dem.catsPrevenir) ? dem.catsPrevenir : [(dem.catPrevenir || dem.cat) || ""];
       d.notifs = d.notifs || [];
-      d.notifs.push({ id: uid(), genre: "vestiaire", pour: dem.demandeur || "", pourCat: prevenir, statut: dejaAcceptee ? "modifie" : "valide", raison: "", resume: resumeVestiaire({ ...dem, ...att }), date: dem.date || "", cat: dem.cat || "", creeLe: new Date().toISOString() });
+      cibles.forEach((pc) => { d.notifs.push({ id: uid(), genre: "vestiaire", pour: dem.demandeur || "", pourCat: pc || "", statut: dejaAcceptee ? "modifie" : "valide", raison: "", resume: resumeVestiaire({ ...dem, ...att }), date: dem.date || "", cat: dem.cat || "", creeLe: new Date().toISOString() }); });
       return d;
     });
     ajouterEntreeJournal({ action: dejaAcceptee ? "vestiaire_modif" : "vestiaire_valide", cat: dem.cat || "", detail: resumeVestiaire({ ...dem, ...att }), date: dem.date || "", destination: dem.adversaire || "", demandeur: dem.demandeur || "", auteur: monNom, role: monRole });
@@ -4805,7 +4823,7 @@ export default function App() {
   // verrouillée sur le planning et alerte le coach de la catégorie concernée par une bannière.
   const attribuerVestiaireDirect = (info) => {
     const i = info || {};
-    const dem = { id: uid(), typeLieu: i.typeLieu === "terrains" ? "terrains" : "vestiaires", cat: i.equipe || i.cat || "", catPrevenir: i.catPrevenir || "", demandeur: "", matchId: i.matchId || "", adversaire: i.adversaire || "", date: i.date || "", statut: "direct", directe: true, creeLe: new Date().toISOString() };
+    const dem = { id: uid(), typeLieu: i.typeLieu === "terrains" ? "terrains" : "vestiaires", cat: i.equipe || i.cat || "", catsPrevenir: Array.isArray(i.catsPrevenir) ? i.catsPrevenir : [], demandeur: "", matchId: i.matchId || "", adversaire: i.adversaire || "", date: i.date || "", statut: "direct", directe: true, creeLe: new Date().toISOString() };
     validerVestiaire(dem, { vestiaire: i.vestiaire, debut: i.debut, fin: i.fin || "", liberation: i.liberation || "" });
   };
   const rafraichirTout = () => {
