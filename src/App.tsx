@@ -639,7 +639,7 @@ function attributionLignes(x) {
   return lignes;
 }
 
-function Transports({ store, maj, chargement, peutValider, profil, cat, encadrement, majEncadrement, onValiderDem, onRefuserDem, db, mutate, onRafraichir, onDemanderDeverrouillage, onClose }) {
+function Transports({ store, maj, chargement, peutValider, profil, cat, encadrement, majEncadrement, onValiderDem, onRefuserDem, db, mutate, onRafraichir, onDemanderDeverrouillage, onClose, focusDate }) {
   const [nouveau, setNouveau] = useState(false);
   const [refus, setRefus] = useState(null);
   const [attrib, setAttrib] = useState(null);
@@ -648,7 +648,14 @@ function Transports({ store, maj, chargement, peutValider, profil, cat, encadrem
   const [confirmSuppr, setConfirmSuppr] = useState(null);
   const [majMsg, setMajMsg] = useState("");
   // Navigation par semaine (comme le programme des matchs) pour la vision direction.
-  const [offsetSemaine, setOffsetSemaine] = useState(0);
+  // Si on ouvre via une alarme de demande (focusDate), on se place directement sur sa semaine.
+  const [offsetSemaine, setOffsetSemaine] = useState(() => {
+    if (!focusDate) return 0;
+    try {
+      const lundiDe = (x) => { const m = new Date(x); const dow = (m.getDay() + 6) % 7; m.setHours(0, 0, 0, 0); m.setDate(m.getDate() - dow); return m; };
+      return Math.round((lundiDe(new Date(focusDate + "T00:00:00")) - lundiDe(new Date())) / 86400000 / 7);
+    } catch (e) { return 0; }
+  });
   const sem = useMemo(() => {
     const d = new Date();
     const isodow = (d.getDay() + 6) % 7;
@@ -1690,7 +1697,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.41";
+const APP_VERSION = "16.19.43";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -4285,6 +4292,7 @@ export default function App() {
   const [showDemandes, setShowDemandes] = useState(false);
   const [showClassement, setShowClassement] = useState(false);
   const [showTransport, setShowTransport] = useState(false);
+  const [transportFocus, setTransportFocus] = useState(null);
   const [showVestiaire, setShowVestiaire] = useState(false);
   const [showOrganisation, setShowOrganisation] = useState(false);
   const [showSauvegarde, setShowSauvegarde] = useState(false);
@@ -4341,10 +4349,14 @@ export default function App() {
   const mesNotifsPlanning = useMemo(() => {
     const pl = planningClub || {};
     const mc = catsPlanning || [];
-    const list = (pl.notifs || []).filter((n) => n && ((n.pour && monNom && n.pour === monNom) || (n.pourCat && mc.includes(n.pourCat)) || (n.pourRole && monRole && n.pourRole === monRole) || (n.genre === "transport" && n.cat && mc.includes(n.cat))));
+    // La direction (et les responsables qui valident) ne reçoivent pas les alarmes « j'ai vu »
+    // destinées aux coachs : ces notifications sont routées par catégorie, et la direction voit
+    // toutes les catégories. Elle suit ces demandes via les bannières et les accusés de réception.
+    const estDir = demo || (profil && (profil.role === "responsable" || profil.role === "direction"));
+    const list = (pl.notifs || []).filter((n) => n && ((n.pour && monNom && n.pour === monNom) || (!estDir && n.pourCat && mc.includes(n.pourCat)) || (n.pourRole && monRole && n.pourRole === monRole) || (!estDir && n.genre === "transport" && n.cat && mc.includes(n.cat))));
     list.sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""));
     return list;
-  }, [planningClub, monNom, monRole, catsPlanning]);
+  }, [planningClub, monNom, monRole, catsPlanning, profil, demo]);
   // Accusés de réception (destinés au responsable / directeur) : preuve qu'un éducateur a bien lu la réponse
   const accusesClub = useMemo(() => {
     const pl = planningClub || {};
@@ -5081,7 +5093,7 @@ export default function App() {
             Consultation seule sur cette catégorie. Tu peux tout voir, mais la modification est réservée à son responsable.
           </div>
         )}
-        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => { setShowTransport(true); if (rafraichirTransport) rafraichirTransport(); }} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowSauvegarde(true)) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowAcces(true)) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => demanderDeverrouillageAdmin(() => setShowDocs(true))} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onArrets={() => setShowArrets(true)} onMessagerie={ouvrirMessagerie} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} msgVuLe={msgVuLe} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onVestiaire={() => { setShowVestiaire(true); if (rafraichirPlanning) rafraichirPlanning(); }} demVestiaire={peutValider ? demandesVestiaire : []} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
+        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={(d) => { setTransportFocus(typeof d === "string" ? d : null); setShowTransport(true); if (rafraichirTransport) rafraichirTransport(); }} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowSauvegarde(true)) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowAcces(true)) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => demanderDeverrouillageAdmin(() => setShowDocs(true))} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onArrets={() => setShowArrets(true)} onMessagerie={ouvrirMessagerie} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} msgVuLe={msgVuLe} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onVestiaire={() => { setShowVestiaire(true); if (rafraichirPlanning) rafraichirPlanning(); }} demVestiaire={peutValider ? demandesVestiaire : []} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} peutValider={peutValider} demo={demo} adminUnlock={adminUnlock} onDemanderDeverrouillage={demanderDeverrouillageAdmin} auteur={{ nom: monNom, role: monRole }} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} onNotifierCorrection={notifierCorrection} />}
@@ -5137,7 +5149,7 @@ export default function App() {
       {showScores && <ScoresWeekend onClose={() => setShowScores(false)} localDb={demo ? db : null} />}
       {showDemandes && <Demandes demo={demo} db={db} mutate={mutate} cat={cat} session={session} onNotifierJoueur={notifierJoueur} onVu={() => setDemTick((t) => t + 1)} onClose={() => { setDemTick((t) => t + 1); setShowDemandes(false); }} />}
       {showClassement && <Classement cat={cat} db={db} mutate={mutate} onClose={() => setShowClassement(false)} />}
-      {showTransport && <Transports store={transportClub} maj={majTransportClub} chargement={chargementTransport} peutValider={peutValider} profil={profil} cat={cat} encadrement={encadrementClub} majEncadrement={majEncadrementClub} onValiderDem={validerTransport} onRefuserDem={refuserTransport} db={db} mutate={mutate} onRafraichir={rafraichirTransport} onDemanderDeverrouillage={demanderDeverrouillageAdmin} onClose={() => setShowTransport(false)} />}
+      {showTransport && <Transports store={transportClub} maj={majTransportClub} chargement={chargementTransport} peutValider={peutValider} profil={profil} cat={cat} encadrement={encadrementClub} majEncadrement={majEncadrementClub} onValiderDem={validerTransport} onRefuserDem={refuserTransport} db={db} mutate={mutate} onRafraichir={rafraichirTransport} onDemanderDeverrouillage={demanderDeverrouillageAdmin} focusDate={transportFocus} onClose={() => { setShowTransport(false); setTransportFocus(null); }} />}
       {showVestiaire && <DemandesVestiaire store={planningClub} maj={majPlanningClub} peutValider={peutValider} profil={profil} cat={cat} db={db} onValider={validerVestiaire} onRefuser={refuserVestiaire} onAttribuerDirect={attribuerVestiaireDirect} onRafraichir={rafraichirPlanning} onDemanderDeverrouillage={demanderDeverrouillageAdmin} onClose={() => setShowVestiaire(false)} />}
       {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
@@ -6023,7 +6035,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
                   </div>
                   {!enRefus ? (
                     <div style={{ display: "flex", gap: 8, marginTop: 9 }}>
-                      <button onClick={() => onTransport && onTransport()} style={{ flex: 1, border: "none", background: C.vert, color: "#fff", borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Bus size={15} /> Attribuer</button>
+                      <button onClick={() => onTransport && onTransport(dm.date)} style={{ flex: 1, border: "none", background: C.vert, color: "#fff", borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Bus size={15} /> Attribuer</button>
                       <button onClick={() => { setRefusTrCle(dm.id); setRaisonTr(""); }} style={{ flex: 1, border: `1px solid ${C.rouge}`, background: "#fff", color: C.rouge, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><X size={15} /> Refuser</button>
                     </div>
                   ) : (
