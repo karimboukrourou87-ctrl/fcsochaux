@@ -1240,7 +1240,10 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
   const nbBloquees = new Set([...(fermees.vestiaires || []), ...(fermees.terrains || [])]).size;
   const moi = (profil && profil.nom) || "Éducateur";
   const toutes = ((store && store.demandesVestiaire) || []).slice().sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""));
-  const base = peutValider ? toutes : toutes.filter((x) => (x.demandeur || "") === moi);
+  // Le vestiaire de l'équipe visiteuse rattaché à une demande (origineVisiteurDe) n'a pas sa propre carte :
+  // il est affiché sous la carte de la demande principale, pour ne pas surcharger l'écran de la direction.
+  const visiteurLie = (x) => toutes.find((y) => y && y.origineVisiteurDe === x.id);
+  const base = (peutValider ? toutes : toutes.filter((x) => (x.demandeur || "") === moi)).filter((x) => !x.origineVisiteurDe);
   const nbArchives = base.filter((x) => x.archive).length;
   const liste = base.filter((x) => (voirArchives ? x.archive : !x.archive));
   const d0 = new Date(); const today = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
@@ -1288,6 +1291,7 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
               <div style={{ fontWeight: 800, marginTop: 3 }}>{x.adversaire ? `${CLUB} contre ${x.adversaire}` : (x.directe ? `${x.cat || "Réservation"}${x.catPrevenir && x.catPrevenir !== x.cat ? " · " + x.catPrevenir : ""} · attribution directe` : `${CLUB} contre adversaire ?`)}</div>
               <div style={{ fontSize: 12, color: C.gris, marginTop: 3 }}>{x.heureArrivee ? `Arrivée souhaitée ${x.heureArrivee}` : ""}{x.nbJoueurs ? `${x.heureArrivee ? " · " : ""}${x.nbJoueurs} joueurs` : ""}{x.nbStaff ? ` · ${x.nbStaff} staff` : ""}{x.note ? ` · ${x.note}` : ""}</div>
               {x.statut === "acceptee" && <div style={{ fontSize: 12.5, color: C.bleu, fontWeight: 800, marginTop: 5, display: "flex", alignItems: "center", gap: 5 }}><Lock size={13} /> {resumeVestiaire(x)}</div>}
+              {(() => { const vl = visiteurLie(x); return vl ? <div style={{ fontSize: 12, color: C.bleu, fontWeight: 700, marginTop: 3, display: "flex", alignItems: "center", gap: 5 }}><Users size={12} /> Visiteurs ({vl.cat}) : {vl.partage ? `partagé · Vestiaire ${vl.vestiaire}` : resumeVestiaire(vl)}</div> : null; })()}
               {x.statut === "refusee" && x.cause && <div style={{ fontSize: 12, color: C.rouge, marginTop: 5 }}>Motif : {x.cause}</div>}
               {peutValider && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
@@ -1787,7 +1791,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.49";
+const APP_VERSION = "16.19.51";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -11977,6 +11981,7 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) 
   const nomsTerrainsAttrib = attribTerrains.map((x) => x.vestiaire);
   const nomsVestiairesAttrib = attribVestiaires.map((x) => x.vestiaire);
   const nomsVisiteursAttrib = attribVisiteurs.map((x) => x.vestiaire);
+  const liberationAttrib = (attribVestiaires[0] && attribVestiaires[0].liberation) || (attribTerrains[0] && attribTerrains[0].liberation) || (attribVisiteurs[0] && attribVisiteurs[0].liberation) || "";
   // Diagnostic transport : on fait remonter l'etat du transport de ce match dans le traceur (bouton Diag),
   // pour verifier la liaison demande -> match et ce qui a ete attribue.
   const diagTransport = `match ${cur.date || "?"} ${cur.adversaire || "?"} (${cur.cat || "?"}) lieu=${cur.lieu || "?"} | mode=${t.mode || "aucun"} statut=${t.statut || "-"} minibus=${normMinis(t.minibus).join("/") || "-"} loueur=${t.loueur || "-"} voitures=${t.nbVoitures || "-"} origineDemande=${t.origineDemande || "non"}`;
@@ -12119,39 +12124,49 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) 
           <div style={{ background: "#F4F7FB", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: 12, marginBottom: 18 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
               <span style={{ fontSize: 12.5, color: C.gris, fontWeight: 800 }}>Validation responsable :</span>
-              {r.statut === "validee" ? <Pastille bg="#E2F4E9" color={C.vert}>Validée</Pastille>
-                : r.statut === "refusee" ? <Pastille bg="#FBE3E3" color={C.rouge}>Refusée</Pastille>
-                  : <Pastille bg={C.jaune} color={C.bleuNuit}>En attente</Pastille>}
+              {aAttribution ? <Pastille bg="#E2F4E9" color={C.vert}>Validée</Pastille>
+                : r.statut === "validee" ? <Pastille bg="#E2F4E9" color={C.vert}>Validée</Pastille>
+                  : r.statut === "refusee" ? <Pastille bg="#FBE3E3" color={C.rouge}>Refusée</Pastille>
+                    : <Pastille bg={C.jaune} color={C.bleuNuit}>En attente</Pastille>}
             </div>
-            {r.statut === "validee" && r.heureLiberation ? (
-              <div style={{ fontSize: 13.5, fontWeight: 800, color: C.bleu, marginBottom: 6 }}>Vestiaire à libérer à {r.heureLiberation}</div>
-            ) : null}
-            {r.statut === "refusee" && r.cause ? <div style={{ fontSize: 13, color: C.rouge, marginBottom: 6 }}>Cause : {r.cause}</div> : null}
-
-            {peutValider ? (
-              !resaRefus ? (
-                <>
-                  <Field label="Heure de libération du vestiaire">
-                    <Inp type="time" value={r.heureLiberation || ""} onChange={(ev) => majReservation({ heureLiberation: ev.target.value })} />
-                  </Field>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <Btn variant="accent" size="sm" onClick={() => majReservation({ statut: "validee", cause: "" })}><Check size={15} /> Valider</Btn>
-                    <Btn variant="danger" size="sm" onClick={() => { setResaCause(""); setResaRefus(true); }}><X size={15} /> Refuser</Btn>
-                  </div>
-                </>
-              ) : (
-                <div>
-                  <Field label="Cause du refus">
-                    <Inp value={resaCause} onChange={(ev) => setResaCause(ev.target.value)} placeholder="Terrain indisponible, créneau pris..." />
-                  </Field>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <Btn variant="danger" size="sm" disabled={!resaCause.trim()} onClick={refuserResa}>Confirmer le refus</Btn>
-                    <Btn variant="ghost" size="sm" onClick={() => setResaRefus(false)}>Annuler</Btn>
-                  </div>
-                </div>
-              )
+            {aAttribution ? (
+              <>
+                {liberationAttrib ? <div style={{ fontSize: 13.5, fontWeight: 800, color: C.bleu, marginBottom: 6 }}>Vestiaire à libérer à {liberationAttrib}</div> : null}
+                <div style={{ fontSize: 12, color: C.gris, lineHeight: 1.4 }}>Validé par la direction via l'attribution. Toute modification se fait dans l'onglet « Demandes de vestiaire et terrain ».</div>
+              </>
             ) : (
-              <div style={{ fontSize: 12, color: C.gris }}>{r.heureLiberation ? `Heure de libération fixée : ${r.heureLiberation}. ` : ""}Seul le responsable valide ces demandes et fixe l'heure de libération.</div>
+              <>
+                {r.statut === "validee" && r.heureLiberation ? (
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: C.bleu, marginBottom: 6 }}>Vestiaire à libérer à {r.heureLiberation}</div>
+                ) : null}
+                {r.statut === "refusee" && r.cause ? <div style={{ fontSize: 13, color: C.rouge, marginBottom: 6 }}>Cause : {r.cause}</div> : null}
+
+                {peutValider ? (
+                  !resaRefus ? (
+                    <>
+                      <Field label="Heure de libération du vestiaire">
+                        <Inp type="time" value={r.heureLiberation || ""} onChange={(ev) => majReservation({ heureLiberation: ev.target.value })} />
+                      </Field>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <Btn variant="accent" size="sm" onClick={() => majReservation({ statut: "validee", cause: "" })}><Check size={15} /> Valider</Btn>
+                        <Btn variant="danger" size="sm" onClick={() => { setResaCause(""); setResaRefus(true); }}><X size={15} /> Refuser</Btn>
+                      </div>
+                    </>
+                  ) : (
+                    <div>
+                      <Field label="Cause du refus">
+                        <Inp value={resaCause} onChange={(ev) => setResaCause(ev.target.value)} placeholder="Terrain indisponible, créneau pris..." />
+                      </Field>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <Btn variant="danger" size="sm" disabled={!resaCause.trim()} onClick={refuserResa}>Confirmer le refus</Btn>
+                        <Btn variant="ghost" size="sm" onClick={() => setResaRefus(false)}>Annuler</Btn>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  <div style={{ fontSize: 12, color: C.gris }}>{r.heureLiberation ? `Heure de libération fixée : ${r.heureLiberation}. ` : ""}Seul le responsable valide ces demandes et fixe l'heure de libération.</div>
+                )}
+              </>
             )}
           </div>
         </>
