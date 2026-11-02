@@ -905,6 +905,172 @@ function Transports({ store, maj, chargement, peutValider, profil, cat, encadrem
 }
 
 
+// ================= VESTIAIRES : demande liée à un match à domicile =================
+// Même principe que les demandes de transport : le coach exprime son besoin pour un match
+// à domicile, la direction attribue le vestiaire et les créneaux. L'attribution s'inscrit
+// sur le planning visuel des vestiaires (verrouillée pour les coachs, modifiable direction).
+function creneauxVestiaire(deb, fin) {
+  const toMin = (s) => { const p = String(s || "").replace("h", ":").split(":"); return (+p[0]) * 60 + (+(p[1] || 0)); };
+  const toLbl = (m) => `${pad(Math.floor(m / 60))}h${pad(m % 60)}`;
+  let a = toMin(deb); let b = fin ? toMin(fin) : a + 30;
+  if (b <= a) b = a + 30;
+  const out = [];
+  for (let m = a; m < b; m += 30) out.push(toLbl(m));
+  if (!out.length) out.push(toLbl(a));
+  return out;
+}
+function resumeVestiaire(x) {
+  if (!x) return "";
+  const parts = [];
+  if (x.vestiaire) parts.push(`${x.typeLieu === "terrains" ? "Terrain" : "Vestiaire"} ${x.vestiaire}`);
+  if (x.debut) parts.push(`${x.debut}${x.fin ? " à " + x.fin : ""}`);
+  if (x.liberation) parts.push(`libération ${x.liberation}`);
+  return parts.join(" · ") || (x.heureArrivee ? `Arrivée souhaitée ${x.heureArrivee}` : "Demande de réservation");
+}
+
+function FormVestiaire({ onSubmit, onClose, matchs }) {
+  const [typeLieu, setTypeLieu] = useState("vestiaires");
+  const [matchId, setMatchId] = useState("");
+  const [adversaire, setAdversaire] = useState("");
+  const [date, setDate] = useState("");
+  const [heureMatch, setHeureMatch] = useState("");
+  const [nbJoueurs, setNbJoueurs] = useState("");
+  const [nbStaff, setNbStaff] = useState("");
+  const [heureArrivee, setHeureArrivee] = useState("");
+  const [note, setNote] = useState("");
+  const choisir = (id) => {
+    setMatchId(id);
+    const m = (matchs || []).find((x) => String(x.id) === String(id));
+    if (m) { setAdversaire(m.adversaire || ""); setDate(m.date || ""); setHeureMatch(m.heure || ""); }
+    else { setAdversaire(""); setDate(""); setHeureMatch(""); }
+  };
+  const pret = !!matchId && !!date;
+  return (
+    <Modal title="Nouvelle demande de vestiaire ou terrain" onClose={onClose}
+      footer={<Btn variant="accent" full disabled={!pret} onClick={() => onSubmit({ typeLieu, matchId, adversaire, date, heureMatch, nbJoueurs, nbStaff, heureArrivee, note })}><Send size={16} /> Envoyer la demande</Btn>}>
+      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.45 }}>Pour un match à domicile, indique ton besoin. La direction attribuera ensuite {typeLieu === "terrains" ? "le terrain" : "le vestiaire"}, les horaires et l'heure de libération.</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        {[["vestiaires", "Vestiaire"], ["terrains", "Terrain"]].map(([v, l]) => {
+          const on = typeLieu === v;
+          return <button key={v} type="button" onClick={() => setTypeLieu(v)} style={{ flex: 1, border: `1px solid ${on ? C.bleu : C.grisClair}`, background: on ? C.bleu : "#fff", color: on ? "#fff" : C.encre, fontWeight: 800, fontSize: 13, borderRadius: 10, padding: "10px 8px", cursor: "pointer" }}>{l}</button>;
+        })}
+      </div>
+      <Field label="Match à domicile">
+        <Sel value={matchId} onChange={(e) => choisir(e.target.value)}>
+          <option value="">— Choisir le match à domicile —</option>
+          {(matchs || []).map((m) => <option key={m.id} value={m.id}>{m.date ? jjmm(m.date) : "date ?"}{m.heure ? ` · ${m.heure}` : ""} · vs {m.adversaire || "adversaire ?"}</option>)}
+        </Sel>
+      </Field>
+      {(!matchs || matchs.length === 0) && <div style={{ fontSize: 11.5, color: "#B87A2B", fontWeight: 600, marginTop: -6, marginBottom: 10, lineHeight: 1.4 }}>Aucun match à domicile à venir pour cette catégorie. Programme-le d'abord dans les matchs.</div>}
+      {matchId ? <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Adversaire : <strong style={{ color: C.encre }}>{adversaire || "?"}</strong> · Date : <strong style={{ color: C.encre }}>{date ? fmtDate(date) : "?"}</strong>{heureMatch ? <> · Coup d'envoi : <strong style={{ color: C.encre }}>{heureMatch}</strong></> : null}</div> : null}
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1 }}><Field label="Nombre de joueurs"><Inp type="number" inputMode="numeric" value={nbJoueurs} onChange={(e) => setNbJoueurs(e.target.value)} placeholder="Ex : 14" /></Field></div>
+        <div style={{ flex: 1 }}><Field label="Nombre de staff"><Inp type="number" inputMode="numeric" value={nbStaff} onChange={(e) => setNbStaff(e.target.value)} placeholder="Ex : 3" /></Field></div>
+      </div>
+      <Field label="Heure d'arrivée souhaitée"><Inp type="time" value={heureArrivee} onChange={(e) => setHeureArrivee(e.target.value)} /></Field>
+      <Field label="Précision (optionnel)"><Inp value={note} onChange={(e) => setNote(e.target.value)} placeholder="Besoin particulier..." /></Field>
+    </Modal>
+  );
+}
+
+function AttribuerVestiaire({ dem, onConfirm, onClose }) {
+  const estTerrain = dem.typeLieu === "terrains";
+  const options = estTerrain ? TERRAINS : VESTIAIRES;
+  const motLieu = estTerrain ? "terrain" : "vestiaire";
+  const arriveeCr = (() => { const h = String(dem.heureArrivee || "").replace(":", "h"); return CRENEAUX_DEFAUT.includes(h) ? h : (CRENEAUX_DEFAUT[2] || CRENEAUX_DEFAUT[0]); })();
+  const [vestiaire, setVestiaire] = useState(dem.vestiaire || options[0]);
+  const [debut, setDebut] = useState(dem.debut || arriveeCr);
+  const [fin, setFin] = useState(dem.fin || "");
+  const [liberation, setLiberation] = useState(dem.liberation || "");
+  const pret = !!vestiaire && !!debut;
+  return (
+    <Modal title={`Attribuer un ${motLieu}`} onClose={onClose}
+      footer={<Btn variant="accent" full disabled={!pret} onClick={() => onConfirm({ vestiaire, debut, fin: fin || "", liberation: liberation || "" })}><Check size={16} /> Attribuer et valider</Btn>}>
+      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.45 }}>{dem.cat} · {dem.adversaire ? `vs ${dem.adversaire}` : "match"}{dem.date ? ` · ${fmtDate(dem.date)}` : ""}{dem.heureArrivee ? ` · arrivée souhaitée ${dem.heureArrivee}` : ""}. Choisis le {motLieu} et les créneaux. La réservation s'affichera sur le planning, verrouillée.</div>
+      <Field label={estTerrain ? "Terrain" : "Vestiaire"}>
+        <Sel value={vestiaire} onChange={(e) => setVestiaire(e.target.value)}>
+          {options.map((v) => <option key={v} value={v}>{estTerrain ? v : `Vestiaire ${v}`}</option>)}
+        </Sel>
+      </Field>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1 }}><Field label="De (début)"><Sel value={debut} onChange={(e) => setDebut(e.target.value)}>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field></div>
+        <div style={{ flex: 1 }}><Field label="À (fin)"><Sel value={fin} onChange={(e) => setFin(e.target.value)}><option value="">—</option>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field></div>
+      </div>
+      <Field label={`Libération du ${motLieu}`}><Sel value={liberation} onChange={(e) => setLiberation(e.target.value)}><option value="">— (optionnel) —</option>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field>
+    </Modal>
+  );
+}
+
+function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider, onRefuser, onRafraichir, onDemanderDeverrouillage, onClose }) {
+  const [nouveau, setNouveau] = useState(false);
+  const [attrib, setAttrib] = useState(null);
+  const [refus, setRefus] = useState(null);
+  const [cause, setCause] = useState("");
+  const [confirmSuppr, setConfirmSuppr] = useState(null);
+  const [majMsg, setMajMsg] = useState("");
+  const moi = (profil && profil.nom) || "Éducateur";
+  const toutes = ((store && store.demandesVestiaire) || []).slice().sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""));
+  const liste = peutValider ? toutes : toutes.filter((x) => (x.demandeur || "") === moi);
+  const d0 = new Date(); const today = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
+  const matchsDom = ((db && db.matches) || []).filter((m) => m && m.cat === cat && m.lieu === "Domicile" && m.date && m.date >= today).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  function creer(f) {
+    maj((s) => { s.demandesVestiaire = s.demandesVestiaire || []; s.demandesVestiaire.push({ ...f, id: uid(), cat, demandeur: moi, statut: "en_attente", cause: "", creeLe: new Date().toISOString() }); return s; });
+    setNouveau(false);
+  }
+  function supprimer(id) { maj((s) => { s.demandesVestiaire = (s.demandesVestiaire || []).filter((y) => y.id !== id); return s; }); }
+  function demanderSuppression(x) { if (peutValider && onDemanderDeverrouillage) onDemanderDeverrouillage(() => setConfirmSuppr(x)); else setConfirmSuppr(x); }
+  async function rafraichirMaintenant() {
+    if (!onRafraichir) return;
+    setMajMsg("Actualisation...");
+    try { await Promise.all([Promise.resolve(onRafraichir(true)), new Promise((r) => setTimeout(r, 650))]); } catch (e) {}
+    setMajMsg("À jour"); setTimeout(() => setMajMsg(""), 2000);
+  }
+  return (
+    <Modal title="Demandes de vestiaire et terrain" onClose={onClose} fullscreen={peutValider}
+      footer={<Btn variant="accent" full onClick={() => setNouveau(true)}><Plus size={16} /> Nouvelle demande</Btn>}>
+      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>L'éducateur demande un vestiaire ou un terrain pour un match à domicile, la direction attribue le lieu et les créneaux. {peutValider ? "Touche Attribuer pour choisir, ou Refuser." : "Ta demande reste « en traitement » jusqu'à l'attribution par la direction. La réservation apparaît ensuite sur le planning."}</div>
+      {onRafraichir && <div style={{ marginBottom: 12 }}><Btn variant="ghost" size="sm" full disabled={majMsg === "Actualisation..."} onClick={rafraichirMaintenant}><RefreshCw size={15} style={{ animation: majMsg === "Actualisation..." ? "spin 0.6s linear infinite" : "none" }} /> {majMsg || "Rafraîchir les demandes"}</Btn></div>}
+      {liste.length === 0 ? (
+        <div style={{ textAlign: "center", color: C.gris, fontSize: 13, padding: "24px 0" }}>Aucune demande pour l'instant.</div>
+      ) : (
+        <div style={{ display: "grid", gap: 10 }}>
+          {liste.map((x) => (
+            <div key={x.id} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "11px 13px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, color: C.gris, fontWeight: 800 }}>{x.cat || "?"} · {x.typeLieu === "terrains" ? "Terrain" : "Vestiaire"} · {x.date ? fmtDate(x.date) : "date ?"}</span>
+                {x.statut === "acceptee" ? <Pastille bg="#E2F4E9" color={C.vert}>Attribuée</Pastille> : x.statut === "refusee" ? <Pastille bg="#FBE3E3" color={C.rouge}>Refusée</Pastille> : <Pastille bg={C.jaune} color={C.bleuNuit}>En attente</Pastille>}
+              </div>
+              <div style={{ fontWeight: 800, marginTop: 3 }}>{CLUB} contre {x.adversaire || "adversaire ?"}</div>
+              <div style={{ fontSize: 12, color: C.gris, marginTop: 3 }}>{x.heureArrivee ? `Arrivée souhaitée ${x.heureArrivee}` : ""}{x.nbJoueurs ? `${x.heureArrivee ? " · " : ""}${x.nbJoueurs} joueurs` : ""}{x.nbStaff ? ` · ${x.nbStaff} staff` : ""}{x.note ? ` · ${x.note}` : ""}</div>
+              {x.statut === "acceptee" && <div style={{ fontSize: 12.5, color: C.bleu, fontWeight: 800, marginTop: 5, display: "flex", alignItems: "center", gap: 5 }}><Lock size={13} /> {resumeVestiaire(x)}</div>}
+              {x.statut === "refusee" && x.cause && <div style={{ fontSize: 12, color: C.rouge, marginTop: 5 }}>Motif : {x.cause}</div>}
+              {peutValider && (
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <Btn variant="accent" size="sm" onClick={() => setAttrib(x)}><Check size={15} /> {x.statut === "acceptee" ? "Modifier" : "Attribuer"}</Btn>
+                  {x.statut !== "refusee" && <Btn variant="danger" size="sm" onClick={() => { setRefus(x); setCause(""); }}><X size={15} /> Refuser</Btn>}
+                  <Btn variant="ghost" size="sm" onClick={() => demanderSuppression(x)}><Trash2 size={15} /></Btn>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {nouveau && <FormVestiaire matchs={matchsDom} onSubmit={creer} onClose={() => setNouveau(false)} />}
+      {attrib && <AttribuerVestiaire dem={attrib} onConfirm={(attribution) => { onValider(attrib, attribution); setAttrib(null); }} onClose={() => setAttrib(null)} />}
+      {refus && (
+        <Modal title="Refuser la demande" onClose={() => setRefus(null)} footer={<Btn variant="danger" full disabled={!cause.trim()} onClick={() => { onRefuser(refus, cause.trim()); setRefus(null); setCause(""); }}><X size={16} /> Confirmer le refus</Btn>}>
+          <Field label="Motif du refus"><Inp value={cause} onChange={(e) => setCause(e.target.value)} placeholder="Ex : vestiaire déjà réservé" autoFocus /></Field>
+        </Modal>
+      )}
+      {confirmSuppr && (
+        <Modal title="Confirmer la suppression" onClose={() => setConfirmSuppr(null)} footer={<><Btn variant="ghost" full onClick={() => setConfirmSuppr(null)}>Annuler</Btn><Btn variant="danger" full onClick={() => { supprimer(confirmSuppr.id); setConfirmSuppr(null); }}><Trash2 size={16} /> Supprimer</Btn></>}>
+          <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.5 }}>Supprimer cette demande de vestiaire ?</div>
+        </Modal>
+      )}
+    </Modal>
+  );
+}
+
 function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose }) {
   const [sel, setSel] = useState(null);
   const [edit, setEdit] = useState(null);
@@ -1362,7 +1528,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.25";
+const APP_VERSION = "16.19.29";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -3924,6 +4090,7 @@ export default function App() {
   const [showDemandes, setShowDemandes] = useState(false);
   const [showClassement, setShowClassement] = useState(false);
   const [showTransport, setShowTransport] = useState(false);
+  const [showVestiaire, setShowVestiaire] = useState(false);
   const [showOrganisation, setShowOrganisation] = useState(false);
   const [showSauvegarde, setShowSauvegarde] = useState(false);
   const [showPlanning, setShowPlanning] = useState(false);
@@ -4493,6 +4660,47 @@ export default function App() {
     notifTransport(dem, "refus", cause || "");
     ajouterEntreeJournal({ action: "transport_refus", cat: dem.cat || "", detail: cause || "", date: dem.date || "", destination: dem.destination || "", demandeur: dem.demandeur || "", auteur: monNom, role: monRole });
   };
+  // VESTIAIRES : demandes stockées dans le planning du club ; l'attribution écrit directement
+  // la réservation verrouillée sur la grille des vestiaires (même store, une seule écriture).
+  const demandesVestiaire = ((planningClub && planningClub.demandesVestiaire) || []).filter((x) => x && x.statut === "en_attente");
+  const validerVestiaire = (dem, attribution) => {
+    const att = attribution || {};
+    const tl = dem.typeLieu === "terrains" ? "terrains" : "vestiaires";
+    const creneaux = creneauxVestiaire(att.debut, att.fin);
+    const dejaAcceptee = dem && dem.statut === "acceptee";
+    majPlanningClub((d) => {
+      d.demandesVestiaire = d.demandesVestiaire || [];
+      const x = d.demandesVestiaire.find((y) => y.id === dem.id);
+      if (x) { Object.assign(x, att); x.statut = "acceptee"; x.cause = ""; x.traiteLe = new Date().toISOString(); }
+      if (dem.date && att.vestiaire && att.debut) {
+        d[tl] = d[tl] || {};
+        d[tl][dem.date] = d[tl][dem.date] || {};
+        Object.keys(d[tl][dem.date]).forEach((k) => { const c = d[tl][dem.date][k]; if (c && c.origineVestiaire === dem.id) delete d[tl][dem.date][k]; });
+        creneaux.forEach((cr) => {
+          d[tl][dem.date][`${cr}__${att.vestiaire}`] = { equipe: dem.cat, cat: dem.cat, activite: "match", statut: "valide", verrou: true, debut: att.debut, fin: att.fin || undefined, liberation: att.liberation || undefined, matchId: dem.matchId || undefined, adversaire: dem.adversaire || undefined, demandeur: dem.demandeur || undefined, origineVestiaire: dem.id };
+        });
+      }
+      d.notifs = d.notifs || [];
+      d.notifs.push({ id: uid(), genre: "vestiaire", pour: dem.demandeur || "", pourCat: dem.cat || "", statut: dejaAcceptee ? "modifie" : "valide", raison: "", resume: resumeVestiaire({ ...dem, ...att }), date: dem.date || "", cat: dem.cat || "", creeLe: new Date().toISOString() });
+      return d;
+    });
+    ajouterEntreeJournal({ action: dejaAcceptee ? "vestiaire_modif" : "vestiaire_valide", cat: dem.cat || "", detail: resumeVestiaire({ ...dem, ...att }), date: dem.date || "", destination: dem.adversaire || "", demandeur: dem.demandeur || "", auteur: monNom, role: monRole });
+  };
+  const refuserVestiaire = (dem, cause) => {
+    const tl = dem.typeLieu === "terrains" ? "terrains" : "vestiaires";
+    majPlanningClub((d) => {
+      d.demandesVestiaire = d.demandesVestiaire || [];
+      const x = d.demandesVestiaire.find((y) => y.id === dem.id);
+      if (x) { x.statut = "refusee"; x.cause = cause || ""; x.traiteLe = new Date().toISOString(); }
+      if (dem.date && d[tl] && d[tl][dem.date]) {
+        Object.keys(d[tl][dem.date]).forEach((k) => { const c = d[tl][dem.date][k]; if (c && c.origineVestiaire === dem.id) delete d[tl][dem.date][k]; });
+      }
+      d.notifs = d.notifs || [];
+      d.notifs.push({ id: uid(), genre: "vestiaire", pour: dem.demandeur || "", pourCat: dem.cat || "", statut: "refus", raison: cause || "", resume: dem.typeLieu === "terrains" ? "Demande de terrain" : "Demande de vestiaire", date: dem.date || "", cat: dem.cat || "", creeLe: new Date().toISOString() });
+      return d;
+    });
+    ajouterEntreeJournal({ action: "vestiaire_refus", cat: dem.cat || "", detail: cause || "", date: dem.date || "", destination: dem.adversaire || "", demandeur: dem.demandeur || "", auteur: monNom, role: monRole });
+  };
   const rafraichirTout = () => {
     const taches = [];
     if (rafraichirPlanning) taches.push(Promise.resolve(rafraichirPlanning()));
@@ -4633,7 +4841,7 @@ export default function App() {
             Consultation seule sur cette catégorie. Tu peux tout voir, mais la modification est réservée à son responsable.
           </div>
         )}
-        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => { setShowTransport(true); if (rafraichirTransport) rafraichirTransport(); }} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowSauvegarde(true)) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowAcces(true)) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => demanderDeverrouillageAdmin(() => setShowDocs(true))} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onArrets={() => setShowArrets(true)} onMessagerie={ouvrirMessagerie} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} msgVuLe={msgVuLe} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
+        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={() => { setShowTransport(true); if (rafraichirTransport) rafraichirTransport(); }} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowSauvegarde(true)) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowAcces(true)) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => demanderDeverrouillageAdmin(() => setShowDocs(true))} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onArrets={() => setShowArrets(true)} onMessagerie={ouvrirMessagerie} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} msgVuLe={msgVuLe} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onVestiaire={() => { setShowVestiaire(true); if (rafraichirPlanning) rafraichirPlanning(); }} demVestiaire={peutValider ? demandesVestiaire : []} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} peutValider={peutValider} demo={demo} adminUnlock={adminUnlock} onDemanderDeverrouillage={demanderDeverrouillageAdmin} auteur={{ nom: monNom, role: monRole }} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} onNotifierCorrection={notifierCorrection} />}
@@ -4690,6 +4898,7 @@ export default function App() {
       {showDemandes && <Demandes demo={demo} db={db} mutate={mutate} cat={cat} session={session} onNotifierJoueur={notifierJoueur} onVu={() => setDemTick((t) => t + 1)} onClose={() => { setDemTick((t) => t + 1); setShowDemandes(false); }} />}
       {showClassement && <Classement cat={cat} db={db} mutate={mutate} onClose={() => setShowClassement(false)} />}
       {showTransport && <Transports store={transportClub} maj={majTransportClub} chargement={chargementTransport} peutValider={peutValider} profil={profil} cat={cat} encadrement={encadrementClub} majEncadrement={majEncadrementClub} onValiderDem={validerTransport} onRefuserDem={refuserTransport} db={db} mutate={mutate} onRafraichir={rafraichirTransport} onDemanderDeverrouillage={demanderDeverrouillageAdmin} onClose={() => setShowTransport(false)} />}
+      {showVestiaire && <DemandesVestiaire store={planningClub} maj={majPlanningClub} peutValider={peutValider} profil={profil} cat={cat} db={db} onValider={validerVestiaire} onRefuser={refuserVestiaire} onRafraichir={rafraichirPlanning} onDemanderDeverrouillage={demanderDeverrouillageAdmin} onClose={() => setShowVestiaire(false)} />}
       {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
       {apercuPDF && <ApercuPDF url={apercuPDF.url} nom={apercuPDF.nom} onClose={() => { try { URL.revokeObjectURL(apercuPDF.url); } catch (e) {} setApercuPDF(null); }} />}
@@ -5257,13 +5466,14 @@ function GestionArretsCompet({ db, cat, onClose }) {
 /* ============================================================
    Accueil
    ============================================================ */
-function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onInfirmerie, onArrets, onMessagerie, msgListe, msgMe, peutMsgDir, msgVuLe, onBilan, onPlateaux, onReunions, onCalendrier, demResume, demPlanning, onValiderPlanning, onRefuserPlanning, demNotifs, onConfirmerLecture, demAccuses, onEffacerAccuse, demTransport, onValiderTransport, onRefuserTransport, onRafraichir, estMedical, monEmail }) {
+function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransport, onOrganisation, onSauvegarde, onPlanning, onPlanningHebdo, onAcces, onProgramme, onDocuments, onSuivi, onInfirmerie, onArrets, onMessagerie, msgListe, msgMe, peutMsgDir, msgVuLe, onBilan, onPlateaux, onReunions, onCalendrier, demResume, demPlanning, onValiderPlanning, onRefuserPlanning, demNotifs, onConfirmerLecture, demAccuses, onEffacerAccuse, demTransport, onValiderTransport, onRefuserTransport, onVestiaire, demVestiaire, onRafraichir, estMedical, monEmail }) {
   const { peutValider: accPeutValider, demo: accDemo } = useContext(AdminCtx);
   const accDirection = accDemo || accPeutValider; // bannière vacances/arrêts réservée à la direction
   const lstDemPlanning = demPlanning || [];
   const lstNotifs = demNotifs || [];
   const lstAccuses = demAccuses || [];
   const lstDemTransport = demTransport || [];
+  const lstDemVestiaire = demVestiaire || [];
   const [refusCle, setRefusCle] = useState(null);
   const [raisonRefus, setRaisonRefus] = useState("");
   const [confirmLecture, setConfirmLecture] = useState(null);
@@ -5346,6 +5556,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
     { titre: "Demandes de joueurs", sous: "Demander un joueur d'une autre catégorie", icon: ArrowRightLeft, action: onDemandes, badge: alerteDemRecues + alerteDemReponses },
     { titre: "Classement du championnat", sous: "District, Ligue, National et Ligue 2 en direct", icon: ListOrdered, action: onClassement },
     { titre: "Demande de transport", sous: "Minibus, bus en location ou voitures, à l'avance", icon: Bus, action: onTransport, badge: lstDemTransport.length },
+    { titre: "Demande de vestiaire / terrain", sous: "Réserver un vestiaire ou un terrain pour un match à domicile", icon: Home, action: onVestiaire, badge: lstDemVestiaire.length },
     { titre: "Organisation des matchs", sous: "Terrain, vestiaires, transport et encadrement", icon: MapPin, action: onOrganisation, badge: nbOrga },
     { titre: "Programme de la semaine", sous: "Récapitulatif des matchs à imprimer", icon: ClipboardList, action: onProgramme },
     { titre: "Documents administratifs", sous: "Licences et contrôle médical à surveiller", icon: ShieldAlert, action: peutMsg ? onDocuments : null, badge: peutMsg ? alerteDocs : 0 },
@@ -5491,6 +5702,7 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
             const estJoueur = n.genre === "joueur";
             const estBlessure = n.genre === "blessure";
             const estCorrection = n.genre === "correction";
+            const estVestiaire = n.genre === "vestiaire";
             const label = n.typeLieu === "vestiaires" ? "vestiaire" : "terrain";
             const horaire = n.fin && n.fin !== n.debut ? `${n.debut} à ${n.fin}` : n.debut;
             const titre = estCorrection
@@ -5501,7 +5713,9 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
                 ? (valide ? "Votre demande de joueur a été acceptée" : annule ? "Une demande de joueur a été annulée" : "Votre demande de joueur a été refusée")
                 : estTransport
                   ? (modifie ? "Votre demande de transport a été modifiée" : valide ? "Votre demande de transport a été validée" : "Votre demande de transport a été refusée")
-                  : (valide ? "Votre demande de créneau a été validée" : "Votre demande de créneau a été refusée");
+                  : estVestiaire
+                    ? (modifie ? "Votre réservation a été modifiée" : valide ? "Votre vestiaire / terrain a été attribué" : "Votre demande de vestiaire / terrain a été refusée")
+                    : (valide ? "Votre demande de créneau a été validée" : "Votre demande de créneau a été refusée");
             const detail = estCorrection
               ? `${n.nomRencontre || "Rencontre"}${n.cat ? " (" + n.cat + ")" : ""}${n.date ? " · le " + jjmm(n.date) : ""}`
               : estBlessure
@@ -5510,7 +5724,9 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
                 ? `${n.joueurNom || "Joueur"}${n.joueurCat ? " (" + n.joueurCat + ")" : ""}${n.date ? " · pour le " + jjmm(n.date) : ""}`
                 : estTransport
                   ? `${n.cat ? n.cat + " · " : ""}${n.resume || "Transport"}${n.destination ? " · " + n.destination : ""}${n.date ? " · le " + jjmm(n.date) : ""}`
-                  : `${n.cat ? n.cat + " · " : ""}${label} ${n.col} · le ${jjmm(n.date)} · ${horaire}`;
+                  : estVestiaire
+                    ? `${n.cat ? n.cat + " · " : ""}${n.resume || "Vestiaire"}${n.date ? " · le " + jjmm(n.date) : ""}`
+                    : `${n.cat ? n.cat + " · " : ""}${label} ${n.col} · le ${jjmm(n.date)} · ${horaire}`;
             const bg = estCorrection ? "#FFF7E6" : estBlessure ? "#EAF0F7" : valide ? "#E2F4E9" : annule ? "#FBEAD9" : "#FBE3E3";
             const bord = estCorrection ? "#F0DBA8" : estBlessure ? "#C6D5E8" : valide ? "#BFE3CD" : annule ? "#EBD3AE" : "#F0C4C4";
             const coulTitre = estCorrection ? "#8A6D00" : estBlessure ? C.bleu : valide ? "#2F6D43" : annule ? "#B87A2B" : C.rouge;
@@ -14941,20 +15157,42 @@ function exporterPlanningHebdoPDF(jsPDF) {
 }
 
 // PDF de la semaine affichée, en grille par catégorie (comme l'écran hebdomadaire), cases colorées par terrain.
+// PDF de la semaine (vestiaires OU terrains), en grille façon planning hebdomadaire : rangées =
+// catégories, colonnes = jours, cases colorées (lieu + horaire, comme le PDF hebdomadaire).
+// Les cellules s'adaptent en dynamique pour tenir sur UNE page A4 ; on bascule en portrait si
+// le paysage devient trop serré.
 function exporterPlanningSemaineGrillePDF(jsPDF, sections, label, joursDates, typeLabel) {
-  const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
-  const W = 842, H = 595, M = 24;
   const navy = [14, 30, 51], bleu = [26, 53, 83], orr = [198, 162, 76], encre = [22, 32, 46], gris = [122, 130, 142], trait = [210, 215, 222], blanc = [255, 255, 255];
   const bandeau = [238, 242, 248];
   const terBg = { "Synthétique dôme": [231, 238, 246], "Synthétique centre": [226, 244, 233], "Pouges": [251, 234, 217] };
   const terFg = { "Synthétique dôme": [26, 53, 83], "Synthétique centre": [47, 109, 67], "Pouges": [184, 122, 43] };
   const terShort = (t) => t === "Synthétique dôme" ? "Dôme" : t === "Synthétique centre" ? "Synthé centre" : t === "Herbe centre (nouveau synthétique)" ? "Herbe centre" : t;
+  const jc = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+  const nJ = joursDates.length;
+  // 1) Mesure du contenu (hauteurs naturelles) pour calculer l'échelle.
+  const items = [];
+  sections.forEach((sec) => {
+    items.push({ kind: "sec", section: sec.section });
+    sec.lignes.forEach((l, ri) => {
+      const maxS = Math.max(1, ...joursDates.map((_, i) => (l.parJour[i] || []).length));
+      items.push({ kind: "row", l, ri, maxS });
+    });
+  });
+  const SECH = 16, rowNat = (maxS) => Math.max(30, maxS * 24 + 6);
+  const contentNat = items.reduce((s, it) => s + (it.kind === "sec" ? SECH : rowNat(it.maxS)), 0) || 1;
+  // 2) Orientation + facteur d'échelle pour tenir sur une seule page.
+  const headerH = 58 + 26, footerH = 22, pad = 10;
+  const availFor = (H) => H - headerH - footerH - pad;
+  const kPaysage = availFor(595) / contentNat;
+  const usePortrait = kPaysage < 0.82 && (availFor(842) / contentNat) > kPaysage;
+  const W = usePortrait ? 595 : 842, H = usePortrait ? 842 : 595, M = 22;
+  const k = Math.min(1, availFor(H) / contentNat);
+  const F = (s) => Math.max(5, s * (0.5 + 0.5 * k)); // les polices rétrécissent moins vite que les hauteurs
+  const doc = new jsPDF({ unit: "pt", format: "a4", orientation: usePortrait ? "portrait" : "landscape" });
+  const labW = Math.min(118, Math.max(72, Math.round(W * 0.16))), colW = (W - 2 * M - labW) / nJ, x0 = M;
   const sc = (a) => doc.setTextColor(a[0], a[1], a[2]);
   const sf = (a) => doc.setFillColor(a[0], a[1], a[2]);
   const sd = (a) => doc.setDrawColor(a[0], a[1], a[2]);
-  const jc = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
-  const nJ = joursDates.length;
-  const labW = 118, colW = (W - 2 * M - labW) / nJ, x0 = M;
   function enTete() {
     sf(navy); doc.rect(0, 0, W, 4, "F");
     sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(CLUB_LONG, M, 26);
@@ -14965,7 +15203,7 @@ function exporterPlanningSemaineGrillePDF(jsPDF, sections, label, joursDates, ty
     sf(bleu); doc.rect(x0, y, labW, 26, "F"); sc(blanc); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.text("Catégorie", x0 + 5, y + 16);
     joursDates.forEach((dstr, i) => {
       const x = x0 + labW + i * colW; sf(bleu); doc.rect(x, y, colW, 26, "F");
-      doc.setFontSize(8.5); doc.text(jc[i], x + colW / 2, y + 11, { align: "center" });
+      doc.setFontSize(8.5); doc.text(jc[i] || "", x + colW / 2, y + 11, { align: "center" });
       doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.text(jjmm(dstr), x + colW / 2, y + 21, { align: "center" }); doc.setFont("helvetica", "bold");
     });
     return y + 26;
@@ -14973,36 +15211,37 @@ function exporterPlanningSemaineGrillePDF(jsPDF, sections, label, joursDates, ty
   enTete();
   let y = 58;
   y = ligneJours(y);
-  sections.forEach((sec) => {
-    if (y + 16 + 30 > H - 22) { doc.addPage(); enTete(); y = 58; y = ligneJours(y); }
-    sf(bandeau); doc.rect(x0, y, labW + nJ * colW, 16, "F");
-    sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.text(sec.section.toUpperCase(), x0 + 5, y + 11);
-    y += 16;
-    sec.lignes.forEach((l, ri) => {
-      const maxS = Math.max(1, ...joursDates.map((_, i) => (l.parJour[i] || []).length));
-      const rowH = Math.max(34, maxS * 27 + 8);
-      if (y + rowH > H - 22) { doc.addPage(); enTete(); y = 58; y = ligneJours(y); }
-      const bg = ri % 2 ? [247, 249, 252] : blanc;
-      sf(bg); doc.rect(x0, y, labW, rowH, "F"); sd(trait); doc.rect(x0, y, labW, rowH);
-      sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
-      const lw = doc.splitTextToSize(l.cat, labW - 10); lw.forEach((ln, k) => doc.text(ln, x0 + 5, y + rowH / 2 - (lw.length - 1) * 5 + k * 10 + 3));
-      joursDates.forEach((_, i) => {
-        const x = x0 + labW + i * colW;
-        sf(bg); doc.rect(x, y, colW, rowH, "F"); sd(trait); doc.rect(x, y, colW, rowH);
-        const sess = l.parJour[i] || [];
-        let yy = y + 4;
-        sess.forEach((s) => {
-          sf(terBg[s.ter] || [237, 242, 248]); doc.roundedRect(x + 3, yy, colW - 6, 24, 3, 3, "F");
-          sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(7.8); doc.text(doc.splitTextToSize(l.cat, colW - 10)[0], x + colW / 2, yy + 8, { align: "center" });
-          sc(terFg[s.ter] || bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(6.8); doc.text(terShort(s.ter), x + colW / 2, yy + 16, { align: "center" });
-          sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.text(s.horaire, x + colW / 2, yy + 22.5, { align: "center" });
-          yy += 27;
-        });
+  items.forEach((it) => {
+    if (it.kind === "sec") {
+      const sh = SECH * k;
+      sf(bandeau); doc.rect(x0, y, labW + nJ * colW, sh, "F");
+      sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(F(8)); doc.text(it.section.toUpperCase(), x0 + 5, y + sh * 0.72);
+      y += sh;
+      return;
+    }
+    const l = it.l, ri = it.ri;
+    const rowH = rowNat(it.maxS) * k;
+    const bg = ri % 2 ? [247, 249, 252] : blanc;
+    sf(bg); doc.rect(x0, y, labW, rowH, "F"); sd(trait); doc.rect(x0, y, labW, rowH);
+    sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(F(8.5));
+    const lw = doc.splitTextToSize(l.cat, labW - 10); const lh = F(8.5) + 1.5;
+    lw.forEach((ln, kk) => doc.text(ln, x0 + 5, y + rowH / 2 - (lw.length - 1) * lh / 2 + kk * lh + lh / 3));
+    joursDates.forEach((_, i) => {
+      const x = x0 + labW + i * colW;
+      sf(bg); doc.rect(x, y, colW, rowH, "F"); sd(trait); doc.rect(x, y, colW, rowH);
+      const sess = l.parJour[i] || [];
+      const pitch = rowH / Math.max(1, it.maxS);
+      let yy = y + Math.min(3, pitch * 0.1);
+      sess.forEach((s) => {
+        const bh = Math.max(11, pitch - 3);
+        sf(terBg[s.ter] || [237, 242, 248]); doc.roundedRect(x + 3, yy, colW - 6, bh, 3, 3, "F");
+        sc(terFg[s.ter] || bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(F(7.4)); doc.text(doc.splitTextToSize(terShort(s.ter), colW - 8)[0], x + colW / 2, yy + bh * 0.42, { align: "center" });
+        sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(F(6.6)); doc.text(s.horaire || "", x + colW / 2, yy + bh * 0.82, { align: "center" });
+        yy += pitch;
       });
-      y += rowH;
     });
+    y += rowH;
   });
-  y += 12;
   sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
   doc.text("Synthé centre : synthétique plein air  -  Dôme : synthétique du dôme  -  Édité le " + new Date().toLocaleDateString("fr-FR"), M, H - 12);
   telechargerDoc(doc, nomPdf("Planning", typeLabel.toLowerCase(), "semaine", label));
@@ -15047,6 +15286,65 @@ function exporterPlanningSemainePDF(jsPDF, sem, occ, label, cat, typeLabel, code
   sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
   doc.text("Édité le " + new Date().toLocaleDateString("fr-FR"), M, H - 14);
   telechargerDoc(doc, nomPdf("Planning", typeLabel.toLowerCase(), "semaine", label));
+}
+
+// PDF du planning des vestiaires : un tableau par jour (horaires en lignes, vestiaires en
+// colonnes, équipe dans chaque case), une feuille A4 par jour ayant des réservations.
+function exporterPlanningVestiairesJourPDF(jsPDF, pl, jours, type, typeLabel, liste) {
+  const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
+  const W = 842, H = 595, M = 28;
+  const navy = [14, 30, 51], encre = [22, 32, 46], gris = [122, 130, 142], trait = [205, 212, 222];
+  const jaune = [251, 243, 199], entete = [224, 230, 240];
+  const sc = (a) => doc.setTextColor(a[0], a[1], a[2]);
+  const sf = (a) => doc.setFillColor(a[0], a[1], a[2]);
+  const sd = (a) => doc.setDrawColor(a[0], a[1], a[2]);
+  const hebdo = (pl.hebdo && pl.hebdo[type]) || {};
+  const vacances = pl.vacances || [];
+  const estVac = (dstr) => vacances.some((v) => v.debut && v.fin && dstr >= v.debut && dstr <= v.fin);
+  const colNom = (v) => type === "vestiaires" ? ("Vestiaire " + v) : v;
+  const titreJour = (dstr) => { const d = new Date(dstr + "T00:00:00"); const s = d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); return s.charAt(0).toUpperCase() + s.slice(1); };
+  function jourData(dstr) {
+    const cases = (pl[type] && pl[type][dstr]) || {};
+    const map = {}; const crSet = new Set();
+    Object.keys(cases).forEach((kk) => { const idx = kk.indexOf("__"); if (idx < 0) return; const cr = kk.slice(0, idx); const col = kk.slice(idx + 2); const c = cases[kk]; map[cr] = map[cr] || {}; map[cr][col] = (c.equipe || "") + (c.statut && c.statut !== "valide" ? " (att.)" : ""); crSet.add(cr); });
+    if (!estVac(dstr)) { const jour = (new Date(dstr + "T00:00:00").getDay() + 6) % 7; Object.keys(hebdo).forEach((kk) => { const parts = kk.split("__"); const j = +parts[0], cr = parts[1], col = parts.slice(2).join("__"); if (j === jour) { map[cr] = map[cr] || {}; if (!map[cr][col]) map[cr][col] = hebdo[kk].equipe || ""; crSet.add(cr); } }); }
+    return { creneaux: [...crSet].sort((a, b) => a.localeCompare(b)), map };
+  }
+  const joursAvec = jours.map((d) => ({ d, ...jourData(d) })).filter((o) => o.creneaux.length);
+  function pageJour(o) {
+    try { doc.addImage(LOGO_CLUB, "PNG", M, 14, 46, 46); } catch (e) {}
+    const tx = M + 56;
+    sf(jaune); doc.rect(tx, 18, W - M - tx, 34, "F"); sd(trait); doc.rect(tx, 18, W - M - tx, 34);
+    sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.text(titreJour(o.d), (tx + W - M) / 2, 40, { align: "center" });
+    const nCol = liste.length, x0 = M, horW = 66, colW = (W - 2 * M - horW) / nCol;
+    let y = 64; const headH = 24;
+    sf(entete); doc.rect(x0, y, horW, headH, "F"); sd(trait); doc.rect(x0, y, horW, headH);
+    sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text("Horaire", x0 + horW / 2, y + headH / 2 + 3, { align: "center" });
+    liste.forEach((v, i) => { const x = x0 + horW + i * colW; sf(entete); doc.rect(x, y, colW, headH, "F"); sd(trait); doc.rect(x, y, colW, headH); sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.text(doc.splitTextToSize(colNom(v), colW - 6), x + colW / 2, y + headH / 2 + 2, { align: "center" }); });
+    y += headH;
+    const availH = H - y - 24;
+    const rowH = Math.min(26, Math.max(12, availH / o.creneaux.length));
+    const fRow = Math.max(6, Math.min(10, rowH * 0.44));
+    o.creneaux.forEach((cr, ri) => {
+      const bg = ri % 2 ? [255, 251, 230] : [234, 239, 247];
+      sf([246, 240, 210]); doc.rect(x0, y, horW, rowH, "F"); sd(trait); doc.rect(x0, y, horW, rowH);
+      sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(Math.max(7, fRow)); doc.text(cr, x0 + horW / 2, y + rowH / 2 + fRow * 0.35, { align: "center" });
+      liste.forEach((v, i) => {
+        const x = x0 + horW + i * colW;
+        sf(bg); doc.rect(x, y, colW, rowH, "F"); sd(trait); doc.rect(x, y, colW, rowH);
+        const eq = (o.map[cr] && o.map[cr][v]) || "";
+        if (eq) { sc(navy); doc.setFont("helvetica", "bold"); doc.setFontSize(fRow); doc.text(doc.splitTextToSize(eq, colW - 6)[0], x + colW / 2, y + rowH / 2 + fRow * 0.35, { align: "center" }); }
+      });
+      y += rowH;
+    });
+    sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text(CLUB_LONG + "  -  Édité le " + new Date().toLocaleDateString("fr-FR"), M, H - 12);
+  }
+  if (!joursAvec.length) {
+    sc(gris); doc.setFont("helvetica", "italic"); doc.setFontSize(12); doc.text("Aucune réservation de " + typeLabel.toLowerCase() + " sur la semaine affichée.", M, 80);
+  } else {
+    joursAvec.forEach((o, idx) => { if (idx) doc.addPage(); pageJour(o); });
+  }
+  telechargerDoc(doc, nomPdf("Planning", typeLabel.toLowerCase()));
 }
 
 function PlanningSemaine({ planning, cat, type, onClose }) {
@@ -15143,7 +15441,8 @@ function PlanningSemaine({ planning, cat, type, onClose }) {
     setMsg("Préparation du PDF...");
     try {
       const jsPDF = await chargerJsPDF();
-      exporterPlanningSemaineGrillePDF(jsPDF, sectionsSemaine(), label, jours, typeLabel);
+      if (type === "vestiaires") exporterPlanningVestiairesJourPDF(jsPDF, pl, jours, type, typeLabel, liste);
+      else exporterPlanningSemaineGrillePDF(jsPDF, sectionsSemaine(), label, jours, typeLabel);
       setMsg(null);
     } catch (e) { setMsg("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
   }
