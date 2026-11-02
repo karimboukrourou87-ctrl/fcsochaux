@@ -1791,7 +1791,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.55";
+const APP_VERSION = "16.5A";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -5326,7 +5326,6 @@ export default function App() {
         </Modal>
       )}
       {showCalendrier && <Calendrier db={{ ...db, reunions: reunionsSource, encadrement: encadrementClub }} majEncadrement={majEncadrementClub} mutate={mutate} mutateReunions={mutateReu} peutValider={peutValider} onClose={() => setShowCalendrier(false)} />}
-      <TraceurPanel />
     </div>
     </VerrouCtx.Provider>
     </AdminCtx.Provider>
