@@ -1791,7 +1791,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.54";
+const APP_VERSION = "16.19.55";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -5949,15 +5949,15 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
     { titre: "Demande de transport", sous: "Minibus, bus en location ou voitures, à l'avance", icon: Bus, action: onTransport, badge: lstDemTransport.length },
     { titre: "Demande de vestiaire / terrain", sous: "Réserver un vestiaire ou un terrain pour un match à domicile", icon: Home, action: onVestiaire, badge: lstDemVestiaire.length },
     { titre: "Organisation des matchs", sous: "Terrain, vestiaires, transport et encadrement", icon: MapPin, action: onOrganisation, badge: nbOrga },
-    { titre: "Programme de la semaine", sous: "Récapitulatif des matchs à imprimer", icon: ClipboardList, action: onProgramme },
+    { titre: "Programme de la semaine", sous: "Récapitulatif des matchs à imprimer", icon: ClipboardList, action: accDirection ? onProgramme : null },
     { titre: "Documents administratifs", sous: "Licences et contrôle médical à surveiller", icon: ShieldAlert, action: peutMsg ? onDocuments : null, badge: peutMsg ? alerteDocs : 0 },
     { titre: "Suivi médical", sous: "Blessés suivis par l'équipe médicale (U17 aux pros)", icon: Activity, action: (estMedical || priseEnChargeMedicale(cat) !== "parents") ? onSuivi : null, badge: (estMedical || priseEnChargeMedicale(cat) !== "parents") ? enSuiviMedical : 0 },
-    { titre: "Bilan de saison de l'équipe", sous: "Collectif, joueurs et bilan du club en PowerPoint", icon: Trophy, action: onBilan },
+    { titre: "Bilan de saison de l'équipe", sous: "Collectif, joueurs et bilan du club en PowerPoint", icon: Trophy, action: accDirection ? onBilan : null },
     { titre: "Messagerie du club", sous: "Adresser un message important aux éducateurs", icon: Bell, action: peutMsg ? onMessagerie : null, badge: msgASuivre },
     { titre: "Réunions", sous: "Programmer les réunions et recueillir les présences", icon: Users, action: onReunions, badge: alerteReunions },
     { titre: "Calendrier du club", sous: "Tous les événements, toutes catégories réunies", icon: CalendarDays, action: onCalendrier },
     { titre: "Planning hebdomadaire", sous: "Créneaux d'entraînement de la semaine, par catégorie", icon: CalendarDays, action: onPlanningHebdo },
-    { titre: "Planning des vestiaires et terrains", sous: "Réserver terrains et vestiaires par créneau", icon: CalendarDays, action: onPlanning, badge: lstDemPlanning.length },
+    { titre: "Planning des vestiaires et terrains", sous: "Réserver terrains et vestiaires par créneau", icon: CalendarDays, action: accDirection ? onPlanning : null, badge: lstDemPlanning.length },
     { titre: "Droits d'accès", sous: "Gérer les accès des éducateurs par secteur", icon: ShieldAlert, action: onAcces },
     { titre: "Sauvegarde des données", sous: "Exporter ou restaurer les informations du club", icon: Save, action: onSauvegarde },
   ];
