@@ -1004,10 +1004,16 @@ function AttribuerVestiaire({ dem, onConfirm, onClose }) {
   const [debut, setDebut] = useState(dem.debut || arriveeCr);
   const [fin, setFin] = useState(dem.fin || "");
   const [liberation, setLiberation] = useState(dem.liberation || "");
+  // Match à domicile avec un adversaire connu : on propose automatiquement un vestiaire pour l'équipe visiteuse.
+  const peutVisiteur = !estTerrain && !!(dem.adversaire && String(dem.adversaire).trim());
+  const [visMode, setVisMode] = useState("dedie"); // dedie | partage | none
+  const [visVestiaire, setVisVestiaire] = useState(() => (VESTIAIRES.find((v) => v !== (dem.vestiaire || VESTIAIRES[0])) || VESTIAIRES[0]));
+  useEffect(() => { if (visVestiaire === vestiaire) setVisVestiaire(VESTIAIRES.find((v) => v !== vestiaire) || vestiaire); }, [vestiaire]);
   const pret = !!vestiaire && !!debut;
+  const payloadVisiteur = (peutVisiteur && visMode !== "none") ? { nom: String(dem.adversaire).trim(), vestiaire: visMode === "partage" ? vestiaire : visVestiaire, debut, fin: fin || "", liberation: liberation || "", partage: visMode === "partage" } : null;
   return (
     <Modal title={`Attribuer un ${motLieu}`} onClose={onClose}
-      footer={<Btn variant="accent" full disabled={!pret} onClick={() => onConfirm({ vestiaire, debut, fin: fin || "", liberation: liberation || "" })}><Check size={16} /> Attribuer et valider</Btn>}>
+      footer={<Btn variant="accent" full disabled={!pret} onClick={() => onConfirm({ vestiaire, debut, fin: fin || "", liberation: liberation || "", visiteur: payloadVisiteur })}><Check size={16} /> Attribuer et valider</Btn>}>
       <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.45 }}>{dem.cat} · {dem.adversaire ? `vs ${dem.adversaire}` : "match"}{dem.date ? ` · ${fmtDate(dem.date)}` : ""}{dem.heureArrivee ? ` · arrivée souhaitée ${dem.heureArrivee}` : ""}. Choisis le {motLieu} et les créneaux. La réservation s'affichera sur le planning, verrouillée.</div>
       <Field label={estTerrain ? "Terrain" : "Vestiaire"}>
         <Sel value={vestiaire} onChange={(e) => setVestiaire(e.target.value)}>
@@ -1019,6 +1025,22 @@ function AttribuerVestiaire({ dem, onConfirm, onClose }) {
         <div style={{ flex: 1 }}><Field label="À (fin)"><Sel value={fin} onChange={(e) => setFin(e.target.value)}><option value="">—</option>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field></div>
       </div>
       <Field label={`Libération du ${motLieu}`}><Sel value={liberation} onChange={(e) => setLiberation(e.target.value)}><option value="">— (optionnel) —</option>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field>
+      {peutVisiteur && (
+        <div style={{ marginTop: 6, borderTop: `1px solid ${C.grisClair}`, paddingTop: 12 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: C.bleu, marginBottom: 6 }}>Vestiaire de l'équipe visiteuse ({String(dem.adversaire).trim()})</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: visMode === "dedie" ? 10 : 0 }}>
+            {[["dedie", "Vestiaire dédié"], ["partage", "Partage avec nos joueurs"], ["none", "Aucun"]].map(([v, l]) => { const on = visMode === v; return <button key={v} type="button" onClick={() => setVisMode(v)} style={{ flex: 1, border: `1px solid ${on ? C.bleu : C.grisClair}`, background: on ? C.bleu : "#fff", color: on ? "#fff" : C.encre, fontWeight: 800, fontSize: 12, borderRadius: 10, padding: "9px 6px", cursor: "pointer" }}>{l}</button>; })}
+          </div>
+          {visMode === "dedie" && (
+            <Field label="Vestiaire visiteur">
+              <Sel value={visVestiaire} onChange={(e) => setVisVestiaire(e.target.value)}>
+                {VESTIAIRES.map((v) => <option key={v} value={v}>{`Vestiaire ${v}`}</option>)}
+              </Sel>
+            </Field>
+          )}
+          {visMode === "partage" && <div style={{ fontSize: 12, color: C.bleu, fontWeight: 700, background: "#E7F0FB", border: `1px solid ${C.bleu}`, borderRadius: 10, padding: "9px 11px", marginTop: 8, lineHeight: 1.4 }}>Les visiteurs partagent le vestiaire {vestiaire} de notre équipe (mêmes horaires). La case du planning affichera les deux équipes.</div>}
+        </div>
+      )}
     </Modal>
   );
 }
@@ -1765,7 +1787,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.48";
+const APP_VERSION = "16.19.49";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -4961,6 +4983,32 @@ export default function App() {
         creneaux.forEach((cr) => {
           d[tl][dem.date][`${cr}__${att.vestiaire}`] = { equipe: dem.cat, cat: dem.cat, activite: "match", statut: "valide", verrou: true, debut: att.debut, fin: att.fin || undefined, liberation: att.liberation || undefined, matchId: dem.matchId || undefined, adversaire: dem.adversaire || undefined, demandeur: dem.demandeur || undefined, origineVestiaire: dem.id };
         });
+      }
+      // Vestiaire de l'équipe visiteuse : attribué automatiquement en même temps (dédié ou partagé).
+      // On retire d'abord l'éventuel vestiaire visiteur déjà rattaché à cette demande, pour éviter les doublons.
+      const ancienVis = d.demandesVestiaire.find((y) => y && y.origineVisiteurDe === dem.id);
+      if (ancienVis) {
+        if (ancienVis.date && d.vestiaires && d.vestiaires[ancienVis.date]) {
+          Object.keys(d.vestiaires[ancienVis.date]).forEach((k) => { const c = d.vestiaires[ancienVis.date][k]; if (c && c.origineVestiaire === ancienVis.id) delete d.vestiaires[ancienVis.date][k]; });
+        }
+        d.demandesVestiaire = d.demandesVestiaire.filter((y) => y.id !== ancienVis.id);
+      }
+      const vis = att.visiteur;
+      if (vis && vis.nom && vis.vestiaire && dem.date) {
+        const vrid = uid();
+        const vdeb = vis.debut || att.debut; const vfin = vis.fin || att.fin || ""; const vlib = vis.liberation || att.liberation || "";
+        d.vestiaires = d.vestiaires || {};
+        d.vestiaires[dem.date] = d.vestiaires[dem.date] || {};
+        creneauxVestiaire(vdeb, vfin).forEach((cr) => {
+          const kk = `${cr}__${vis.vestiaire}`;
+          const exist = d.vestiaires[dem.date][kk];
+          if (exist && exist.origineVestiaire && exist.equipe && !String(exist.equipe).split(" / ").includes(vis.nom)) {
+            d.vestiaires[dem.date][kk] = { ...exist, equipe: exist.equipe + " / " + vis.nom, cat: exist.equipe + " / " + vis.nom };
+          } else {
+            d.vestiaires[dem.date][kk] = { equipe: vis.nom, cat: vis.nom, activite: "match", statut: "valide", verrou: true, debut: vdeb, fin: vfin || undefined, liberation: vlib || undefined, matchId: dem.matchId || undefined, adversaire: dem.cat || undefined, origineVestiaire: vrid };
+          }
+        });
+        d.demandesVestiaire.push({ id: vrid, typeLieu: "vestiaires", cat: vis.nom, catsPrevenir: [], demandeur: "", matchId: dem.matchId || "", adversaire: dem.adversaire || "", date: dem.date || "", vestiaire: vis.vestiaire, debut: vdeb, fin: vfin, liberation: vlib, visiteur: true, partage: !!vis.partage, origineVisiteurDe: dem.id, statut: "acceptee", directe: true, traiteLe: new Date().toISOString(), creeLe: new Date().toISOString() });
       }
       const cibles = Array.isArray(dem.catsPrevenir) ? dem.catsPrevenir : [(dem.catPrevenir || dem.cat) || ""];
       d.notifs = d.notifs || [];
