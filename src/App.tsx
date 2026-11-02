@@ -840,17 +840,23 @@ function Transports({ store, maj, chargement, peutValider, profil, cat, encadrem
                       <td style={{ ...cellStyle, whiteSpace: "nowrap", fontWeight: 900, color: x.statut === "acceptee" ? C.vert : x.statut === "refusee" ? C.rouge : "#B8860B" }}>{x.statut === "acceptee" ? "Acceptée" : x.statut === "refusee" ? "Refusée" : "En attente"}</td>
                       <td style={{ ...cellStyle, whiteSpace: "nowrap" }}>
                         <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                          {x.statut === "en_attente" && (
+                          {x.archive ? (
+                            <button onClick={() => archiver(x.id, false)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.gris, borderRadius: 8, padding: "6px 9px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><Archive size={13} /> Réactiver</button>
+                          ) : (
                             <>
-                              <button onClick={() => setAttrib(x)} style={{ border: "none", background: C.bleu, color: "#fff", borderRadius: 8, padding: "6px 9px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><Bus size={13} /> Attribuer</button>
-                              <button onClick={() => { setRefus(x); setCause(""); }} style={{ border: `1px solid ${C.rouge}`, background: "#fff", color: C.rouge, borderRadius: 8, padding: "6px 9px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><X size={13} /> Refuser</button>
+                              {x.statut === "en_attente" && (
+                                <>
+                                  <button onClick={() => setAttrib(x)} style={{ border: "none", background: C.bleu, color: "#fff", borderRadius: 8, padding: "6px 9px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><Bus size={13} /> Attribuer</button>
+                                  <button onClick={() => { setRefus(x); setCause(""); }} style={{ border: `1px solid ${C.rouge}`, background: "#fff", color: C.rouge, borderRadius: 8, padding: "6px 9px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><X size={13} /> Refuser</button>
+                                </>
+                              )}
+                              {x.statut !== "en_attente" && (
+                                <button onClick={() => setAttrib(x)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, borderRadius: 8, padding: "6px 9px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><Edit3 size={13} /> Modifier</button>
+                              )}
+                              <button onClick={() => archiver(x.id, true)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.gris, borderRadius: 8, padding: "6px 9px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><Archive size={13} /> Archiver</button>
+                              <button onClick={() => demanderSuppression(x)} style={{ border: "none", background: "transparent", color: C.rouge, borderRadius: 8, padding: "4px 2px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><Trash2 size={13} /> Supprimer</button>
                             </>
                           )}
-                          {x.statut !== "en_attente" && (
-                            <button onClick={() => setAttrib(x)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, borderRadius: 8, padding: "6px 9px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><Edit3 size={13} /> Modifier</button>
-                          )}
-                          <button onClick={() => archiver(x.id, !x.archive)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.gris, borderRadius: 8, padding: "6px 9px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><Archive size={13} /> {x.archive ? "Réactiver" : "Archiver"}</button>
-                          <button onClick={() => demanderSuppression(x)} style={{ border: "none", background: "transparent", color: C.rouge, borderRadius: 8, padding: "4px 2px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><Trash2 size={13} /> Supprimer</button>
                         </div>
                       </td>
                     </tr>
@@ -876,7 +882,7 @@ function Transports({ store, maj, chargement, peutValider, profil, cat, encadrem
               {x.statut === "refusee" && x.cause ? <div style={{ fontSize: 13, color: C.rouge, marginTop: 4 }}>Cause : {x.cause}</div> : null}
               <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
                 <Btn variant="ghost" size="sm" onClick={() => archiver(x.id, !x.archive)}><Archive size={15} /> {x.archive ? "Réactiver" : "Archiver"}</Btn>
-                {x.demandeur === moi && (
+                {!x.archive && x.demandeur === moi && (
                   <Btn variant="ghost" size="sm" style={{ marginLeft: "auto", color: C.rouge }} onClick={() => demanderSuppression(x)}><Trash2 size={15} /> Supprimer</Btn>
                 )}
               </div>
@@ -1230,10 +1236,16 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
               {x.statut === "refusee" && x.cause && <div style={{ fontSize: 12, color: C.rouge, marginTop: 5 }}>Motif : {x.cause}</div>}
               {peutValider && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                  <Btn variant="accent" size="sm" onClick={() => setAttrib(x)}><Check size={15} /> {x.statut === "acceptee" ? "Modifier" : "Attribuer"}</Btn>
-                  {x.statut !== "refusee" && <Btn variant="danger" size="sm" onClick={() => { setRefus(x); setCause(""); }}><X size={15} /> Refuser</Btn>}
-                  {x.archive ? <Btn variant="ghost" size="sm" onClick={() => archiver(x.id, false)}><Archive size={15} /> Réactiver</Btn> : <Btn variant="ghost" size="sm" onClick={() => archiver(x.id, true)}><Archive size={15} /> Archiver</Btn>}
-                  <Btn variant="ghost" size="sm" onClick={() => demanderSuppression(x)}><Trash2 size={15} /></Btn>
+                  {x.archive ? (
+                    <Btn variant="ghost" size="sm" onClick={() => archiver(x.id, false)}><Archive size={15} /> Réactiver</Btn>
+                  ) : (
+                    <>
+                      <Btn variant="accent" size="sm" onClick={() => setAttrib(x)}><Check size={15} /> {x.statut === "acceptee" ? "Modifier" : "Attribuer"}</Btn>
+                      {x.statut !== "refusee" && <Btn variant="danger" size="sm" onClick={() => { setRefus(x); setCause(""); }}><X size={15} /> Refuser</Btn>}
+                      <Btn variant="ghost" size="sm" onClick={() => archiver(x.id, true)}><Archive size={15} /> Archiver</Btn>
+                      <Btn variant="ghost" size="sm" onClick={() => demanderSuppression(x)}><Trash2 size={15} /></Btn>
+                    </>
+                  )}
                 </div>
               )}
               {!peutValider && (
@@ -1263,7 +1275,7 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
   );
 }
 
-function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose }) {
+function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose, planning }) {
   const [sel, setSel] = useState(null);
   const [edit, setEdit] = useState(null);
   const [roster, setRoster] = useState(false);
@@ -1311,7 +1323,7 @@ function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose }) {
         });
         setEdit(null);
       }} />}
-      {sel && <OrgaMatch demo={demo} match={sel} db={db} mutate={mutate} peutValider={peutValider} onClose={() => setSel(null)} />}
+      {sel && <OrgaMatch demo={demo} match={sel} db={db} mutate={mutate} peutValider={peutValider} planning={planning} onClose={() => setSel(null)} />}
       {roster && <RosterEncadrement demo={demo} db={db} mutate={mutate} onClose={() => setRoster(false)} />}
     </Modal>
   );
@@ -1720,7 +1732,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.45";
+const APP_VERSION = "16.19.47";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -5119,7 +5131,7 @@ export default function App() {
         {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={(d) => { setTransportFocus(typeof d === "string" ? d : null); setShowTransport(true); if (rafraichirTransport) rafraichirTransport(); }} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowSauvegarde(true)) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowAcces(true)) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => demanderDeverrouillageAdmin(() => setShowDocs(true))} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onArrets={() => setShowArrets(true)} onMessagerie={ouvrirMessagerie} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} msgVuLe={msgVuLe} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onVestiaire={() => { setShowVestiaire(true); if (rafraichirPlanning) rafraichirPlanning(); }} demVestiaire={peutValider ? demandesVestiaire : []} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} peutValider={peutValider} demo={demo} adminUnlock={adminUnlock} onDemanderDeverrouillage={demanderDeverrouillageAdmin} auteur={{ nom: monNom, role: monRole }} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
-        {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} onNotifierCorrection={notifierCorrection} />}
+        {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} planning={planningClub} onNotifierCorrection={notifierCorrection} />}
         {tab === "entrainements" && <Entrainements players={players} cat={cat} db={db} mutate={mutate} estMedical={estMedical} onSignalerBlessure={signalerBlessure} initialSous={entSous} onConsumeSous={() => setEntSous(null)} />}
         {tab === "detection" && <Detection cat={cat} db={db} mutate={mutate} />}
         <div style={{ display: "flex", justifyContent: "center", padding: "10px 16px 26px" }}>
@@ -5174,13 +5186,13 @@ export default function App() {
       {showClassement && <Classement cat={cat} db={db} mutate={mutate} onClose={() => setShowClassement(false)} />}
       {showTransport && <Transports store={transportClub} maj={majTransportClub} chargement={chargementTransport} peutValider={peutValider} profil={profil} cat={cat} encadrement={encadrementClub} majEncadrement={majEncadrementClub} onValiderDem={validerTransport} onRefuserDem={refuserTransport} db={db} mutate={mutate} onRafraichir={rafraichirTransport} onDemanderDeverrouillage={demanderDeverrouillageAdmin} focusDate={transportFocus} onClose={() => { setShowTransport(false); setTransportFocus(null); }} />}
       {showVestiaire && <DemandesVestiaire store={planningClub} maj={majPlanningClub} peutValider={peutValider} profil={profil} cat={cat} db={db} onValider={validerVestiaire} onRefuser={refuserVestiaire} onAttribuerDirect={attribuerVestiaireDirect} onOuvrirPlanning={() => setShowPlanning(true)} onRafraichir={rafraichirPlanning} onDemanderDeverrouillage={demanderDeverrouillageAdmin} onClose={() => setShowVestiaire(false)} />}
-      {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
+      {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} planning={planningClub} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
       {apercuPDF && <ApercuPDF url={apercuPDF.url} nom={apercuPDF.nom} onClose={() => { try { URL.revokeObjectURL(apercuPDF.url); } catch (e) {} setApercuPDF(null); }} />}
       {showPlanning && <Planning planning={planningClub} majPlanning={majPlanningClub} chargement={chargementPlanning} erreur={erreurPlanning} cats={cats} profil={profil} peutValider={peutValider} cat={cat} onClose={() => setShowPlanning(false)} />}
       {showPlanningHebdo && <PlanningHebdo onClose={() => setShowPlanningHebdo(false)} />}
       {showAcces && <AccesSecteurs db={{ acces: accesSource }} mutate={mutateReu} estAdmin={estAdmin} onClose={() => setShowAcces(false)} />}
-      {showProgramme && <ProgrammeSemaine db={db} localDb={demo ? db : null} peutValider={peutValider} userId={session ? session.user.id : null} encadrement={encadrementClub} cats={cats} transport={transportClub} onClose={() => setShowProgramme(false)} />}
+      {showProgramme && <ProgrammeSemaine db={db} localDb={demo ? db : null} peutValider={peutValider} userId={session ? session.user.id : null} encadrement={encadrementClub} cats={cats} transport={transportClub} planning={planningClub} majPlanning={majPlanningClub} majTransport={majTransportClub} onClose={() => setShowProgramme(false)} />}
       {showDocs && <DocumentsAdmin players={players} cat={cat} db={db} mutate={mutate} lectureSeule={lectureSeuleCat} demo={demo} adminUnlock={adminUnlock} onDemanderDeverrouillage={demanderDeverrouillageAdmin} auteur={{ nom: monNom, role: monRole }} onClose={() => setShowDocs(false)} />}
       {showArrets && <GestionArretsCompet db={db} cat={cat} onClose={() => setShowArrets(false)} />}
       {adminPrompt !== null && (
@@ -10548,7 +10560,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
 /* ============================================================
    Matchs : calendrier, score, rapport, notes
    ============================================================ */
-function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil, onNotifierCorrection }) {
+function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil, onNotifierCorrection, planning }) {
   const [edit, setEdit] = useState(null);
   const [open, setOpen] = useState(null);
   const [filtre, setFiltre] = useState("Tous");
@@ -10765,7 +10777,7 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil, 
         setEdit(null);
       }} />}
 
-      {open && <RapportMatch demo={demo} match={open} players={players} db={db} mutate={mutate} peutValider={peutValider} profil={profil} onNotifierCorrection={onNotifierCorrection}
+      {open && <RapportMatch demo={demo} match={open} players={players} db={db} mutate={mutate} peutValider={peutValider} profil={profil} planning={planning} onNotifierCorrection={onNotifierCorrection}
         onClose={() => setOpen(null)}
         onEdit={() => { setEdit(open); setOpen(null); }}
         onDelete={() => { mutate((d) => { const m = (d.matches || []).find((x) => x.id === open.id); ajouterCorbeille(d, m, "match", cat); d.matches = d.matches.filter((x) => x.id !== open.id); return d; }); setOpen(null); }} />}
@@ -11846,7 +11858,7 @@ function Convocation({ db, cat, match, mutate, onClose }) {
 }
 
 
-function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
+function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) {
   const [roster, setRoster] = useState(false);
   const [causeRefus, setCauseRefus] = useState(false);
   const [cause, setCause] = useState("");
@@ -11859,6 +11871,21 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
   const r = cur.reservation || {};
   const exterieur = cur.lieu === "Extérieur";
   const domicile = cur.lieu === "Domicile";
+  // Attributions faites par la direction via l'onglet « Demandes de vestiaire et terrain » (source de vérité).
+  // On relie au match par catégorie + date identiques (et adversaire s'il est renseigné des deux côtés).
+  const attribsDirection = useMemo(() => {
+    const toutes = (planning && planning.demandesVestiaire) || [];
+    const d = cur.date || "";
+    const adv = (cur.adversaire || "").trim().toLowerCase();
+    return toutes.filter((x) => x && x.statut === "acceptee" && x.vestiaire && (x.cat || "") === (cur.cat || "") && (x.date || "") === d && (!adv || !x.adversaire || (x.adversaire || "").trim().toLowerCase() === adv));
+  }, [planning, cur.cat, cur.date, cur.adversaire]);
+  const attribTerrains = attribsDirection.filter((x) => x.typeLieu === "terrains");
+  const attribVestiaires = attribsDirection.filter((x) => x.typeLieu !== "terrains");
+  const terLock = attribTerrains.length > 0;
+  const vestLock = attribVestiaires.length > 0;
+  const aAttribution = terLock || vestLock;
+  const nomsTerrainsAttrib = attribTerrains.map((x) => x.vestiaire);
+  const nomsVestiairesAttrib = attribVestiaires.map((x) => x.vestiaire);
   // Diagnostic transport : on fait remonter l'etat du transport de ce match dans le traceur (bouton Diag),
   // pour verifier la liaison demande -> match et ce qui a ete attribue.
   const diagTransport = `match ${cur.date || "?"} ${cur.adversaire || "?"} (${cur.cat || "?"}) lieu=${cur.lieu || "?"} | mode=${t.mode || "aucun"} statut=${t.statut || "-"} minibus=${normMinis(t.minibus).join("/") || "-"} loueur=${t.loueur || "-"} voitures=${t.nbVoitures || "-"} origineDemande=${t.origineDemande || "non"}`;
@@ -11942,27 +11969,40 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider }) {
           <div style={{ fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 7 }}><MapPin size={17} color={C.bleu} /> Terrain et vestiaires</div>
           <div style={{ fontSize: 12, color: C.gris, marginBottom: 10 }}>Match à domicile. La demande est validée par le responsable, qui fixe l'heure de libération du vestiaire.</div>
 
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Terrain demandé</div>
+          {aAttribution && (
+            <div style={{ background: "#E7F0FB", border: `1px solid ${C.bleu}`, borderRadius: 12, padding: "11px 13px", marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 900, color: C.bleuNuit, display: "flex", alignItems: "center", gap: 7, marginBottom: nomsVestiairesAttrib.length ? 6 : 0 }}><Lock size={15} /> Attribué par la direction</div>
+              {attribVestiaires.map((a, i) => (
+                <div key={"av" + i} style={{ fontSize: 12.5, color: C.bleu, fontWeight: 800 }}>{resumeVestiaire(a)}</div>
+              ))}
+              {attribTerrains.map((a, i) => (
+                <div key={"at" + i} style={{ fontSize: 12.5, color: C.bleu, fontWeight: 800 }}>{resumeVestiaire(a)}</div>
+              ))}
+              <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6, lineHeight: 1.4 }}>Réservation gérée dans l'onglet « Demandes de vestiaire et terrain ». Les cases ci-dessous ne sont pas modifiables ici.</div>
+            </div>
+          )}
+
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Terrain demandé{terLock ? " (attribué)" : ""}</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
             {TERRAINS.map((ter) => {
-              const on = r.terrain === ter;
+              const on = terLock ? nomsTerrainsAttrib.includes(ter) : r.terrain === ter;
               return (
-                <button key={ter} onClick={() => majReservation({ terrain: ter })} style={{
-                  flex: 1, border: `1px solid ${on ? C.bleu : C.grisClair}`, cursor: "pointer", borderRadius: 11, padding: "11px 10px",
-                  fontWeight: 800, fontSize: 13.5, background: on ? C.bleu : "#fff", color: on ? "#fff" : C.encre,
+                <button key={ter} disabled={terLock} onClick={terLock ? undefined : () => majReservation({ terrain: ter })} style={{
+                  flex: 1, border: `1px solid ${on ? C.bleu : C.grisClair}`, cursor: terLock ? "default" : "pointer", borderRadius: 11, padding: "11px 10px",
+                  fontWeight: 800, fontSize: 13.5, background: on ? C.bleu : "#fff", color: on ? "#fff" : C.encre, opacity: terLock && !on ? 0.4 : 1,
                 }}>{ter}</button>
               );
             })}
           </div>
 
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Vestiaires équipe(s) du club</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Vestiaires équipe(s) du club{vestLock ? " (attribué)" : ""}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 12 }}>
             {VESTIAIRES.map((v) => {
-              const on = (r.vestiairesClub || []).includes(v);
+              const on = vestLock ? nomsVestiairesAttrib.includes(v) : (r.vestiairesClub || []).includes(v);
               return (
-                <button key={v} onClick={() => toggleVestiaire("vestiairesClub", v)} style={{
-                  border: `1px solid ${on ? C.jaune : C.grisClair}`, cursor: "pointer", borderRadius: 10, padding: "9px 13px", fontWeight: 800, fontSize: 13.5,
-                  background: on ? C.jaune : "#fff", color: on ? C.bleuNuit : C.gris,
+                <button key={v} disabled={vestLock} onClick={vestLock ? undefined : () => toggleVestiaire("vestiairesClub", v)} style={{
+                  border: `1px solid ${on ? C.jaune : C.grisClair}`, cursor: vestLock ? "default" : "pointer", borderRadius: 10, padding: "9px 13px", fontWeight: 800, fontSize: 13.5,
+                  background: on ? C.jaune : "#fff", color: on ? C.bleuNuit : C.gris, opacity: vestLock && !on ? 0.4 : 1,
                 }}>{v}</button>
               );
             })}
@@ -12947,7 +12987,7 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
   );
 }
 
-function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDelete, peutValider, profil, onNotifierCorrection }) {
+function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDelete, peutValider, profil, onNotifierCorrection, planning }) {
   const [noteFor, setNoteFor] = useState(null);
   const [evalEssaiFor, setEvalEssaiFor] = useState(null); // joueur à l'essai dont on saisit l'évaluation détection
   const [orga, setOrga] = useState(false);
@@ -13745,7 +13785,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
         onClose={() => setEvalEssaiFor(null)}
         onSave={(data) => { saveEvalEssai(evalEssaiFor.id, data); setEvalEssaiFor(null); }}
         onEffacer={() => { saveEvalEssai(evalEssaiFor.id, null); setEvalEssaiFor(null); }} />}
-      {orga && <OrgaMatch demo={demo} match={match} db={db} mutate={mutate} peutValider={peutValider} onClose={() => setOrga(false)} />}
+      {orga && <OrgaMatch demo={demo} match={match} db={db} mutate={mutate} peutValider={peutValider} planning={planning} onClose={() => setOrga(false)} />}
       {plateau && <OrganiserPlateau tournoi={{ nom: `${match.type}${match.date ? " du " + fmtDate(match.date) : ""}`, organisation: cur.organisation }} jsonActif={jsonImportActif(db)} onClose={() => setPlateau(false)} onSave={enregistrerPlateau} />}
       {jong && (/^U13/.test(match.cat)
         ? <DefiJonglageLigue match={match} players={players} db={db} mutate={mutate} onClose={() => setJong(false)} />
@@ -16774,7 +16814,7 @@ function EditLignePlanning({ match, cats, encadrement, onClose, onSave }) {
   );
 }
 
-function ProgrammeSemaine({ db, localDb, peutValider, userId, encadrement, cats, transport, onClose }) {
+function ProgrammeSemaine({ db, localDb, peutValider, userId, encadrement, cats, transport, planning, majPlanning, majTransport, onClose }) {
   const [offset, setOffset] = useState(0);
   const [msg, setMsg] = useState(null);
   const [editMode, setEditMode] = useState(false);
@@ -16865,6 +16905,19 @@ function ProgrammeSemaine({ db, localDb, peutValider, userId, encadrement, cats,
         bNew.matches = [...(bNew.matches || []), { ...full, ...maj }];
         await saveCat(newCat, bNew, userId);
       }
+      // Coordination : on répercute le terrain et le transport modifiés ici sur la demande correspondante
+      // (même catégorie + date), pour que les onglets « Demandes » restent cohérents avec le programme.
+      try {
+        const dMaj = maj.date || "";
+        const advMaj = (maj.adversaire || "").trim().toLowerCase();
+        const memeMatch = (x) => (x.cat || "") === (newCat || "") && (x.date || "") === dMaj && (!advMaj || !x.adversaire || (x.adversaire || "").trim().toLowerCase() === advMaj);
+        if (majPlanning && (maj.lieu || "Domicile") === "Domicile" && maj.lieuMatch && TERRAINS.includes(maj.lieuMatch)) {
+          majPlanning((s) => { (s.demandesVestiaire || []).forEach((x) => { if (x && x.statut === "acceptee" && x.typeLieu === "terrains" && memeMatch(x)) x.vestiaire = maj.lieuMatch; }); return s; });
+        }
+        if (majTransport && maj.transport && maj.transport.mode) {
+          majTransport((s) => { (s.demandes || []).forEach((x) => { if (x && x.statut === "acceptee" && memeMatch(x)) x.note = maj.transport.mode; }); return s; });
+        }
+      } catch (e) {}
       setLigneEdit(null); setMsg("Modification enregistrée.");
       setRechargeTick((t) => t + 1); // recharge le planning à jour
     } catch (e) { setMsg("Enregistrement impossible. Vérifie la connexion, puis réessaie."); }
@@ -16883,7 +16936,14 @@ function ProgrammeSemaine({ db, localDb, peutValider, userId, encadrement, cats,
   const secteurDe = (cat) => { const ci = CATEGORIES.find((x) => x.id === cat); return ci ? ci.groupe : ""; };
   const rangSecteur = (cat) => { const r = ordreSecteur[secteurDe(cat)]; return r == null ? 9 : r; };
   const ageDe = (cat) => { const m = /U(\d+)/.exec(cat || ""); if (m) return +m[1]; if (["PRO", "N2", "Ligue 2"].includes(cat) || (cat || "").includes("SENIORS")) return 99; return 50; };
-  const lieuDe = (m) => m.lieuMatch || (m.lieu === "Domicile" ? ((m.reservation && m.reservation.terrain) || "Domicile") : "Extérieur");
+  // Terrain attribué par la direction via l'onglet « Demandes de vestiaire et terrain » (même catégorie + date).
+  const demandesV = (planning && planning.demandesVestiaire) || [];
+  const terrainAttribue = (m) => {
+    const adv = (m.adversaire || "").trim().toLowerCase();
+    const f = demandesV.find((x) => x && x.statut === "acceptee" && x.typeLieu === "terrains" && x.vestiaire && (x.cat || "") === (m.cat || "") && (x.date || "") === (m.date || "") && (!adv || !x.adversaire || (x.adversaire || "").trim().toLowerCase() === adv));
+    return f ? f.vestiaire : "";
+  };
+  const lieuDe = (m) => m.lieuMatch || (m.lieu === "Domicile" ? ((m.reservation && m.reservation.terrain) || terrainAttribue(m) || "Domicile") : "Extérieur");
   const rdvDe = (m) => [m.rdv, m.lieuRdv].filter(Boolean).join(" ");
   const dirDe = (m) => { const e = m.encadrement || {}; return [nomFamille(e.dirigeant), nomFamille(e.delegue)].filter(Boolean).join(", "); };
   const transDe = (m) => {
