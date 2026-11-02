@@ -4,7 +4,7 @@ import {
   Plus, X, Trash2, ChevronLeft, Trophy, Award, Bell, Activity, Target,
   Footprints, Ruler, Weight, Gauge, Timer, Edit3, Save,
   HeartPulse, ShieldAlert, Star, MapPin, ArrowRightLeft, Eye, FileDown, Phone, Camera, LogOut,
-  Send, Check, Inbox, ListOrdered, ExternalLink, Bus, Upload, Lock, RefreshCw, TrendingUp, TrendingDown, Minus
+  Send, Check, Inbox, ListOrdered, ExternalLink, Bus, Upload, Lock, RefreshCw, TrendingUp, TrendingDown, Minus, Archive
 } from "lucide-react";
 
 // Contexte de verrouillage administratif : rôle (direction/responsable) + déverrouillage par mot de passe.
@@ -646,6 +646,7 @@ function Transports({ store, maj, chargement, peutValider, profil, cat, encadrem
   const [cause, setCause] = useState("");
   const [filtre, setFiltre] = useState("toutes");
   const [confirmSuppr, setConfirmSuppr] = useState(null);
+  const [voirArchives, setVoirArchives] = useState(false);
   const [majMsg, setMajMsg] = useState("");
   // Navigation par semaine (comme le programme des matchs) pour la vision direction.
   // Si on ouvre via une alarme de demande (focusDate), on se place directement sur sa semaine.
@@ -680,7 +681,9 @@ function Transports({ store, maj, chargement, peutValider, profil, cat, encadrem
   const toutesDemandes = ((store && store.demandes) || []).slice().sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""));
   // Direction : on n'affiche que les demandes de la semaine sélectionnée (celles sans date restent visibles).
   const demandesSemaine = toutesDemandes.filter((x) => !x.date || (x.date >= sem.lundi && x.date <= sem.dim));
-  const liste = peutValider ? demandesSemaine : toutesDemandes.filter((x) => (x.demandeur || "") === moi);
+  const listeBase = peutValider ? demandesSemaine : toutesDemandes.filter((x) => (x.demandeur || "") === moi);
+  const nbArchives = listeBase.filter((x) => x.archive).length;
+  const liste = listeBase.filter((x) => (voirArchives ? x.archive : !x.archive));
   const nbAttente = liste.filter((x) => x.statut === "en_attente").length;
   const nbAcceptees = liste.filter((x) => x.statut === "acceptee").length;
   const nbRefusees = liste.filter((x) => x.statut === "refusee").length;
@@ -728,6 +731,7 @@ function Transports({ store, maj, chargement, peutValider, profil, cat, encadrem
     if (peutValider && onDemanderDeverrouillage) onDemanderDeverrouillage(() => setConfirmSuppr(x));
     else setConfirmSuppr(x);
   }
+  function archiver(id, val) { maj((s) => { s.demandes = (s.demandes || []).map((y) => (y.id === id ? { ...y, archive: !!val } : y)); return s; }); }
 
   return (
     <Modal title="Demandes de transport" onClose={onClose} fullscreen={peutValider}
@@ -739,6 +743,7 @@ function Transports({ store, maj, chargement, peutValider, profil, cat, encadrem
           {majMsg === "Demandes à jour" && <div style={{ fontSize: 12, color: C.vert, fontWeight: 700, textAlign: "center", marginTop: 6 }}>Demandes à jour</div>}
         </div>
       )}
+      {(voirArchives || nbArchives > 0) && <div style={{ marginBottom: 12 }}><Btn variant={voirArchives ? "accent" : "ghost"} size="sm" full onClick={() => setVoirArchives((v) => !v)}><Archive size={15} /> {voirArchives ? "Revenir aux demandes actives" : `Voir les archives (${nbArchives})`}</Btn></div>}
       {peutValider && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "8px 10px" }}>
           <Btn variant="ghost" size="sm" onClick={() => setOffsetSemaine(offsetSemaine - 1)}><ChevronLeft size={15} /> Précédent</Btn>
@@ -844,6 +849,7 @@ function Transports({ store, maj, chargement, peutValider, profil, cat, encadrem
                           {x.statut !== "en_attente" && (
                             <button onClick={() => setAttrib(x)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.bleu, borderRadius: 8, padding: "6px 9px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><Edit3 size={13} /> Modifier</button>
                           )}
+                          <button onClick={() => archiver(x.id, !x.archive)} style={{ border: `1px solid ${C.grisClair}`, background: "#fff", color: C.gris, borderRadius: 8, padding: "6px 9px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><Archive size={13} /> {x.archive ? "Réactiver" : "Archiver"}</button>
                           <button onClick={() => demanderSuppression(x)} style={{ border: "none", background: "transparent", color: C.rouge, borderRadius: 8, padding: "4px 2px", cursor: "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}><Trash2 size={13} /> Supprimer</button>
                         </div>
                       </td>
@@ -869,6 +875,7 @@ function Transports({ store, maj, chargement, peutValider, profil, cat, encadrem
               {x.note ? <div style={{ fontSize: 13, color: C.gris, marginTop: 3 }}>{x.note}</div> : null}
               {x.statut === "refusee" && x.cause ? <div style={{ fontSize: 13, color: C.rouge, marginTop: 4 }}>Cause : {x.cause}</div> : null}
               <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
+                <Btn variant="ghost" size="sm" onClick={() => archiver(x.id, !x.archive)}><Archive size={15} /> {x.archive ? "Réactiver" : "Archiver"}</Btn>
                 {x.demandeur === moi && (
                   <Btn variant="ghost" size="sm" style={{ marginLeft: "auto", color: C.rouge }} onClick={() => demanderSuppression(x)}><Trash2 size={15} /> Supprimer</Btn>
                 )}
@@ -1152,7 +1159,7 @@ function GererBlocages({ store, maj, onClose }) {
   );
 }
 
-function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider, onRefuser, onAttribuerDirect, onRafraichir, onDemanderDeverrouillage, onClose }) {
+function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider, onRefuser, onAttribuerDirect, onOuvrirPlanning, onRafraichir, onDemanderDeverrouillage, onClose }) {
   const [nouveau, setNouveau] = useState(false);
   const [attrib, setAttrib] = useState(null);
   const [refus, setRefus] = useState(null);
@@ -1160,6 +1167,7 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
   const [confirmSuppr, setConfirmSuppr] = useState(null);
   const [directe, setDirecte] = useState(false);
   const [blocages, setBlocages] = useState(false);
+  const [voirArchives, setVoirArchives] = useState(false);
   const [majMsg, setMajMsg] = useState("");
   // À l'ouverture, on recharge le planning du serveur pour voir les demandes faites par les autres
   // (ex : la direction voit tout de suite les demandes des coachs).
@@ -1171,7 +1179,9 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
   const nbBloquees = new Set([...(fermees.vestiaires || []), ...(fermees.terrains || [])]).size;
   const moi = (profil && profil.nom) || "Éducateur";
   const toutes = ((store && store.demandesVestiaire) || []).slice().sort((a, b) => (b.creeLe || "").localeCompare(a.creeLe || ""));
-  const liste = peutValider ? toutes : toutes.filter((x) => (x.demandeur || "") === moi);
+  const base = peutValider ? toutes : toutes.filter((x) => (x.demandeur || "") === moi);
+  const nbArchives = base.filter((x) => x.archive).length;
+  const liste = base.filter((x) => (voirArchives ? x.archive : !x.archive));
   const d0 = new Date(); const today = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
   const matchsDom = ((db && db.matches) || []).filter((m) => m && m.cat === cat && m.lieu === "Domicile" && m.date && m.date >= today).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   function creer(f) {
@@ -1180,6 +1190,7 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
     setNouveau(false);
   }
   function supprimer(id) { maj((s) => { s.demandesVestiaire = (s.demandesVestiaire || []).filter((y) => y.id !== id); return s; }); }
+  function archiver(id, val) { maj((s) => { s.demandesVestiaire = (s.demandesVestiaire || []).map((y) => (y.id === id ? { ...y, archive: !!val } : y)); return s; }); }
   function demanderSuppression(x) { if (peutValider && onDemanderDeverrouillage) onDemanderDeverrouillage(() => setConfirmSuppr(x)); else setConfirmSuppr(x); }
   async function rafraichirMaintenant() {
     if (!onRafraichir) return;
@@ -1193,12 +1204,18 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
         ? <><Btn variant="ghost" full onClick={() => setNouveau(true)}><Plus size={16} /> Nouvelle demande</Btn><Btn variant="accent" full onClick={() => setDirecte(true)}><Check size={16} /> Attribution directe</Btn></>
         : (toutBloque ? null : <Btn variant="accent" full onClick={() => setNouveau(true)}><Plus size={16} /> Nouvelle demande</Btn>)}>
       <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10 }}>L'éducateur demande un vestiaire ou un terrain pour un match à domicile, la direction attribue le lieu et les créneaux. {peutValider ? "Touche Attribuer pour choisir, ou Refuser. « Attribution directe » permet de réserver sans attendre une demande." : "Ta demande reste « en traitement » jusqu'à l'attribution par la direction. La réservation apparaît ensuite sur le planning."}</div>
+      {peutValider && onOuvrirPlanning && (
+        <button onClick={() => onOuvrirPlanning()} style={{ width: "100%", border: "none", cursor: "pointer", background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", borderRadius: 12, padding: "13px 16px", marginBottom: 12, fontSize: 14.5, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", gap: 9, boxShadow: "0 2px 8px rgba(10,42,107,0.25)" }}>
+          <CalendarDays size={18} /> Voir le planning des vestiaires et terrains
+        </button>
+      )}
       {peutValider && <div style={{ marginBottom: 12 }}><Btn variant="ghost" size="sm" full onClick={() => setBlocages(true)}><Lock size={15} /> Bloquer / ouvrir les demandes par catégorie{nbBloquees ? ` (${nbBloquees} bloquée${nbBloquees > 1 ? "s" : ""})` : ""}</Btn></div>}
       {!peutValider && toutBloque && <div style={{ fontSize: 12.5, color: C.rouge, fontWeight: 700, background: "#FBE3E3", border: `1px solid #F0C4C4`, borderRadius: 10, padding: "10px 12px", marginBottom: 12, lineHeight: 1.4 }}>Les réservations sont complètes pour ta catégorie ({cat}). La direction a suspendu les nouvelles demandes de vestiaire et de terrain. Contacte la direction si besoin.</div>}
       {!peutValider && !toutBloque && (vestBloque || terBloque) && <div style={{ fontSize: 12, color: "#B87A2B", fontWeight: 700, background: "#FFF3DA", border: `1px solid #EBD3AE`, borderRadius: 10, padding: "9px 11px", marginBottom: 12, lineHeight: 1.4 }}>Les demandes de {vestBloque ? "vestiaire" : "terrain"} sont fermées pour ta catégorie. Tu peux encore demander {vestBloque ? "un terrain" : "un vestiaire"}.</div>}
       {onRafraichir && <div style={{ marginBottom: 12 }}><Btn variant="ghost" size="sm" full disabled={majMsg === "Actualisation..."} onClick={rafraichirMaintenant}><RefreshCw size={15} style={{ animation: majMsg === "Actualisation..." ? "spin 0.6s linear infinite" : "none" }} /> {majMsg || "Rafraîchir les demandes"}</Btn></div>}
+      {(voirArchives || nbArchives > 0) && <div style={{ marginBottom: 12 }}><Btn variant={voirArchives ? "accent" : "ghost"} size="sm" full onClick={() => setVoirArchives((v) => !v)}><Archive size={15} /> {voirArchives ? "Revenir aux demandes actives" : `Voir les archives (${nbArchives})`}</Btn></div>}
       {liste.length === 0 ? (
-        <div style={{ textAlign: "center", color: C.gris, fontSize: 13, padding: "24px 0" }}>Aucune demande pour l'instant.</div>
+        <div style={{ textAlign: "center", color: C.gris, fontSize: 13, padding: "24px 0" }}>{voirArchives ? "Aucune demande archivée." : "Aucune demande pour l'instant."}</div>
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
           {liste.map((x) => (
@@ -1212,10 +1229,16 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
               {x.statut === "acceptee" && <div style={{ fontSize: 12.5, color: C.bleu, fontWeight: 800, marginTop: 5, display: "flex", alignItems: "center", gap: 5 }}><Lock size={13} /> {resumeVestiaire(x)}</div>}
               {x.statut === "refusee" && x.cause && <div style={{ fontSize: 12, color: C.rouge, marginTop: 5 }}>Motif : {x.cause}</div>}
               {peutValider && (
-                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
                   <Btn variant="accent" size="sm" onClick={() => setAttrib(x)}><Check size={15} /> {x.statut === "acceptee" ? "Modifier" : "Attribuer"}</Btn>
                   {x.statut !== "refusee" && <Btn variant="danger" size="sm" onClick={() => { setRefus(x); setCause(""); }}><X size={15} /> Refuser</Btn>}
+                  {x.archive ? <Btn variant="ghost" size="sm" onClick={() => archiver(x.id, false)}><Archive size={15} /> Réactiver</Btn> : <Btn variant="ghost" size="sm" onClick={() => archiver(x.id, true)}><Archive size={15} /> Archiver</Btn>}
                   <Btn variant="ghost" size="sm" onClick={() => demanderSuppression(x)}><Trash2 size={15} /></Btn>
+                </div>
+              )}
+              {!peutValider && (
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  {x.archive ? <Btn variant="ghost" size="sm" onClick={() => archiver(x.id, false)}><Archive size={15} /> Réactiver</Btn> : <Btn variant="ghost" size="sm" onClick={() => archiver(x.id, true)}><Archive size={15} /> Archiver</Btn>}
                 </div>
               )}
             </div>
@@ -1697,7 +1720,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.43";
+const APP_VERSION = "16.19.45";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -5150,7 +5173,7 @@ export default function App() {
       {showDemandes && <Demandes demo={demo} db={db} mutate={mutate} cat={cat} session={session} onNotifierJoueur={notifierJoueur} onVu={() => setDemTick((t) => t + 1)} onClose={() => { setDemTick((t) => t + 1); setShowDemandes(false); }} />}
       {showClassement && <Classement cat={cat} db={db} mutate={mutate} onClose={() => setShowClassement(false)} />}
       {showTransport && <Transports store={transportClub} maj={majTransportClub} chargement={chargementTransport} peutValider={peutValider} profil={profil} cat={cat} encadrement={encadrementClub} majEncadrement={majEncadrementClub} onValiderDem={validerTransport} onRefuserDem={refuserTransport} db={db} mutate={mutate} onRafraichir={rafraichirTransport} onDemanderDeverrouillage={demanderDeverrouillageAdmin} focusDate={transportFocus} onClose={() => { setShowTransport(false); setTransportFocus(null); }} />}
-      {showVestiaire && <DemandesVestiaire store={planningClub} maj={majPlanningClub} peutValider={peutValider} profil={profil} cat={cat} db={db} onValider={validerVestiaire} onRefuser={refuserVestiaire} onAttribuerDirect={attribuerVestiaireDirect} onRafraichir={rafraichirPlanning} onDemanderDeverrouillage={demanderDeverrouillageAdmin} onClose={() => setShowVestiaire(false)} />}
+      {showVestiaire && <DemandesVestiaire store={planningClub} maj={majPlanningClub} peutValider={peutValider} profil={profil} cat={cat} db={db} onValider={validerVestiaire} onRefuser={refuserVestiaire} onAttribuerDirect={attribuerVestiaireDirect} onOuvrirPlanning={() => setShowPlanning(true)} onRafraichir={rafraichirPlanning} onDemanderDeverrouillage={demanderDeverrouillageAdmin} onClose={() => setShowVestiaire(false)} />}
       {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
       {apercuPDF && <ApercuPDF url={apercuPDF.url} nom={apercuPDF.nom} onClose={() => { try { URL.revokeObjectURL(apercuPDF.url); } catch (e) {} setApercuPDF(null); }} />}
