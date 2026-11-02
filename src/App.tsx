@@ -1791,7 +1791,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.52";
+const APP_VERSION = "16.19.53";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -11983,15 +11983,19 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) 
     const adv = (cur.adversaire || "").trim().toLowerCase();
     return toutes.filter((x) => x && x.statut === "acceptee" && x.vestiaire && (x.cat || "") === (cur.cat || "") && (x.date || "") === d && (!adv || !x.adversaire || (x.adversaire || "").trim().toLowerCase() === adv));
   }, [planning, cur.cat, cur.date, cur.adversaire]);
-  const attribTerrains = attribsDirection.filter((x) => x.typeLieu === "terrains");
-  const attribVestiaires = attribsDirection.filter((x) => x.typeLieu !== "terrains");
+  // On retire les doublons (ex. un vestiaire visiteur créé deux fois) : même lieu + mêmes horaires = une seule ligne.
+  const dedupeAtt = (arr) => { const seen = new Set(); return arr.filter((x) => { const k = (x.typeLieu || "") + "|" + (x.vestiaire || "") + "|" + (x.debut || "") + "|" + (x.fin || "") + "|" + (x.liberation || "") + "|" + (x.partage ? "1" : "0"); if (seen.has(k)) return false; seen.add(k); return true; }); };
+  const attribTerrains = dedupeAtt(attribsDirection.filter((x) => x.typeLieu === "terrains"));
+  const attribVestiaires = dedupeAtt(attribsDirection.filter((x) => x.typeLieu !== "terrains"));
   // Vestiaire de l'équipe visiteuse : réservé au nom de l'adversaire du match (même date).
   const attribVisiteurs = useMemo(() => {
     const toutes = (planning && planning.demandesVestiaire) || [];
     const d = cur.date || "";
     const adv = (cur.adversaire || "").trim().toLowerCase();
     if (!adv) return [];
-    return toutes.filter((x) => x && x.statut === "acceptee" && x.typeLieu !== "terrains" && x.vestiaire && (x.date || "") === d && (x.cat || "").trim().toLowerCase() === adv);
+    const trouves = toutes.filter((x) => x && x.statut === "acceptee" && x.typeLieu !== "terrains" && x.vestiaire && (x.date || "") === d && (x.cat || "").trim().toLowerCase() === adv);
+    const seen = new Set();
+    return trouves.filter((x) => { const k = (x.vestiaire || "") + "|" + (x.debut || "") + "|" + (x.fin || "") + "|" + (x.liberation || "") + "|" + (x.partage ? "1" : "0"); if (seen.has(k)) return false; seen.add(k); return true; });
   }, [planning, cur.adversaire, cur.date]);
   const terLock = attribTerrains.length > 0;
   const vestLock = attribVestiaires.length > 0;
