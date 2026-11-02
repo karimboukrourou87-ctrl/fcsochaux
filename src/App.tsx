@@ -1003,145 +1003,105 @@ function AttribuerVestiaire({ dem, onConfirm, onClose }) {
   );
 }
 
-// Attribution directe par la direction (sans demande d'un coach), vestiaire ou terrain.
-function AttributionDirecte({ onConfirm, onClose }) {
-  const [typeLieu, setTypeLieu] = useState("vestiaires");
-  const [cat1, setCat1] = useState("");
-  const [cat1Libre, setCat1Libre] = useState("");
-  const [cat2, setCat2] = useState("");
-  const [cat2Libre, setCat2Libre] = useState("");
-  const [alerter, setAlerter] = useState(true);
+// Un bloc d'attribution autonome : une équipe, son match, son vestiaire/terrain, ses horaires.
+function BlocAttribution({ typeLieu, alerter, visiteur, onReservation }) {
+  const [equipeSel, setEquipeSel] = useState("");
+  const [equipeLibre, setEquipeLibre] = useState("");
   const [matchsListe, setMatchsListe] = useState([]);
   const [matchId, setMatchId] = useState("");
   const [adversaire, setAdversaire] = useState("");
   const [date, setDate] = useState("");
-  const options = typeLieu === "terrains" ? TERRAINS : VESTIAIRES;
-  const [vestiaire, setVestiaire] = useState(options[0]);
+  const lieuOpts = typeLieu === "terrains" ? TERRAINS : VESTIAIRES;
+  const [vestiaire, setVestiaire] = useState(lieuOpts[0]);
   const [debut, setDebut] = useState(CRENEAUX_DEFAUT[2] || CRENEAUX_DEFAUT[0]);
   const [fin, setFin] = useState("");
   const [liberation, setLiberation] = useState("");
-  // Équipe visiteuse (mode vestiaire seulement) : son propre vestiaire, horaires identiques ou décalés.
-  const [visEquipe, setVisEquipe] = useState("");
-  const [visLibre, setVisLibre] = useState("");
-  const [visVestiaire, setVisVestiaire] = useState("");
-  const [visMeme, setVisMeme] = useState(true);
-  const [visDebut, setVisDebut] = useState(CRENEAUX_DEFAUT[2] || CRENEAUX_DEFAUT[0]);
-  const [visFin, setVisFin] = useState("");
-  const [visLiberation, setVisLiberation] = useState("");
-  const changerType = (t) => { setTypeLieu(t); const opts = t === "terrains" ? TERRAINS : VESTIAIRES; setVestiaire(opts[0]); };
-  // Étape 2 : on charge les matchs à domicile à venir des catégories du club choisies à l'étape 1.
+  useEffect(() => { setVestiaire((typeLieu === "terrains" ? TERRAINS : VESTIAIRES)[0]); }, [typeLieu]);
   useEffect(() => {
     let annule = false;
-    const ids = [cat1, cat2].filter((c) => c && c !== "__autre__");
-    if (!ids.length) { setMatchsListe([]); setMatchId(""); return; }
+    if (!equipeSel || equipeSel === "__autre__") { setMatchsListe([]); setMatchId(""); return; }
     (async () => {
       try {
         const d0 = new Date(); const today = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
-        const arrs = await Promise.all(ids.map((id) => loadCat(id).then((d) => (d && d.matches || []).filter((m) => m && m.lieu === "Domicile" && m.date && m.date >= today).map((m) => ({ ...m, cat: m.cat || id }))).catch(() => [])));
-        if (annule) return;
-        const seen = new Set(); const merged = [];
-        arrs.flat().forEach((m) => { if (!m) return; const k = String(m.id || (m.date + "|" + m.adversaire)); if (!seen.has(k)) { seen.add(k); merged.push(m); } });
-        merged.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-        setMatchsListe(merged);
+        const d = await loadCat(equipeSel);
+        const ms = (d && d.matches || []).filter((m) => m && m.lieu === "Domicile" && m.date && m.date >= today).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+        if (!annule) setMatchsListe(ms);
       } catch (e) { if (!annule) setMatchsListe([]); }
     })();
     return () => { annule = true; };
-  }, [cat1, cat2]);
-  const choisirMatch = (id) => {
-    setMatchId(id);
-    const m = matchsListe.find((x) => String(x.id) === String(id));
-    if (m) { setAdversaire(m.adversaire || ""); setDate(m.date || ""); if (m.adversaire) { setVisEquipe("__autre__"); setVisLibre(m.adversaire); } }
-    else { setAdversaire(""); }
-  };
-  const resoudre = (v, libre) => v === "__autre__" ? (libre || "").trim() : (v || "");
-  const eq1 = resoudre(cat1, cat1Libre), eq2 = resoudre(cat2, cat2Libre);
-  const equipe = [eq1, eq2].filter(Boolean).join(" / ");
-  const catsPrevenir = alerter ? [cat1, cat2].filter((c) => c && c !== "__autre__") : [];
-  const visEq = resoudre(visEquipe, visLibre);
-  const visActif = typeLieu === "vestiaires" && !!visEq && !!visVestiaire;
-  const pret = !!eq1 && !!date && !!vestiaire && !!debut;
-  const envoyer = () => {
-    const reservations = [{ equipe, catsPrevenir, vestiaire, debut, fin: fin || "", liberation: liberation || "" }];
-    if (visActif) reservations.push({ equipe: visEq, catsPrevenir: (visEquipe && visEquipe !== "__autre__" && alerter) ? [visEquipe] : [], vestiaire: visVestiaire, debut: visMeme ? debut : (visDebut || debut), fin: visMeme ? (fin || "") : (visFin || ""), liberation: visMeme ? (liberation || "") : (visLiberation || "") });
-    onConfirm({ typeLieu, matchId, adversaire, date, reservations });
-  };
-  const selCat = (val, setVal, libre, setLibre, label, vide, libreLabel) => (
-    <>
-      <Field label={label}>
-        <Sel value={val} onChange={(e) => setVal(e.target.value)}>
-          <option value="">{vide}</option>
+  }, [equipeSel]);
+  const choisirMatch = (id) => { setMatchId(id); const m = matchsListe.find((x) => String(x.id) === String(id)); if (m) { setAdversaire(m.adversaire || ""); setDate(m.date || ""); } else setAdversaire(""); };
+  const equipe = equipeSel === "__autre__" ? equipeLibre.trim() : (equipeSel || "");
+  useEffect(() => {
+    const ok = !!equipe && !!date && !!vestiaire && !!debut;
+    onReservation(ok ? { equipe, catPrevenir: (equipeSel && equipeSel !== "__autre__" && alerter) ? equipeSel : "", matchId, adversaire, date, vestiaire, debut, fin: fin || "", liberation: liberation || "" } : null);
+  }, [equipe, equipeSel, date, vestiaire, debut, fin, liberation, matchId, adversaire, alerter]);
+  return (
+    <div style={{ border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "10px 12px", marginBottom: 12, background: "#FAFBFD" }}>
+      <Field label={visiteur ? "Équipe visiteuse" : "Catégorie / équipe (affichée sur le planning)"}>
+        <Sel value={equipeSel} onChange={(e) => setEquipeSel(e.target.value)}>
+          <option value="">{visiteur ? "— Aucune (pas de réservation) —" : "— Choisir une catégorie —"}</option>
           {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.id}</option>)}
           <option value="__autre__">Autre (équipe à nommer)…</option>
         </Sel>
       </Field>
-      {val === "__autre__" && <Field label={libreLabel}><Inp value={libre} onChange={(e) => setLibre(e.target.value)} placeholder="Ex : AS AUDINCOURT" /></Field>}
-    </>
-  );
-  return (
-    <Modal title="Attribution directe" onClose={onClose}
-      footer={<Btn variant="accent" full disabled={!pret} onClick={envoyer}><Check size={16} /> Attribuer</Btn>}>
-      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.45 }}>La direction réserve directement, sans attendre de demande. 1) Choisis la/les catégorie(s) recevante(s). 2) Choisis le match. 3) En option, réserve aussi un vestiaire pour l'équipe visiteuse. La réservation s'affiche verrouillée sur le planning et les coachs choisis sont alertés.</div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        {[["vestiaires", "Vestiaire"], ["terrains", "Terrain"]].map(([v, l]) => { const on = typeLieu === v; return <button key={v} type="button" onClick={() => changerType(v)} style={{ flex: 1, border: `1px solid ${on ? C.bleu : C.grisClair}`, background: on ? C.bleu : "#fff", color: on ? "#fff" : C.encre, fontWeight: 800, fontSize: 13, borderRadius: 10, padding: "10px 8px", cursor: "pointer" }}>{l}</button>; })}
-      </div>
-      <div style={{ fontSize: 11.5, fontWeight: 800, color: C.bleu, letterSpacing: 0.3, margin: "2px 0 6px" }}>1 · Équipe(s) recevante(s)</div>
-      {selCat(cat1, setCat1, cat1Libre, setCat1Libre, "Catégorie / équipe (affichée sur le planning)", "— Choisir une catégorie —", "Nom de l'équipe")}
-      {selCat(cat2, setCat2, cat2Libre, setCat2Libre, "Deuxième catégorie / équipe (optionnel, même vestiaire)", "— Aucune (une seule) —", "Nom de l'équipe")}
-      <label style={{ display: "flex", alignItems: "center", gap: 9, margin: "2px 0 14px", cursor: "pointer", fontSize: 13, fontWeight: 700, color: C.encre }}>
-        <input type="checkbox" checked={alerter} onChange={(e) => setAlerter(e.target.checked)} style={{ width: 17, height: 17 }} />
-        Prévenir les coachs des catégories choisies
-      </label>
-      <div style={{ fontSize: 11.5, fontWeight: 800, color: C.bleu, letterSpacing: 0.3, margin: "2px 0 6px" }}>2 · Match à domicile</div>
-      {matchsListe.length > 0 ? (
+      {equipeSel === "__autre__" && <Field label="Nom de l'équipe"><Inp value={equipeLibre} onChange={(e) => setEquipeLibre(e.target.value)} placeholder="Ex : AS AUDINCOURT" /></Field>}
+      {matchsListe.length > 0 && (
         <Field label="Match à domicile (optionnel, pré-remplit la date)">
           <Sel value={matchId} onChange={(e) => choisirMatch(e.target.value)}>
             <option value="">— Saisie libre (sans match) —</option>
-            {matchsListe.map((m) => <option key={m.id} value={m.id}>{m.cat ? m.cat + " · " : ""}{m.date ? jjmm(m.date) : "date ?"}{m.heure ? ` · ${m.heure}` : ""} · vs {m.adversaire || "adversaire ?"}</option>)}
+            {matchsListe.map((m) => <option key={m.id} value={m.id}>{m.date ? jjmm(m.date) : "date ?"}{m.heure ? ` · ${m.heure}` : ""} · vs {m.adversaire || "adversaire ?"}</option>)}
           </Sel>
         </Field>
-      ) : (
-        <div style={{ fontSize: 12, color: C.gris, marginBottom: 12, lineHeight: 1.4 }}>Choisis d'abord une catégorie du club ci-dessus pour voir ses matchs à domicile. Pour une équipe reçue, saisis directement la date ci-dessous.</div>
       )}
-      <Field label="Date"><Inp type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-      <Field label={typeLieu === "terrains" ? "Terrain (recevant)" : "Vestiaire (recevant)"}>
-        <Sel value={vestiaire} onChange={(e) => setVestiaire(e.target.value)}>
-          {options.map((v) => <option key={v} value={v}>{typeLieu === "terrains" ? v : `Vestiaire ${v}`}</option>)}
-        </Sel>
-      </Field>
-      <div style={{ display: "flex", gap: 10 }}>
-        <div style={{ flex: 1 }}><Field label="De (début)"><Sel value={debut} onChange={(e) => setDebut(e.target.value)}>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field></div>
-        <div style={{ flex: 1 }}><Field label="À (fin)"><Sel value={fin} onChange={(e) => setFin(e.target.value)}><option value="">—</option>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field></div>
+      {equipe && (
+        <>
+          <Field label="Date"><Inp type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+          <Field label={typeLieu === "terrains" ? "Terrain" : "Vestiaire"}>
+            <Sel value={vestiaire} onChange={(e) => setVestiaire(e.target.value)}>
+              {lieuOpts.map((v) => <option key={v} value={v}>{typeLieu === "terrains" ? v : `Vestiaire ${v}`}</option>)}
+            </Sel>
+          </Field>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}><Field label="De (début)"><Sel value={debut} onChange={(e) => setDebut(e.target.value)}>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field></div>
+            <div style={{ flex: 1 }}><Field label="À (fin)"><Sel value={fin} onChange={(e) => setFin(e.target.value)}><option value="">—</option>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field></div>
+          </div>
+          <Field label="Libération (optionnel)"><Sel value={liberation} onChange={(e) => setLiberation(e.target.value)}><option value="">— (optionnel) —</option>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Attribution directe par la direction : jusqu'à trois équipes, chacune autonome (match, vestiaire/terrain, horaires).
+function AttributionDirecte({ onConfirm, onClose }) {
+  const [typeLieu, setTypeLieu] = useState("vestiaires");
+  const [alerter, setAlerter] = useState(true);
+  const [resA, setResA] = useState(null);
+  const [resB, setResB] = useState(null);
+  const [resC, setResC] = useState(null);
+  const reservations = [resA, resB, (typeLieu === "vestiaires" ? resC : null)].filter(Boolean);
+  const pret = reservations.length > 0;
+  const envoyer = () => onConfirm({ typeLieu, reservations });
+  return (
+    <Modal title="Attribution directe" onClose={onClose} fullscreen
+      footer={<Btn variant="accent" full disabled={!pret} onClick={envoyer}><Check size={16} /> Attribuer{reservations.length > 1 ? ` (${reservations.length} réservations)` : ""}</Btn>}>
+      <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.45 }}>La direction réserve directement. Chaque équipe a son match, son vestiaire/terrain et ses horaires (horaires décalés possibles). Deux équipes peuvent partager le même vestiaire : sur les créneaux communs, le planning affiche les deux (ex. « U10 / U9 »). Les coachs des catégories choisies sont alertés.</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        {[["vestiaires", "Vestiaire"], ["terrains", "Terrain"]].map(([v, l]) => { const on = typeLieu === v; return <button key={v} type="button" onClick={() => setTypeLieu(v)} style={{ flex: 1, border: `1px solid ${on ? C.bleu : C.grisClair}`, background: on ? C.bleu : "#fff", color: on ? "#fff" : C.encre, fontWeight: 800, fontSize: 13, borderRadius: 10, padding: "10px 8px", cursor: "pointer" }}>{l}</button>; })}
       </div>
-      <Field label="Libération (optionnel)"><Sel value={liberation} onChange={(e) => setLiberation(e.target.value)}><option value="">— (optionnel) —</option>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field>
+      <label style={{ display: "flex", alignItems: "center", gap: 9, margin: "0 0 14px", cursor: "pointer", fontSize: 13, fontWeight: 700, color: C.encre }}>
+        <input type="checkbox" checked={alerter} onChange={(e) => setAlerter(e.target.checked)} style={{ width: 17, height: 17 }} />
+        Prévenir les coachs des catégories choisies
+      </label>
+      <div style={{ fontSize: 11.5, fontWeight: 800, color: C.bleu, letterSpacing: 0.3, margin: "2px 0 6px" }}>Équipe recevante 1</div>
+      <BlocAttribution typeLieu={typeLieu} alerter={alerter} onReservation={setResA} />
+      <div style={{ fontSize: 11.5, fontWeight: 800, color: C.bleu, letterSpacing: 0.3, margin: "2px 0 6px" }}>Équipe recevante 2 (optionnel)</div>
+      <BlocAttribution typeLieu={typeLieu} alerter={alerter} onReservation={setResB} />
       {typeLieu === "vestiaires" && (
         <>
-          <div style={{ fontSize: 11.5, fontWeight: 800, color: C.bleu, letterSpacing: 0.3, margin: "12px 0 6px" }}>3 · Vestiaire équipe visiteuse (optionnel)</div>
-          {selCat(visEquipe, setVisEquipe, visLibre, setVisLibre, "Équipe visiteuse", "— Aucune (pas de vestiaire visiteur) —", "Nom de l'équipe visiteuse")}
-          {visEq && (
-            <Field label="Vestiaire visiteur">
-              <Sel value={visVestiaire} onChange={(e) => setVisVestiaire(e.target.value)}>
-                <option value="">— Choisir un vestiaire —</option>
-                {VESTIAIRES.filter((v) => v !== vestiaire).map((v) => <option key={v} value={v}>Vestiaire {v}</option>)}
-              </Sel>
-            </Field>
-          )}
-          {visActif && (
-            <>
-              <label style={{ display: "flex", alignItems: "center", gap: 9, margin: "2px 0 12px", cursor: "pointer", fontSize: 13, fontWeight: 700, color: C.encre }}>
-                <input type="checkbox" checked={visMeme} onChange={(e) => setVisMeme(e.target.checked)} style={{ width: 17, height: 17 }} />
-                Mêmes horaires que le recevant
-              </label>
-              {!visMeme && (
-                <>
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <div style={{ flex: 1 }}><Field label="Visiteur · De (début)"><Sel value={visDebut} onChange={(e) => setVisDebut(e.target.value)}>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field></div>
-                    <div style={{ flex: 1 }}><Field label="Visiteur · À (fin)"><Sel value={visFin} onChange={(e) => setVisFin(e.target.value)}><option value="">—</option>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field></div>
-                  </div>
-                  <Field label="Visiteur · Libération (optionnel)"><Sel value={visLiberation} onChange={(e) => setVisLiberation(e.target.value)}><option value="">— (optionnel) —</option>{CRENEAUX_DEFAUT.map((c) => <option key={c} value={c}>{c}</option>)}</Sel></Field>
-                </>
-              )}
-            </>
-          )}
+          <div style={{ fontSize: 11.5, fontWeight: 800, color: C.bleu, letterSpacing: 0.3, margin: "2px 0 6px" }}>Équipe visiteuse (optionnel)</div>
+          <BlocAttribution typeLieu="vestiaires" alerter={alerter} visiteur onReservation={setResC} />
         </>
       )}
     </Modal>
@@ -1730,7 +1690,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.38";
+const APP_VERSION = "16.19.39";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -4950,18 +4910,25 @@ export default function App() {
       d.notifs = d.notifs || [];
       d[tl] = d[tl] || {};
       resList.forEach((r) => {
-        if (!r || !r.equipe || !i.date || !r.vestiaire || !r.debut) return;
+        if (!r || !r.equipe || !r.date || !r.vestiaire || !r.debut) return;
         const rid = uid();
-        d[tl][i.date] = d[tl][i.date] || {};
+        d[tl][r.date] = d[tl][r.date] || {};
         creneauxVestiaire(r.debut, r.fin).forEach((cr) => {
-          d[tl][i.date][`${cr}__${r.vestiaire}`] = { equipe: r.equipe, cat: r.equipe, activite: "match", statut: "valide", verrou: true, debut: r.debut, fin: r.fin || undefined, liberation: r.liberation || undefined, matchId: i.matchId || undefined, adversaire: i.adversaire || undefined, demandeur: undefined, origineVestiaire: rid };
+          const kk = `${cr}__${r.vestiaire}`;
+          const exist = d[tl][r.date][kk];
+          if (exist && exist.origineVestiaire && exist.equipe && !String(exist.equipe).split(" / ").includes(r.equipe)) {
+            // Chevauchement dans le même vestiaire : on affiche les deux équipes sur la case.
+            d[tl][r.date][kk] = { ...exist, equipe: exist.equipe + " / " + r.equipe, cat: exist.equipe + " / " + r.equipe };
+          } else {
+            d[tl][r.date][kk] = { equipe: r.equipe, cat: r.equipe, activite: "match", statut: "valide", verrou: true, debut: r.debut, fin: r.fin || undefined, liberation: r.liberation || undefined, matchId: r.matchId || undefined, adversaire: r.adversaire || undefined, demandeur: undefined, origineVestiaire: rid };
+          }
         });
-        d.demandesVestiaire.push({ id: rid, typeLieu: tl, cat: r.equipe, catsPrevenir: r.catsPrevenir || [], demandeur: "", matchId: i.matchId || "", adversaire: i.adversaire || "", date: i.date || "", vestiaire: r.vestiaire, debut: r.debut, fin: r.fin || "", liberation: r.liberation || "", statut: "acceptee", directe: true, traiteLe: new Date().toISOString(), creeLe: new Date().toISOString() });
-        (r.catsPrevenir || []).forEach((pc) => { if (!pc) return; d.notifs.push({ id: uid(), genre: "vestiaire", pour: "", pourCat: pc, statut: "valide", raison: "", resume: resumeVestiaire({ cat: r.equipe, vestiaire: r.vestiaire, debut: r.debut, fin: r.fin, liberation: r.liberation, typeLieu: tl }), date: i.date || "", cat: r.equipe || "", creeLe: new Date().toISOString() }); });
+        d.demandesVestiaire.push({ id: rid, typeLieu: tl, cat: r.equipe, catsPrevenir: r.catPrevenir ? [r.catPrevenir] : [], demandeur: "", matchId: r.matchId || "", adversaire: r.adversaire || "", date: r.date || "", vestiaire: r.vestiaire, debut: r.debut, fin: r.fin || "", liberation: r.liberation || "", statut: "acceptee", directe: true, traiteLe: new Date().toISOString(), creeLe: new Date().toISOString() });
+        if (r.catPrevenir) d.notifs.push({ id: uid(), genre: "vestiaire", pour: "", pourCat: r.catPrevenir, statut: "valide", raison: "", resume: resumeVestiaire({ cat: r.equipe, vestiaire: r.vestiaire, debut: r.debut, fin: r.fin, liberation: r.liberation, typeLieu: tl }), date: r.date || "", cat: r.equipe || "", creeLe: new Date().toISOString() });
       });
       return d;
     });
-    try { ajouterEntreeJournal({ action: "vestiaire_valide", cat: resList.map((r) => r.equipe).filter(Boolean).join(", "), detail: "Attribution directe", date: i.date || "", destination: i.adversaire || "", demandeur: "", auteur: monNom, role: monRole }); } catch (e) {}
+    try { ajouterEntreeJournal({ action: "vestiaire_valide", cat: resList.map((r) => r.equipe).filter(Boolean).join(", "), detail: "Attribution directe", date: (resList[0] && resList[0].date) || "", destination: "", demandeur: "", auteur: monNom, role: monRole }); } catch (e) {}
   };
   const rafraichirTout = () => {
     const taches = [];
@@ -15597,8 +15564,10 @@ function exporterPlanningVestiairesJourPDF(jsPDF, pl, jours, type, typeLabel, li
         const cell = o.map[cr] && o.map[cr][v];
         if (cell && cell.eq) {
           const deux = rowH >= 20 && cell.deb && cell.fin && cell.fin !== cell.deb;
-          sc(navy); doc.setFont("helvetica", "bold"); doc.setFontSize(fRow);
-          doc.text(doc.splitTextToSize(cell.eq, colW - 6)[0], x + colW / 2, y + (deux ? rowH * 0.40 + 1 : rowH / 2 + fRow * 0.35), { align: "center" });
+          // Police adaptable : on réduit jusqu'à ce que le nom (même « U10 / U9 ») tienne sur la case.
+          let fEq = fRow; doc.setFont("helvetica", "bold"); doc.setFontSize(fEq);
+          while (fEq > 4.5 && doc.getTextWidth(String(cell.eq)) > colW - 6) { fEq -= 0.5; doc.setFontSize(fEq); }
+          sc(navy); doc.text(String(cell.eq), x + colW / 2, y + (deux ? rowH * 0.40 + 1 : rowH / 2 + fEq * 0.35), { align: "center" });
           if (deux) { sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(Math.max(5, fRow - 2)); doc.text(cell.deb + " - " + cell.fin, x + colW / 2, y + rowH * 0.74, { align: "center" }); }
         }
       });
