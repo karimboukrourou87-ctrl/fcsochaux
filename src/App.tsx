@@ -1791,7 +1791,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.5A";
+const APP_VERSION = "16.19.60";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -2258,7 +2258,7 @@ function optgroupsEncadrement(liste) {
   ));
 }
 
-const TERRAINS = ["Synthétique centre", "Synthétique dôme", "Herbe centre (nouveau synthétique)", "Herbe villa", "Pouges"];
+const TERRAINS = ["Synthétique centre", "Synthétique dôme", "Herbe centre (nouveau synthétique)", "Herbe villa", "Pouges", "Stade des Longines"];
 const VESTIAIRES = ["1", "2", "3", "4", "5", "Villa 1", "Villa 2"];
 const PLANNING_HEBDO = [
   { section: "Section garçons", lignes: [
@@ -5237,7 +5237,7 @@ export default function App() {
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} planning={planningClub} onNotifierCorrection={notifierCorrection} />}
         {tab === "entrainements" && <Entrainements players={players} cat={cat} db={db} mutate={mutate} estMedical={estMedical} onSignalerBlessure={signalerBlessure} initialSous={entSous} onConsumeSous={() => setEntSous(null)} />}
-        {tab === "detection" && <Detection cat={cat} db={db} mutate={mutate} />}
+        {tab === "detection" && <Detection cat={cat} db={db} mutate={mutate} lectureSeule={lectureSeuleCat} />}
         <div style={{ display: "flex", justifyContent: "center", padding: "10px 16px 26px" }}>
           {(dirty || demo)
             ? <button onClick={enregistrerManuel} style={{ background: C.jaune, border: "none", color: C.bleuNuit, borderRadius: 10, padding: "11px 22px", cursor: "pointer", display: "flex", alignItems: "center", gap: 7, fontSize: 14, fontWeight: 800 }}><Save size={16} /> Enregistrer les modifications</button>
@@ -11593,7 +11593,7 @@ function Convocation({ db, cat, match, mutate, onClose }) {
   const rdvStaffEffectif = cur.rdvStaff || rdvStaffDefaut;
   const mat = cur.materielStaff || {};
   const matCoches = mat.coches || {};
-  const MATERIEL = ["Pharmacie", "Drapeau arbitrage", "Drapeau de corner", "Tableau tactique", "Coupelle échauffement", "Chasubles 2 couleurs", "Veo", "Jeu de maillots", "Tablette ou feuille de match papier", "Pack d'eau", "Brassard de capitaine", "Brassard de délégué", "Sacs à ballons", "Sifflet arbitre", "Goûter pour les joueurs"];
+  const MATERIEL = ["Pharmacie", "Drapeau arbitrage", "Drapeau de corner", "Tableau tactique", "Coupelle échauffement", "Chasubles 2 couleurs", "Veo", "Jeu de maillots", "Tablette ou feuille de match papier", "Pack d'eau", "Brassard de capitaine", "Brassard de délégué", "Sacs à ballons", "Sifflet arbitre", "Goûter pour les joueurs", "Vérifier le carburant des véhicules", "Noter le kilométrage (départ / retour)", "Contrôler la propreté du/des véhicules"];
   const toggleMat = (x) => maj({ materielStaff: { ...mat, coches: { ...matCoches, [x]: !matCoches[x] } } });
   const setMat = (k, v) => maj({ materielStaff: { ...mat, [k]: v } });
   // Chasubles : palette de couleurs à cocher avec une quantité par couleur.
@@ -15023,11 +15023,14 @@ function EditSeance({ seance, players, onClose, onSave }) {
   const [dirty, setDirty] = useState(false);
   const [confirmQuitter, setConfirmQuitter] = useState(false);
   const [confirmTous, setConfirmTous] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const set = (k, v) => { setDirty(true); setF((p) => ({ ...p, [k]: v })); };
   const setP = (id, v) => { setDirty(true); setF((p) => ({ ...p, presence: { ...p.presence, [id]: v } })); };
   const appliquerTous = () => { setDirty(true); setF((o) => { const pr = { ...(o.presence || {}) }; players.forEach((p) => { if (pr[p.id] !== "blesse") pr[p.id] = "present"; }); return { ...o, presence: pr }; }); setConfirmTous(false); };
   const dejaPointe = players.some((p) => f.presence[p.id] && f.presence[p.id] !== "present");
   const tousPresents = () => { if (dejaPointe) setConfirmTous(true); else appliquerTous(); };
+  const reinitialiser = () => { setDirty(true); setF((o) => ({ ...o, presence: {} })); setConfirmReset(false); };
+  const faireReset = () => { if (Object.keys(f.presence || {}).length) setConfirmReset(true); else reinitialiser(); };
   const fermer = () => { if (dirty) setConfirmQuitter(true); else onClose(); };
   const opts = [["present", "Présent", C.vert], ["absent", "Absent", C.rouge], ["malade", "Malade", "#8E5AA8"], ["retard", "Retard", "#C67C3C"], ["blesse", "Blessé", C.jauneFonce]];
   const themesConnus = THEMES.flatMap((g) => g.items);
@@ -15054,6 +15057,12 @@ function EditSeance({ seance, players, onClose, onSave }) {
           <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.55 }}>Des absences/retards sont déjà saisis. "Tous présents" va les remplacer (sauf les blessés). Continuer ?</div>
         </Modal>
       )}
+      {confirmReset && (
+        <Modal title="Réinitialiser le pointage ?" onClose={() => setConfirmReset(false)}
+          footer={<><Btn variant="ghost" full onClick={() => setConfirmReset(false)}>Annuler</Btn><Btn variant="danger" full onClick={reinitialiser}><RefreshCw size={16} /> Oui, réinitialiser</Btn></>}>
+          <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.55 }}>Toutes les présences saisies pour cette séance (présent, absent, malade, retard, blessé) vont être effacées. Le thème et les précisions sont conservés. Continuer ?</div>
+        </Modal>
+      )}
       <Field label="Date"><Inp type="date" value={f.date || ""} onChange={(e) => set("date", e.target.value)} /></Field>
       <Field label="Thème de la séance">
         <Sel value={autreTheme ? "__autre__" : (f.theme || "")} onChange={(e) => {
@@ -15075,9 +15084,14 @@ function EditSeance({ seance, players, onClose, onSave }) {
         <textarea value={f.details || ""} onChange={(e) => set("details", e.target.value)} rows={3}
           placeholder="Exercices, consignes, objectifs de la séance..." style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
       </Field>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "8px 0" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, margin: "8px 0", flexWrap: "wrap" }}>
         <span style={{ fontWeight: 800, color: C.bleu }}>Présences</span>
-        {players.length > 0 && <Btn variant="ghost" size="sm" onClick={tousPresents}><Check size={15} /> Tous présents</Btn>}
+        {players.length > 0 && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn variant="ghost" size="sm" onClick={tousPresents}><Check size={15} /> Tous présents</Btn>
+            <Btn variant="ghost" size="sm" onClick={faireReset}><RefreshCw size={15} /> Réinitialiser</Btn>
+          </div>
+        )}
       </div>
       {players.length === 0 ? <Empty icon={<Users size={22} color={C.gris} />} text="Aucun joueur" /> :
         <div style={{ display: "grid", gap: 8 }}>
@@ -20850,9 +20864,10 @@ function Calendrier({ db, mutate, mutateReunions, peutValider, onClose, majEncad
   );
 }
 
-function Detection({ cat, db, mutate }) {
+function Detection({ cat, db, mutate, lectureSeule }) {
   const { peutValider, demo } = useContext(AdminCtx);
-  const peutEditer = demo || peutValider;
+  // Les coachs peuvent gérer les joueurs à l'essai de leur propre catégorie (hors catégories en consultation seule).
+  const peutEditer = demo || peutValider || !lectureSeule;
   const [sousOnglet, setSousOnglet] = useState("essai");
   const [edit, setEdit] = useState(null);
   const [editEssai, setEditEssai] = useState(null);
