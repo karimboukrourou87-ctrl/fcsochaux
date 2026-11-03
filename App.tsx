@@ -1791,7 +1791,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.53";
+const APP_VERSION = "16.19.62";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -2258,7 +2258,7 @@ function optgroupsEncadrement(liste) {
   ));
 }
 
-const TERRAINS = ["Synthétique centre", "Synthétique dôme", "Herbe centre (nouveau synthétique)", "Herbe villa", "Pouges"];
+const TERRAINS = ["Synthétique centre", "Synthétique dôme", "Herbe centre (nouveau synthétique)", "Herbe villa", "Pouges", "Stade des Longines"];
 const VESTIAIRES = ["1", "2", "3", "4", "5", "Villa 1", "Villa 2"];
 const PLANNING_HEBDO = [
   { section: "Section garçons", lignes: [
@@ -4120,7 +4120,8 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
   cartesMesures([
     { label: "Matchs joués", val: nbMatchsEq >= assi.matchs && nbMatchsEq > 0 ? `${assi.matchs}/${nbMatchsEq}` : String(assi.matchs) },
     { label: "Présences", val: nbSeances ? `${assi.presences}/${nbSeances}` : String(assi.presences) },
-    { label: "Absences", val: String(assi.absences) },
+    { label: "Abs. justifiées", val: String(assi.absJust) },
+    { label: "Abs. non justifiées", val: String(assi.absNonJust) },
     { label: "Retards", val: String(assi.retards) },
   ]);
 
@@ -5237,7 +5238,7 @@ export default function App() {
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} planning={planningClub} onNotifierCorrection={notifierCorrection} />}
         {tab === "entrainements" && <Entrainements players={players} cat={cat} db={db} mutate={mutate} estMedical={estMedical} onSignalerBlessure={signalerBlessure} initialSous={entSous} onConsumeSous={() => setEntSous(null)} />}
-        {tab === "detection" && <Detection cat={cat} db={db} mutate={mutate} />}
+        {tab === "detection" && <Detection cat={cat} db={db} mutate={mutate} lectureSeule={lectureSeuleCat} />}
         <div style={{ display: "flex", justifyContent: "center", padding: "10px 16px 26px" }}>
           {(dirty || demo)
             ? <button onClick={enregistrerManuel} style={{ background: C.jaune, border: "none", color: C.bleuNuit, borderRadius: 10, padding: "11px 22px", cursor: "pointer", display: "flex", alignItems: "center", gap: 7, fontSize: 14, fontWeight: 800 }}><Save size={16} /> Enregistrer les modifications</button>
@@ -5326,7 +5327,6 @@ export default function App() {
         </Modal>
       )}
       {showCalendrier && <Calendrier db={{ ...db, reunions: reunionsSource, encadrement: encadrementClub }} majEncadrement={majEncadrementClub} mutate={mutate} mutateReunions={mutateReu} peutValider={peutValider} onClose={() => setShowCalendrier(false)} />}
-      <TraceurPanel />
     </div>
     </VerrouCtx.Provider>
     </AdminCtx.Provider>
@@ -5949,15 +5949,15 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
     { titre: "Demande de transport", sous: "Minibus, bus en location ou voitures, à l'avance", icon: Bus, action: onTransport, badge: lstDemTransport.length },
     { titre: "Demande de vestiaire / terrain", sous: "Réserver un vestiaire ou un terrain pour un match à domicile", icon: Home, action: onVestiaire, badge: lstDemVestiaire.length },
     { titre: "Organisation des matchs", sous: "Terrain, vestiaires, transport et encadrement", icon: MapPin, action: onOrganisation, badge: nbOrga },
-    { titre: "Programme de la semaine", sous: "Récapitulatif des matchs à imprimer", icon: ClipboardList, action: onProgramme },
+    { titre: "Programme de la semaine", sous: "Récapitulatif des matchs à imprimer", icon: ClipboardList, action: accDirection ? onProgramme : null },
     { titre: "Documents administratifs", sous: "Licences et contrôle médical à surveiller", icon: ShieldAlert, action: peutMsg ? onDocuments : null, badge: peutMsg ? alerteDocs : 0 },
     { titre: "Suivi médical", sous: "Blessés suivis par l'équipe médicale (U17 aux pros)", icon: Activity, action: (estMedical || priseEnChargeMedicale(cat) !== "parents") ? onSuivi : null, badge: (estMedical || priseEnChargeMedicale(cat) !== "parents") ? enSuiviMedical : 0 },
-    { titre: "Bilan de saison de l'équipe", sous: "Collectif, joueurs et bilan du club en PowerPoint", icon: Trophy, action: onBilan },
+    { titre: "Bilan de saison de l'équipe", sous: "Collectif, joueurs et bilan du club en PowerPoint", icon: Trophy, action: accDirection ? onBilan : null },
     { titre: "Messagerie du club", sous: "Adresser un message important aux éducateurs", icon: Bell, action: peutMsg ? onMessagerie : null, badge: msgASuivre },
     { titre: "Réunions", sous: "Programmer les réunions et recueillir les présences", icon: Users, action: onReunions, badge: alerteReunions },
     { titre: "Calendrier du club", sous: "Tous les événements, toutes catégories réunies", icon: CalendarDays, action: onCalendrier },
     { titre: "Planning hebdomadaire", sous: "Créneaux d'entraînement de la semaine, par catégorie", icon: CalendarDays, action: onPlanningHebdo },
-    { titre: "Planning des vestiaires et terrains", sous: "Réserver terrains et vestiaires par créneau", icon: CalendarDays, action: onPlanning, badge: lstDemPlanning.length },
+    { titre: "Planning des vestiaires et terrains", sous: "Réserver terrains et vestiaires par créneau", icon: CalendarDays, action: accDirection ? onPlanning : null, badge: lstDemPlanning.length },
     { titre: "Droits d'accès", sous: "Gérer les accès des éducateurs par secteur", icon: ShieldAlert, action: onAcces },
     { titre: "Sauvegarde des données", sous: "Exporter ou restaurer les informations du club", icon: Save, action: onSauvegarde },
   ];
@@ -6630,7 +6630,12 @@ function saisonDuBlob(blob) {
 }
 
 /* Assiduite d'un joueur sur une saison : matchs joues, presences, absences, retards */
-const STATUTS_PRESENCE = ["present", "absent", "malade", "blesse", "retard"];
+const STATUTS_PRESENCE = ["present", "absent", "absent_j", "absent_nj", "malade", "blesse", "retard"];
+// Statuts qui comptent comme une absence à la séance (le retard reste une présence).
+const STATUTS_ABS = ["absent", "absent_j", "absent_nj", "malade", "blesse"];
+// Seule l'absence explicitement marquée « non justifiée » l'est. Les anciennes absences (« absent ») et
+// les absences pour maladie/blessure sont comptées comme justifiées.
+const estAbsNonJustifiee = (st) => st === "absent_nj";
 /* Une seance ne compte (total, assiduite, recap) que si son pointage a ete valide.
    Les anciennes seances (sans drapeau "pointe") comptent si au moins un statut reel a ete saisi. */
 function seanceValidee(t) {
@@ -6641,7 +6646,7 @@ function seanceValidee(t) {
 }
 
 function assiduiteJoueur(p, db, saison) {
-  let matchs = 0, absences = 0, retards = 0, jaunes = 0, rouges = 0, seancesPointees = 0;
+  let matchs = 0, absences = 0, absJust = 0, absNonJust = 0, retards = 0, jaunes = 0, rouges = 0, seancesPointees = 0;
   (db.matches || []).forEach((m) => {
     if (m.cat !== p.cat) return;
     if (saison && saisonDe(m.date) !== saison) return;
@@ -6655,12 +6660,12 @@ function assiduiteJoueur(p, db, saison) {
     if (!seanceValidee(t)) return; // seance non validee : ignoree
     seancesPointees++;
     const st = (t.presence || {})[p.id];
-    if (st === "absent" || st === "malade" || st === "blesse") absences++;
+    if (STATUTS_ABS.includes(st)) { absences++; if (estAbsNonJustifiee(st)) absNonJust++; else absJust++; }
     if (st === "retard") retards++;
   });
   // Un joueur est present par defaut : une seance ou il n'est pas marque absent compte comme presence.
   const presences = Math.max(0, seancesPointees - absences);
-  return { matchs, presences, absences, retards, jaunes, rouges, seancesPointees };
+  return { matchs, presences, absences, absJust, absNonJust, retards, jaunes, rouges, seancesPointees };
 }
 
 /* Suspensions : seuil de cartons jaunes selon la competition */
@@ -7154,7 +7159,7 @@ function dispoMatSemaine(p, db, cat, w) {
   if ((db.injuries || []).some((i) => i.joueurId === p.id && !i.fini)) return false;
   const { debMs, finMs } = semaineMatDates(w);
   const sess = (db.trainings || []).filter((t) => t.cat === cat && t.date && t.presence);
-  for (const t of sess) { const [y, m, dd] = String(t.date).split("-").map(Number); const d = Date.UTC(y, (m || 1) - 1, dd || 1); if (d >= debMs && d <= finMs) { const st = t.presence[p.id]; if (st === "absent" || st === "malade" || st === "blesse") return false; } }
+  for (const t of sess) { const [y, m, dd] = String(t.date).split("-").map(Number); const d = Date.UTC(y, (m || 1) - 1, dd || 1); if (d >= debMs && d <= finMs) { const st = t.presence[p.id]; if (STATUTS_ABS.includes(st)) return false; } }
   return true;
 }
 function choisirResponsablesMat(players, db, cat, cfg, w) {
@@ -8947,8 +8952,8 @@ function FicheJoueur({ p, db, mutate, lectureSeule, onClose, onEdit, onDelete, d
         </>
       )}
       <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, margin: "0 0 6px" }}>Assiduité{nbSeancesSaison ? ` · sur ${nbSeancesSaison} séance${nbSeancesSaison > 1 ? "s" : ""} · ${tauxSaison}% de présence` : ""}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
-        {[["Présences", nbSeancesSaison ? `${assi.presences} / ${nbSeancesSaison}` : `${assi.presences}`, C.vert], ["Absences", assi.absences, C.rouge], ["Retards", assi.retards, C.jauneFonce]].map(([l, v, col]) => (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 16 }}>
+        {[["Présences", nbSeancesSaison ? `${assi.presences} / ${nbSeancesSaison}` : `${assi.presences}`, C.vert], ["Absences justifiées", assi.absJust, "#C67C3C"], ["Absences non justifiées", assi.absNonJust, C.rouge], ["Retards", assi.retards, "#2E72C8"]].map(([l, v, col]) => (
           <div key={l} style={{ background: "#fff", borderRadius: 12, padding: "12px 6px", textAlign: "center", border: `1px solid ${C.grisClair}` }}>
             <div style={{ fontSize: 20, fontWeight: 900, color: col }}>{v}</div>
             <div style={{ fontSize: 10.5, color: C.gris, marginTop: 2 }}>{l}</div>
@@ -11594,7 +11599,7 @@ function Convocation({ db, cat, match, mutate, onClose }) {
   const rdvStaffEffectif = cur.rdvStaff || rdvStaffDefaut;
   const mat = cur.materielStaff || {};
   const matCoches = mat.coches || {};
-  const MATERIEL = ["Pharmacie", "Drapeau arbitrage", "Drapeau de corner", "Tableau tactique", "Coupelle échauffement", "Chasubles 2 couleurs", "Veo", "Jeu de maillots", "Tablette ou feuille de match papier", "Pack d'eau", "Brassard de capitaine", "Brassard de délégué", "Sacs à ballons", "Sifflet arbitre", "Goûter pour les joueurs"];
+  const MATERIEL = ["Pharmacie", "Drapeau arbitrage", "Drapeau de corner", "Tableau tactique", "Coupelle échauffement", "Chasubles 2 couleurs", "Veo", "Jeu de maillots", "Tablette ou feuille de match papier", "Pack d'eau", "Brassard de capitaine", "Brassard de délégué", "Sacs à ballons", "Sifflet arbitre", "Goûter pour les joueurs", "Vérifier le carburant des véhicules", "Noter le kilométrage (départ / retour)", "Contrôler la propreté du/des véhicules"];
   const toggleMat = (x) => maj({ materielStaff: { ...mat, coches: { ...matCoches, [x]: !matCoches[x] } } });
   const setMat = (k, v) => maj({ materielStaff: { ...mat, [k]: v } });
   // Chasubles : palette de couleurs à cocher avec une quantité par couleur.
@@ -11983,8 +11988,15 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) 
     const adv = (cur.adversaire || "").trim().toLowerCase();
     return toutes.filter((x) => x && x.statut === "acceptee" && x.vestiaire && (x.cat || "") === (cur.cat || "") && (x.date || "") === d && (!adv || !x.adversaire || (x.adversaire || "").trim().toLowerCase() === adv));
   }, [planning, cur.cat, cur.date, cur.adversaire]);
-  // On retire les doublons (ex. un vestiaire visiteur créé deux fois) : même lieu + mêmes horaires = une seule ligne.
-  const dedupeAtt = (arr) => { const seen = new Set(); return arr.filter((x) => { const k = (x.typeLieu || "") + "|" + (x.vestiaire || "") + "|" + (x.debut || "") + "|" + (x.fin || "") + "|" + (x.liberation || "") + "|" + (x.partage ? "1" : "0"); if (seen.has(k)) return false; seen.add(k); return true; }); };
+  // On retire les doublons (ex. un vestiaire réservé deux fois) : même lieu + mêmes horaires = une seule ligne,
+  // en ignorant la libération (une version sans, une version avec) et en gardant la plus complète / la plus récente.
+  const choisirMeilleur = (m, k, x) => {
+    const prev = m.get(k);
+    if (!prev) { m.set(k, x); return; }
+    const better = (!!x.liberation && !prev.liberation) || ((!!x.liberation === !!prev.liberation) && (x.creeLe || "") > (prev.creeLe || ""));
+    if (better) m.set(k, x);
+  };
+  const dedupeAtt = (arr) => { const m = new Map(); arr.forEach((x) => choisirMeilleur(m, (x.typeLieu || "") + "|" + (x.vestiaire || "") + "|" + (x.debut || "") + "|" + (x.fin || ""), x)); return [...m.values()]; };
   const attribTerrains = dedupeAtt(attribsDirection.filter((x) => x.typeLieu === "terrains"));
   const attribVestiaires = dedupeAtt(attribsDirection.filter((x) => x.typeLieu !== "terrains"));
   // Vestiaire de l'équipe visiteuse : réservé au nom de l'adversaire du match (même date).
@@ -11994,8 +12006,9 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) 
     const adv = (cur.adversaire || "").trim().toLowerCase();
     if (!adv) return [];
     const trouves = toutes.filter((x) => x && x.statut === "acceptee" && x.typeLieu !== "terrains" && x.vestiaire && (x.date || "") === d && (x.cat || "").trim().toLowerCase() === adv);
-    const seen = new Set();
-    return trouves.filter((x) => { const k = (x.vestiaire || "") + "|" + (x.debut || "") + "|" + (x.fin || "") + "|" + (x.liberation || "") + "|" + (x.partage ? "1" : "0"); if (seen.has(k)) return false; seen.add(k); return true; });
+    const m = new Map();
+    trouves.forEach((x) => { const prev = m.get(x.vestiaire || ""); if (!prev) { m.set(x.vestiaire || "", x); return; } const better = (!!x.liberation && !prev.liberation) || ((!!x.liberation === !!prev.liberation) && (x.creeLe || "") > (prev.creeLe || "")); if (better) m.set(x.vestiaire || "", x); });
+    return [...m.values()];
   }, [planning, cur.adversaire, cur.date]);
   const terLock = attribTerrains.length > 0;
   const vestLock = attribVestiaires.length > 0;
@@ -12104,26 +12117,27 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) 
             </div>
           )}
 
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Terrain demandé{terLock ? " (attribué)" : ""}</div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Terrain attribué</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 12 }}>
             {TERRAINS.map((ter) => {
               const on = terLock ? nomsTerrainsAttrib.includes(ter) : r.terrain === ter;
               return (
                 <button key={ter} disabled={terLock} onClick={terLock ? undefined : () => majReservation({ terrain: ter })} style={{
-                  flex: 1, border: `1px solid ${on ? C.bleu : C.grisClair}`, cursor: terLock ? "default" : "pointer", borderRadius: 11, padding: "11px 10px",
-                  fontWeight: 800, fontSize: 13.5, background: on ? C.bleu : "#fff", color: on ? "#fff" : C.encre, opacity: terLock && !on ? 0.4 : 1,
+                  border: `1px solid ${on ? C.bleu : C.grisClair}`, cursor: terLock ? "default" : "pointer", borderRadius: 11, padding: "11px 8px", minHeight: 58,
+                  display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", lineHeight: 1.25,
+                  fontWeight: 800, fontSize: 13, background: on ? C.bleu : "#fff", color: on ? "#fff" : C.encre, opacity: terLock && !on ? 0.4 : 1,
                 }}>{ter}</button>
               );
             })}
           </div>
 
           <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Vestiaires équipe(s) du club{vestLock ? " (attribué)" : ""}</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 7, marginBottom: 12 }}>
             {VESTIAIRES.map((v) => {
               const on = vestLock ? nomsVestiairesAttrib.includes(v) : (r.vestiairesClub || []).includes(v);
               return (
                 <button key={v} disabled={vestLock} onClick={vestLock ? undefined : () => toggleVestiaire("vestiairesClub", v)} style={{
-                  border: `1px solid ${on ? C.jaune : C.grisClair}`, cursor: vestLock ? "default" : "pointer", borderRadius: 10, padding: "9px 13px", fontWeight: 800, fontSize: 13.5,
+                  border: `1px solid ${on ? C.jaune : C.grisClair}`, cursor: vestLock ? "default" : "pointer", borderRadius: 10, padding: "10px 6px", minHeight: 42, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontWeight: 800, fontSize: 13,
                   background: on ? C.jaune : "#fff", color: on ? C.bleuNuit : C.gris, opacity: vestLock && !on ? 0.4 : 1,
                 }}>{v}</button>
               );
@@ -12131,12 +12145,12 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) 
           </div>
 
           <div style={{ fontSize: 12, fontWeight: 700, color: C.gris, marginBottom: 6 }}>Vestiaires visiteurs{vestVisLock ? (attribVisiteurs.some((a) => a.partage) ? " (partagé)" : " (attribué)") : ""}</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 7, marginBottom: 12 }}>
             {VESTIAIRES.map((v) => {
               const on = vestVisLock ? nomsVisiteursAttrib.includes(v) : (r.vestiairesVisiteurs || []).includes(v);
               return (
                 <button key={v} disabled={vestVisLock} onClick={vestVisLock ? undefined : () => toggleVestiaire("vestiairesVisiteurs", v)} style={{
-                  border: `1px solid ${on ? C.jaune : C.grisClair}`, cursor: vestVisLock ? "default" : "pointer", borderRadius: 10, padding: "9px 13px", fontWeight: 800, fontSize: 13.5,
+                  border: `1px solid ${on ? C.jaune : C.grisClair}`, cursor: vestVisLock ? "default" : "pointer", borderRadius: 10, padding: "10px 6px", minHeight: 42, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontWeight: 800, fontSize: 13,
                   background: on ? C.jaune : "#fff", color: on ? C.bleuNuit : C.gris, opacity: vestVisLock && !on ? 0.4 : 1,
                 }}>{v}</button>
               );
@@ -14754,7 +14768,7 @@ function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessur
                 const t = en.training;
                 const pres = presEff(t);
                 const nbPres = pres.filter((x) => x === "present" || x === "retard").length;
-                const nbAbs = pres.filter((x) => x === "absent" || x === "malade" || x === "blesse").length;
+                const nbAbs = pres.filter((x) => STATUTS_ABS.includes(x)).length;
                 const nbBl = pres.filter((x) => x === "blesse").length;
                 const nomDe = (id) => { const pl = players.find((x) => x.id === id); return pl ? `${pl.prenom} ${pl.nom}` : null; };
                 const nomsParStatut = (...statuts) => Object.entries((t && t.presence) || {})
@@ -14762,7 +14776,7 @@ function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessur
                   .map(([id]) => nomDe(id)).filter(Boolean)
                   .sort((a, b) => a.localeCompare(b, "fr"));
                 const valide = seanceValidee(t);
-                const absentsNoms = valide ? nomsParStatut("absent", "malade") : [];
+                const absentsNoms = valide ? nomsParStatut("absent", "absent_j", "absent_nj", "malade") : [];
                 const blessesNoms = valide ? nomsParStatut("blesse") : [];
                 return (
                   <Card key={en.date} onClick={() => valide ? setOpen(t) : setEdit(t || { cat, date: en.date, presence: {} })}>
@@ -14874,7 +14888,7 @@ function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessur
                 {toutes.map((t) => {
                   const pres = presEff(t);
                   const nbPres = pres.filter((x) => x === "present" || x === "retard").length;
-                  const nbAbs = pres.filter((x) => x === "absent" || x === "malade" || x === "blesse").length;
+                  const nbAbs = pres.filter((x) => STATUTS_ABS.includes(x)).length;
                   const estDoublon = parDate[t.date] && parDate[t.date].length > 1;
                   return (
                     <div key={t.id} onClick={() => { setOpen(t); setHisto(false); }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: estDoublon ? "#FBEAD9" : "#fff", borderRadius: 11, border: `1px solid ${estDoublon ? "#E6B980" : C.grisClair}`, cursor: "pointer" }}>
@@ -14962,7 +14976,7 @@ function RecapPresences({ players, db, cat, annee, mois, onClose }) {
     pointees.forEach((s) => {
       const st = s.presence[p.id];
       if (st === "retard") re++;
-      else if (st === "absent" || st === "malade") ab++;
+      else if (st === "absent" || st === "absent_j" || st === "absent_nj" || st === "malade") ab++;
       else if (st === "blesse") bl++;
     });
     const pr = Math.max(0, total - ab - bl);
@@ -15016,13 +15030,16 @@ function EditSeance({ seance, players, onClose, onSave }) {
   const [dirty, setDirty] = useState(false);
   const [confirmQuitter, setConfirmQuitter] = useState(false);
   const [confirmTous, setConfirmTous] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const set = (k, v) => { setDirty(true); setF((p) => ({ ...p, [k]: v })); };
   const setP = (id, v) => { setDirty(true); setF((p) => ({ ...p, presence: { ...p.presence, [id]: v } })); };
   const appliquerTous = () => { setDirty(true); setF((o) => { const pr = { ...(o.presence || {}) }; players.forEach((p) => { if (pr[p.id] !== "blesse") pr[p.id] = "present"; }); return { ...o, presence: pr }; }); setConfirmTous(false); };
   const dejaPointe = players.some((p) => f.presence[p.id] && f.presence[p.id] !== "present");
   const tousPresents = () => { if (dejaPointe) setConfirmTous(true); else appliquerTous(); };
+  const reinitialiser = () => { setDirty(true); setF((o) => ({ ...o, presence: {} })); setConfirmReset(false); };
+  const faireReset = () => { if (Object.keys(f.presence || {}).length) setConfirmReset(true); else reinitialiser(); };
   const fermer = () => { if (dirty) setConfirmQuitter(true); else onClose(); };
-  const opts = [["present", "Présent", C.vert], ["absent", "Absent", C.rouge], ["malade", "Malade", "#8E5AA8"], ["retard", "Retard", "#C67C3C"], ["blesse", "Blessé", C.jauneFonce]];
+  const opts = [["present", "Présent", C.vert], ["absent_j", "Absence justifiée", "#C67C3C"], ["absent_nj", "Absence non justifiée", C.rouge], ["malade", "Malade", "#8E5AA8"], ["retard", "Retard", "#2E72C8"], ["blesse", "Blessé", C.jauneFonce]];
   const themesConnus = THEMES.flatMap((g) => g.items);
   const [autreTheme, setAutreTheme] = useState(!!(seance.theme && !themesConnus.includes(seance.theme)));
 
@@ -15047,6 +15064,12 @@ function EditSeance({ seance, players, onClose, onSave }) {
           <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.55 }}>Des absences/retards sont déjà saisis. "Tous présents" va les remplacer (sauf les blessés). Continuer ?</div>
         </Modal>
       )}
+      {confirmReset && (
+        <Modal title="Réinitialiser le pointage ?" onClose={() => setConfirmReset(false)}
+          footer={<><Btn variant="ghost" full onClick={() => setConfirmReset(false)}>Annuler</Btn><Btn variant="danger" full onClick={reinitialiser}><RefreshCw size={16} /> Oui, réinitialiser</Btn></>}>
+          <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.55 }}>Toutes les présences saisies pour cette séance (présent, absent, malade, retard, blessé) vont être effacées. Le thème et les précisions sont conservés. Continuer ?</div>
+        </Modal>
+      )}
       <Field label="Date"><Inp type="date" value={f.date || ""} onChange={(e) => set("date", e.target.value)} /></Field>
       <Field label="Thème de la séance">
         <Sel value={autreTheme ? "__autre__" : (f.theme || "")} onChange={(e) => {
@@ -15068,21 +15091,27 @@ function EditSeance({ seance, players, onClose, onSave }) {
         <textarea value={f.details || ""} onChange={(e) => set("details", e.target.value)} rows={3}
           placeholder="Exercices, consignes, objectifs de la séance..." style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
       </Field>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "8px 0" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, margin: "8px 0", flexWrap: "wrap" }}>
         <span style={{ fontWeight: 800, color: C.bleu }}>Présences</span>
-        {players.length > 0 && <Btn variant="ghost" size="sm" onClick={tousPresents}><Check size={15} /> Tous présents</Btn>}
+        {players.length > 0 && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn variant="ghost" size="sm" onClick={tousPresents}><Check size={15} /> Tous présents</Btn>
+            <Btn variant="ghost" size="sm" onClick={faireReset}><RefreshCw size={15} /> Réinitialiser</Btn>
+          </div>
+        )}
       </div>
       {players.length === 0 ? <Empty icon={<Users size={22} color={C.gris} />} text="Aucun joueur" /> :
         <div style={{ display: "grid", gap: 8 }}>
           {players.map((p) => (
             <div key={p.id} style={{ padding: "8px 0", borderBottom: `1px solid ${C.grisClair}` }}>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{p.prenom} {p.nom}</div>
-              <div style={{ display: "flex", gap: 5 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 5 }}>
                 {opts.map(([val, lab, col]) => {
                   const on = f.presence[p.id] === val;
                   return (
                     <button key={val} onClick={() => setP(p.id, on ? null : val)} style={{
-                      flex: 1, border: "none", cursor: "pointer", borderRadius: 9, padding: "7px 2px", fontSize: 11.5, fontWeight: 800,
+                      border: "none", cursor: "pointer", borderRadius: 9, padding: "8px 4px", minHeight: 40, fontSize: 11.5, fontWeight: 800, lineHeight: 1.2,
+                      display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center",
                       background: on ? col : C.grisClair, color: on ? "#fff" : C.gris,
                     }}>{lab}</button>
                   );
@@ -15096,7 +15125,7 @@ function EditSeance({ seance, players, onClose, onSave }) {
 }
 
 function DetailSeance({ seance, players, onClose, onEdit, onDelete }) {
-  const groupes = { present: [], absent: [], malade: [], retard: [], blesse: [] };
+  const groupes = { present: [], absent_j: [], absent_nj: [], absent: [], malade: [], retard: [], blesse: [] };
   players.forEach((p) => { const st = seance.presence?.[p.id]; if (st && groupes[st]) groupes[st].push(p); });
   const bloc = (titre, arr, col) => arr.length > 0 && (
     <div style={{ marginBottom: 12 }}>
@@ -15116,9 +15145,10 @@ function DetailSeance({ seance, players, onClose, onEdit, onDelete }) {
       <div style={{ fontWeight: 900, fontSize: 17, margin: "4px 0 6px" }}>{seance.theme || "Séance d'entraînement"}</div>
       {seance.details ? <div style={{ fontSize: 13.5, color: C.gris, marginBottom: 14, whiteSpace: "pre-wrap" }}>{seance.details}</div> : <div style={{ height: 8 }} />}
       {bloc("Présents", groupes.present, C.vert)}
-      {bloc("Absents", groupes.absent, C.rouge)}
+      {bloc("Absents justifiés", [...groupes.absent_j, ...groupes.absent], "#C67C3C")}
+      {bloc("Absents non justifiés", groupes.absent_nj, C.rouge)}
       {bloc("Malades", groupes.malade, "#8E5AA8")}
-      {bloc("Retards", groupes.retard, "#C67C3C")}
+      {bloc("Retards", groupes.retard, "#2E72C8")}
       {bloc("Blessés", groupes.blesse, C.jauneFonce)}
     </Modal>
   );
@@ -20843,9 +20873,10 @@ function Calendrier({ db, mutate, mutateReunions, peutValider, onClose, majEncad
   );
 }
 
-function Detection({ cat, db, mutate }) {
+function Detection({ cat, db, mutate, lectureSeule }) {
   const { peutValider, demo } = useContext(AdminCtx);
-  const peutEditer = demo || peutValider;
+  // Les coachs peuvent gérer les joueurs à l'essai de leur propre catégorie (hors catégories en consultation seule).
+  const peutEditer = demo || peutValider || !lectureSeule;
   const [sousOnglet, setSousOnglet] = useState("essai");
   const [edit, setEdit] = useState(null);
   const [editEssai, setEditEssai] = useState(null);
