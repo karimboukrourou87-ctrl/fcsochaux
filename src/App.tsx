@@ -1791,7 +1791,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.63";
+const APP_VERSION = "16.19.64";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -6154,6 +6154,8 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
         {stat("Blessés", blesses, HeartPulse, () => (priseEnChargeMedicale(cat) !== "parents" ? onSuivi() : setTab("effectif")))}
         {stat("À préparer", nbOrga, MapPin, onOrganisation)}
       </div>
+
+      <BoutonNotifs me={msgMe} />
 
       {lstNotifs.length > 0 && (
         <div style={{ display: "grid", gap: 8, marginBottom: 18 }}>
