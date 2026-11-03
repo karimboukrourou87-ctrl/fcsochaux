@@ -1791,7 +1791,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.65";
+const APP_VERSION = "16.19.66";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -5585,6 +5585,7 @@ function Login({ configManquante, onDemo }) {
   const [mode, setMode] = useState("connexion");
   const [email, setEmail] = useState(() => { try { return localStorage.getItem("fcsm-email") || ""; } catch (e) { return ""; } });
   const [mdp, setMdp] = useState("");
+  const [voirMdp, setVoirMdp] = useState(false);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -5624,7 +5625,12 @@ function Login({ configManquante, onDemo }) {
               <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 14 }}>{mode === "connexion" ? "Connexion éducateur" : "Créer un compte"}</div>
               <form onSubmit={(e) => { e.preventDefault(); go(); }}>
                 <Field label="Adresse email"><Inp type="email" name="username" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="prenom.nom@club.fr" /></Field>
-                <Field label="Mot de passe"><Inp type="password" name="password" autoComplete={mode === "connexion" ? "current-password" : "new-password"} value={mdp} onChange={(e) => setMdp(e.target.value)} placeholder="6 caractères minimum" /></Field>
+                <Field label="Mot de passe">
+                  <div style={{ position: "relative" }}>
+                    <Inp type={voirMdp ? "text" : "password"} name="password" autoComplete={mode === "connexion" ? "current-password" : "new-password"} value={mdp} onChange={(e) => setMdp(e.target.value)} placeholder="6 caractères minimum" style={{ paddingRight: 86 }} />
+                    <button type="button" onClick={() => setVoirMdp((v) => !v)} aria-label={voirMdp ? "Masquer le mot de passe" : "Afficher le mot de passe"} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", padding: 0, cursor: "pointer", color: C.bleu, fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><Eye size={15} /> {voirMdp ? "Masquer" : "Afficher"}</button>
+                  </div>
+                </Field>
                 <Btn variant="primary" full type="submit" style={{ marginTop: 6 }}>{busy ? "Patiente..." : (mode === "connexion" ? "Se connecter" : "Créer le compte")}</Btn>
               </form>
               {msg && <div style={{ fontSize: 12.5, color: C.encre, marginTop: 12, background: C.fond, padding: 10, borderRadius: 10, lineHeight: 1.5 }}>{msg}</div>}
