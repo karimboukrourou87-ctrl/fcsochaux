@@ -1791,7 +1791,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.64";
+const APP_VERSION = "16.19.65";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -2657,7 +2657,7 @@ async function activerNotificationsPush(me) {
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToUint8(VAPID_PUBLIC) });
     const j = sub.toJSON();
     const sb = await getSupabase();
-    await sb.from("push_subscriptions").upsert({
+    const { error: upErr } = await sb.from("push_subscriptions").upsert({
       email: (((me && me.email) || "").trim().toLowerCase()) || null,
       nom: (me && me.nom) || null,
       role: (me && me.role) || null,
@@ -2666,6 +2666,7 @@ async function activerNotificationsPush(me) {
       p256dh: j.keys && j.keys.p256dh,
       auth: j.keys && j.keys.auth,
     }, { onConflict: "endpoint" });
+    if (upErr) return { ok: false, raison: "db:" + (upErr.message || String(upErr)) };
     return { ok: true };
   } catch (e) { return { ok: false, raison: String(e) }; }
 }
@@ -2674,9 +2675,26 @@ async function notifierPush(info) {
 }
 // Bouton que le coach touche une fois pour recevoir les alertes sur son ecran d'accueil.
 function BoutonNotifs({ me }) {
-  const [etat, setEtat] = useState(() => (typeof Notification !== "undefined" && Notification.permission === "granted") ? "ok" : "off");
+  const [etat, setEtat] = useState("verif"); // verif -> ok | off | refuse | err
   const [busy, setBusy] = useState(false);
+  // A l'ouverture : si l'autorisation est deja donnee, on (re)enregistre vraiment
+  // l'appareil dans la base, sans rien redemander. Le bandeau vert ne s'affiche
+  // que si l'enregistrement a reellement reussi.
+  useEffect(() => {
+    let annule = false;
+    (async () => {
+      if (!pushSupporte()) { if (!annule) setEtat("off"); return; }
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        const r = await activerNotificationsPush(me);
+        if (!annule) setEtat(r.ok ? "ok" : "off");
+      } else {
+        if (!annule) setEtat("off");
+      }
+    })();
+    return () => { annule = true; };
+  }, []);
   if (!pushSupporte()) return null;
+  if (etat === "verif") return null;
   async function activer() {
     setBusy(true);
     const r = await activerNotificationsPush(me);
