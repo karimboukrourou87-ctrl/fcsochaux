@@ -1791,7 +1791,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.62";
+const APP_VERSION = "16.19.63";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -2624,6 +2624,78 @@ async function loadCat(cat) {
   if (error) throw error;
   return (data && data.data) ? { ...EMPTY_DB, ...data.data } : { ...EMPTY_DB };
 }
+
+// ===== Notifications push (alerte sur l'ecran d'accueil, meme appli fermee) =====
+const VAPID_PUBLIC = "BC8cdgfNvZ3tpxC6GFAdSm7jm9OyqsvCUKQNgWg14vYTcMMKYASOoHUoyVZmGNM3hMpadAiaRCtn7eeQzwKhupI";
+function b64ToUint8(base64) {
+  const pad = "=".repeat((4 - (base64.length % 4)) % 4);
+  const b = (base64 + pad).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b); const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+let _swReg = null;
+async function enregistrerServiceWorker() {
+  try {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return null;
+    if (!_swReg) _swReg = await navigator.serviceWorker.register("/sw.js");
+    return _swReg;
+  } catch (e) { return null; }
+}
+function pushSupporte() {
+  return typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+}
+async function activerNotificationsPush(me) {
+  if (!pushSupporte()) return { ok: false, raison: "non_supporte" };
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") return { ok: false, raison: "refuse" };
+    const reg = await enregistrerServiceWorker();
+    if (!reg) return { ok: false, raison: "sw" };
+    await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToUint8(VAPID_PUBLIC) });
+    const j = sub.toJSON();
+    const sb = await getSupabase();
+    await sb.from("push_subscriptions").upsert({
+      email: (((me && me.email) || "").trim().toLowerCase()) || null,
+      nom: (me && me.nom) || null,
+      role: (me && me.role) || null,
+      cats: (me && me.cats) || [],
+      endpoint: j.endpoint,
+      p256dh: j.keys && j.keys.p256dh,
+      auth: j.keys && j.keys.auth,
+    }, { onConflict: "endpoint" });
+    return { ok: true };
+  } catch (e) { return { ok: false, raison: String(e) }; }
+}
+async function notifierPush(info) {
+  try { const sb = await getSupabase(); await sb.functions.invoke("notifier", { body: info }); } catch (e) {}
+}
+// Bouton que le coach touche une fois pour recevoir les alertes sur son ecran d'accueil.
+function BoutonNotifs({ me }) {
+  const [etat, setEtat] = useState(() => (typeof Notification !== "undefined" && Notification.permission === "granted") ? "ok" : "off");
+  const [busy, setBusy] = useState(false);
+  if (!pushSupporte()) return null;
+  async function activer() {
+    setBusy(true);
+    const r = await activerNotificationsPush(me);
+    setBusy(false);
+    setEtat(r.ok ? "ok" : (r.raison === "refuse" ? "refuse" : "err"));
+  }
+  if (etat === "ok") {
+    return <div style={{ fontSize: 12.5, fontWeight: 700, color: "#2F6D43", background: "#E2F4E9", border: "1px solid #BFE3CC", borderRadius: 10, padding: "9px 12px", marginBottom: 12, display: "flex", alignItems: "center", gap: 7 }}><Bell size={15} /> Notifications activées sur cet appareil</div>;
+  }
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <Btn variant="ghost" full onClick={activer} disabled={busy}><Bell size={15} /> {busy ? "Activation..." : "Activer les notifications sur cet appareil"}</Btn>
+      {etat === "refuse" && <div style={{ fontSize: 11.5, color: C.rouge, marginTop: 5, lineHeight: 1.4 }}>Les notifications ont été refusées. Autorise-les dans les réglages du navigateur, puis réessaie.</div>}
+      {etat === "err" && <div style={{ fontSize: 11.5, color: C.gris, marginTop: 5, lineHeight: 1.4 }}>Activation impossible pour l'instant (appli à installer sur l'écran d'accueil, ou réessaie plus tard).</div>}
+    </div>
+  );
+}
+// Enregistre le service worker au lancement (sans rien demander a l'utilisateur).
+try { enregistrerServiceWorker(); } catch (e) {}
 async function saveCat(cat, blob, userId) {
   const sb = await getSupabase();
   const { error } = await sb.from("categorie_data").upsert({ categorie: cat, data: blob, maj_le: new Date().toISOString(), maj_par: userId });
@@ -17633,6 +17705,18 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onRafra
     } else {
       const msg = { id: uid(), de: me.nom || "Direction", deEmail: me.email || "", date: nowISO(), objet: objet.trim(), texte: texte.trim(), type, urgence, categories, destinataires: dests, lectures: {}, reponses: {} };
       maj((list) => [msg, ...(list || [])]);
+      // Notification push aux destinataires (alerte sur l'ecran d'accueil, meme appli fermee).
+      try {
+        notifierPush({
+          titre: "Message du club" + (objet.trim() ? " : " + objet.trim() : ""),
+          corps: texte.trim().slice(0, 140),
+          url: "/",
+          emails: dests.map((d) => d.email).filter(Boolean),
+          cats: categories,
+          excludeEmail: me.email || "",
+          tag: "msg-" + msg.id,
+        });
+      } catch (e) {}
     }
     fermerCompose();
     setVue("envoyes");
@@ -17676,6 +17760,7 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onRafra
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
        <div style={{ maxWidth: 760, margin: "0 auto", width: "100%" }}>
+        <BoutonNotifs me={me} />
         {peutValider && (
           <>
             <Btn variant="accent" full style={{ marginBottom: 12 }} onClick={() => (compose ? fermerCompose() : ouvrirCompose())}><Plus size={16} /> Nouveau message aux éducateurs</Btn>
