@@ -1282,10 +1282,19 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
         <div style={{ textAlign: "center", color: C.gris, fontSize: 13, padding: "24px 0" }}>{voirArchives ? "Aucune demande archivée." : "Aucune demande pour l'instant."}</div>
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
-          {liste.map((x) => (
-            <div key={x.id} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "11px 13px" }}>
+          {liste.map((x) => {
+            const estTer = x.typeLieu === "terrains";
+            const bordType = estTer ? "#AEC9AE" : "#A9BBD6";       // barre laterale (vert / bleu pastel sobres)
+            const pillBg = estTer ? "#EAF1EA" : "#E7EDF3";
+            const pillTx = estTer ? "#5B7F5B" : "#566E8C";
+            const pillBd = estTer ? "#D1E0D1" : "#CBD7E6";
+            return (
+            <div key={x.id} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderLeft: `5px solid ${bordType}`, borderRadius: 12, padding: "11px 13px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12, color: C.gris, fontWeight: 800 }}>{x.cat || "?"} · {x.typeLieu === "terrains" ? "Terrain" : "Vestiaire"} · {x.date ? fmtDate(x.date) : "date ?"}</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 900, letterSpacing: 0.4, textTransform: "uppercase", background: pillBg, color: pillTx, border: `1px solid ${pillBd}`, borderRadius: 999, padding: "2px 9px" }}>{estTer ? "Terrain" : "Vestiaire"}</span>
+                  <span style={{ fontSize: 12, color: C.gris, fontWeight: 800 }}>{x.cat || "?"} · {x.date ? fmtDate(x.date) : "date ?"}</span>
+                </span>
                 {x.statut === "acceptee" ? <Pastille bg="#E2F4E9" color={C.vert}>Attribuée</Pastille> : x.statut === "refusee" ? <Pastille bg="#FBE3E3" color={C.rouge}>Refusée</Pastille> : <Pastille bg={C.jaune} color={C.bleuNuit}>En attente</Pastille>}
               </div>
               <div style={{ fontWeight: 800, marginTop: 3 }}>{x.adversaire ? `${CLUB} contre ${x.adversaire}` : (x.directe ? `${x.cat || "Réservation"}${x.catPrevenir && x.catPrevenir !== x.cat ? " · " + x.catPrevenir : ""} · attribution directe` : `${CLUB} contre adversaire ?`)}</div>
@@ -1313,7 +1322,8 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
       {nouveau && <FormVestiaire matchs={matchsDom} vestBloque={!peutValider && vestBloque} terBloque={!peutValider && terBloque} onSubmit={creer} onClose={() => setNouveau(false)} />}
@@ -1791,7 +1801,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.66";
+const APP_VERSION = "16.19.67";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
