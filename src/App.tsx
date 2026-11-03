@@ -1253,7 +1253,7 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
     maj((s) => { s.demandesVestiaire = s.demandesVestiaire || []; s.demandesVestiaire.push({ ...f, id: uid(), cat, demandeur: moi, statut: "en_attente", cause: "", creeLe: new Date().toISOString() }); return s; });
     setNouveau(false);
   }
-  function supprimer(id) { maj((s) => { s.demandesVestiaire = (s.demandesVestiaire || []).filter((y) => y.id !== id); return s; }); }
+  function supprimer(id) { maj((s) => { s.demandesVestiaire = (s.demandesVestiaire || []).filter((y) => y.id !== id && y.origineVisiteurDe !== id); return s; }); }
   function archiver(id, val) { maj((s) => { s.demandesVestiaire = (s.demandesVestiaire || []).map((y) => (y.id === id ? { ...y, archive: !!val } : y)); return s; }); }
   function demanderSuppression(x) { if (peutValider && onDemanderDeverrouillage) onDemanderDeverrouillage(() => setConfirmSuppr(x)); else setConfirmSuppr(x); }
   async function rafraichirMaintenant() {
@@ -1344,7 +1344,7 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
   );
 }
 
-function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose, planning }) {
+function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose, planning, majPlanning }) {
   const [sel, setSel] = useState(null);
   const [edit, setEdit] = useState(null);
   const [roster, setRoster] = useState(false);
@@ -1392,7 +1392,7 @@ function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose, plann
         });
         setEdit(null);
       }} />}
-      {sel && <OrgaMatch demo={demo} match={sel} db={db} mutate={mutate} peutValider={peutValider} planning={planning} onClose={() => setSel(null)} />}
+      {sel && <OrgaMatch demo={demo} match={sel} db={db} mutate={mutate} peutValider={peutValider} planning={planning} majPlanning={majPlanning} onClose={() => setSel(null)} />}
       {roster && <RosterEncadrement demo={demo} db={db} mutate={mutate} onClose={() => setRoster(false)} />}
     </Modal>
   );
@@ -1801,7 +1801,9 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.67";
+const APP_VERSION = "16.19.69";
+// Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
+const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -3541,7 +3543,8 @@ function Modal({ title, onClose, children, footer, titleCenter, wide, fullscreen
   return (
     <div onClick={onClose} style={{
       position: "fixed", inset: 0, background: "rgba(6,24,74,0.55)", zIndex: 50,
-      display: "flex", alignItems: fullscreen ? "stretch" : "flex-end", justifyContent: "center", padding: 0,
+      display: "flex", alignItems: fullscreen ? "stretch" : "flex-end", justifyContent: "center",
+      padding: 0, paddingBottom: ESPACE_BARRE, boxSizing: "border-box",
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
         background: C.fond, width: "100%", maxWidth: fullscreen ? "none" : wide ? "min(1280px, 97vw)" : 560,
@@ -4483,6 +4486,7 @@ export default function App() {
   const [demTick, setDemTick] = useState(0);
   const [saveStatus, setSaveStatus] = useState(null);
   const [dirty, setDirty] = useState(false);
+  const [navPending, setNavPending] = useState(null); // onglet cible en attente quand il y a des modifs non enregistrees
   const [showScores, setShowScores] = useState(false);
   const [showDemandes, setShowDemandes] = useState(false);
   const [showClassement, setShowClassement] = useState(false);
@@ -5218,6 +5222,22 @@ export default function App() {
   const groupeActif = (groupeSel && groupesDispo.includes(groupeSel)) ? groupeSel
     : (catInfo && groupesDispo.includes(catInfo.groupe) ? catInfo.groupe : groupesDispo[0]);
 
+  // Navigation : passer d'un onglet a l'autre depuis n'importe quelle page, sans fermer manuellement.
+  function fermerToutesLesFenetres() {
+    setShowMessagerie(false); setShowMotDePasse(false); setShowVersion(false); setShowJournal(false);
+    setShowScores(false); setShowDemandes(false); setShowClassement(false); setShowTransport(false);
+    setShowVestiaire(false); setShowOrganisation(false); setShowSauvegarde(false); setShowPlanning(false);
+    setShowPlanningHebdo(false); setShowAcces(false); setShowProgramme(false); setShowDocs(false);
+    setShowArrets(false); setShowSuivi(false); setShowBilan(false); setShowTournois(false);
+    setShowReunions(false); setShowCalendrier(false);
+  }
+  function naviguerVers(id) { fermerToutesLesFenetres(); setTab(id); setNavPending(null); }
+  function allerOnglet(id) {
+    if (id === tab) { fermerToutesLesFenetres(); return; } // meme onglet : on ferme juste la page ouverte
+    if (dirty && !demo) { setNavPending(id); return; } // modifs non enregistrees : on alerte avant de partir
+    naviguerVers(id);
+  }
+
   const TABS = estMedical ? [
     { id: "accueil", label: "Accueil", icon: Home },
     { id: "effectif", label: "Effectif", icon: Users },
@@ -5327,7 +5347,7 @@ export default function App() {
         </div>
       </header>
 
-      <main style={{ maxWidth: 760, margin: "0 auto", padding: 16 }}>
+      <main style={{ maxWidth: 760, margin: "0 auto", padding: 16, paddingBottom: ESPACE_BARRE }}>
         {lectureSeuleCat && (
           <div style={{ background: "#EAF0F7", border: `1px solid ${C.bleu}`, color: C.bleu, borderRadius: 12, padding: "10px 14px", fontSize: 13, fontWeight: 700, marginBottom: 14, lineHeight: 1.4 }}>
             Consultation seule sur cette catégorie. Tu peux tout voir, mais la modification est réservée à son responsable.
@@ -5336,7 +5356,7 @@ export default function App() {
         {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={(d) => { setTransportFocus(typeof d === "string" ? d : null); setShowTransport(true); if (rafraichirTransport) rafraichirTransport(); }} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowSauvegarde(true)) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowAcces(true)) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => demanderDeverrouillageAdmin(() => setShowDocs(true))} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onArrets={() => setShowArrets(true)} onMessagerie={ouvrirMessagerie} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} msgVuLe={msgVuLe} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onVestiaire={() => { setShowVestiaire(true); if (rafraichirPlanning) rafraichirPlanning(); }} demVestiaire={peutValider ? demandesVestiaire : []} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} peutValider={peutValider} demo={demo} adminUnlock={adminUnlock} onDemanderDeverrouillage={demanderDeverrouillageAdmin} auteur={{ nom: monNom, role: monRole }} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
-        {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} planning={planningClub} onNotifierCorrection={notifierCorrection} />}
+        {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} planning={planningClub} majPlanning={majPlanningClub} onNotifierCorrection={notifierCorrection} />}
         {tab === "entrainements" && <Entrainements players={players} cat={cat} db={db} mutate={mutate} estMedical={estMedical} onSignalerBlessure={signalerBlessure} initialSous={entSous} onConsumeSous={() => setEntSous(null)} />}
         {tab === "detection" && <Detection cat={cat} db={db} mutate={mutate} lectureSeule={lectureSeuleCat} />}
         <div style={{ display: "flex", justifyContent: "center", padding: "10px 16px 26px" }}>
@@ -5349,13 +5369,14 @@ export default function App() {
       <nav style={{
         position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff",
         borderTop: `1px solid ${C.grisClair}`, display: "flex", justifyContent: "center",
-        boxShadow: "0 -2px 12px rgba(10,42,107,0.06)", zIndex: 30,
+        boxShadow: "0 -2px 12px rgba(10,42,107,0.06)", zIndex: 100,
+        paddingBottom: "env(safe-area-inset-bottom)",
       }}>
         <div style={{ display: "flex", width: "100%", maxWidth: 760 }}>
           {TABS.map((t) => {
             const I = t.icon; const active = tab === t.id;
             return (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{
+              <button key={t.id} onClick={() => allerOnglet(t.id)} style={{
                 flex: 1, border: "none", background: "none", cursor: "pointer",
                 padding: "9px 2px 10px", display: "flex", flexDirection: "column",
                 alignItems: "center", gap: 3, color: active ? C.bleu : C.gris,
@@ -5369,7 +5390,7 @@ export default function App() {
       </nav>
 
       {dirty && !demo && saveStatus !== "saving" && (
-        <div style={{ position: "fixed", bottom: 16, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 9000, padding: "0 12px", pointerEvents: "none" }}>
+        <div style={{ position: "fixed", bottom: "calc(74px + env(safe-area-inset-bottom))", left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 9000, padding: "0 12px", pointerEvents: "none" }}>
           <div style={{ pointerEvents: "auto", width: "100%", maxWidth: 760, background: C.bleuNuit, color: "#fff", borderRadius: 12, padding: "10px 14px", boxShadow: "0 6px 18px rgba(0,0,0,0.22)", display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>Modifications non enregistrées</span>
             <button onClick={enregistrerManuel} style={{ border: "none", background: C.jaune, color: C.bleuNuit, borderRadius: 9, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}><Save size={15} /> Enregistrer</button>
@@ -5378,7 +5399,7 @@ export default function App() {
       )}
 
       {saveStatus && !demo && (
-        <div style={{ position: "fixed", bottom: 70, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 9001, padding: "0 16px", pointerEvents: "none" }}>
+        <div style={{ position: "fixed", bottom: "calc(132px + env(safe-area-inset-bottom))", left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 9001, padding: "0 16px", pointerEvents: "none" }}>
           <div style={{ pointerEvents: "auto", maxWidth: 400, background: saveStatus === "error" ? C.rouge : saveStatus === "ok" ? C.vert : C.bleu, color: "#fff", borderRadius: 12, padding: "10px 16px", fontSize: 13, fontWeight: 700, boxShadow: "0 4px 14px rgba(0,0,0,0.22)", display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ flex: 1 }}>{saveStatus === "saving" ? "Enregistrement en cours..." : saveStatus === "ok" ? "Enregistré" : saveStatus === "ro" ? "Consultation seule : cette catégorie n'est pas modifiable par toi." : "Échec de l'enregistrement. Vérifie ta connexion et réessaie."}</span>
             {saveStatus === "error" && <span onClick={() => setSaveStatus(null)} style={{ cursor: "pointer", textDecoration: "underline", flex: "0 0 auto" }}>OK</span>}
@@ -5386,12 +5407,22 @@ export default function App() {
         </div>
       )}
 
+      {navPending && (
+        <Modal title="Modifications non enregistrées" onClose={() => setNavPending(null)}
+          footer={<>
+            <Btn variant="ghost" full onClick={() => naviguerVers(navPending)}>Changer de page sans enregistrer</Btn>
+            <Btn variant="accent" full onClick={() => { enregistrerManuel(); naviguerVers(navPending); }}><Save size={16} /> Enregistrer et continuer</Btn>
+          </>}>
+          <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.55 }}>Tu as des changements qui ne sont pas encore enregistrés. Enregistre-les pour ne rien perdre avant de changer de page.</div>
+        </Modal>
+      )}
+
       {showScores && <ScoresWeekend onClose={() => setShowScores(false)} localDb={demo ? db : null} />}
       {showDemandes && <Demandes demo={demo} db={db} mutate={mutate} cat={cat} session={session} onNotifierJoueur={notifierJoueur} onVu={() => setDemTick((t) => t + 1)} onClose={() => { setDemTick((t) => t + 1); setShowDemandes(false); }} />}
       {showClassement && <Classement cat={cat} db={db} mutate={mutate} onClose={() => setShowClassement(false)} />}
       {showTransport && <Transports store={transportClub} maj={majTransportClub} chargement={chargementTransport} peutValider={peutValider} profil={profil} cat={cat} encadrement={encadrementClub} majEncadrement={majEncadrementClub} onValiderDem={validerTransport} onRefuserDem={refuserTransport} db={db} mutate={mutate} onRafraichir={rafraichirTransport} onDemanderDeverrouillage={demanderDeverrouillageAdmin} focusDate={transportFocus} onClose={() => { setShowTransport(false); setTransportFocus(null); }} />}
       {showVestiaire && <DemandesVestiaire store={planningClub} maj={majPlanningClub} peutValider={peutValider} profil={profil} cat={cat} db={db} onValider={validerVestiaire} onRefuser={refuserVestiaire} onAttribuerDirect={attribuerVestiaireDirect} onOuvrirPlanning={() => setShowPlanning(true)} onRafraichir={rafraichirPlanning} onDemanderDeverrouillage={demanderDeverrouillageAdmin} onClose={() => setShowVestiaire(false)} />}
-      {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} planning={planningClub} onClose={() => setShowOrganisation(false)} />}
+      {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} planning={planningClub} majPlanning={majPlanningClub} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
       {apercuPDF && <ApercuPDF url={apercuPDF.url} nom={apercuPDF.nom} onClose={() => { try { URL.revokeObjectURL(apercuPDF.url); } catch (e) {} setApercuPDF(null); }} />}
       {showPlanning && <Planning planning={planningClub} majPlanning={majPlanningClub} chargement={chargementPlanning} erreur={erreurPlanning} cats={cats} profil={profil} peutValider={peutValider} cat={cat} onClose={() => setShowPlanning(false)} />}
@@ -10777,7 +10808,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
 /* ============================================================
    Matchs : calendrier, score, rapport, notes
    ============================================================ */
-function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil, onNotifierCorrection, planning }) {
+function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil, onNotifierCorrection, planning, majPlanning }) {
   const [edit, setEdit] = useState(null);
   const [open, setOpen] = useState(null);
   const [filtre, setFiltre] = useState("Tous");
@@ -10994,7 +11025,7 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil, 
         setEdit(null);
       }} />}
 
-      {open && <RapportMatch demo={demo} match={open} players={players} db={db} mutate={mutate} peutValider={peutValider} profil={profil} planning={planning} onNotifierCorrection={onNotifierCorrection}
+      {open && <RapportMatch demo={demo} match={open} players={players} db={db} mutate={mutate} peutValider={peutValider} profil={profil} planning={planning} majPlanning={majPlanning} onNotifierCorrection={onNotifierCorrection}
         onClose={() => setOpen(null)}
         onEdit={() => { setEdit(open); setOpen(null); }}
         onDelete={() => { mutate((d) => { const m = (d.matches || []).find((x) => x.id === open.id); ajouterCorbeille(d, m, "match", cat); d.matches = d.matches.filter((x) => x.id !== open.id); return d; }); setOpen(null); }} />}
@@ -12075,13 +12106,14 @@ function Convocation({ db, cat, match, mutate, onClose }) {
 }
 
 
-function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) {
+function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning, majPlanning }) {
   const [roster, setRoster] = useState(false);
   const [causeRefus, setCauseRefus] = useState(false);
   const [cause, setCause] = useState("");
   const [resaRefus, setResaRefus] = useState(false);
   const [resaCause, setResaCause] = useState("");
   const [convoc, setConvoc] = useState(false);
+  const [confirmReinit, setConfirmReinit] = useState(false);
   const cur = db.matches.find((x) => x.id === match.id) || match;
   const t = cur.transport || {};
   const e = cur.encadrement || {};
@@ -12200,6 +12232,19 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) 
     majReservation({ statut: "refusee", cause: resaCause.trim() });
     setResaRefus(false); setResaCause("");
   }
+  // Direction : supprime du planning toutes les attributions liees a ce match (terrain,
+  // vestiaires club, vestiaires visiteurs), y compris une reservation orpheline qui traine.
+  function reinitialiserAttribution() {
+    if (!majPlanning) { setConfirmReinit(false); return; }
+    const ids = new Set();
+    [...attribTerrains, ...attribVestiaires, ...attribVisiteurs].forEach((a) => { if (a && a.id) ids.add(a.id); });
+    majPlanning((d) => {
+      const dv = d.demandesVestiaire || [];
+      d.demandesVestiaire = dv.filter((y) => y && !ids.has(y.id) && !(y.origineVisiteurDe && ids.has(y.origineVisiteurDe)));
+      return d;
+    });
+    setConfirmReinit(false);
+  }
 
   return (
     <Modal title="Organisation administrative" onClose={onClose}>
@@ -12222,6 +12267,12 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) 
                 <div key={"vis" + i} style={{ fontSize: 12.5, color: C.bleu, fontWeight: 800 }}>Visiteurs ({cur.adversaire}) : {a.partage ? `partagé avec nos joueurs · Vestiaire ${a.vestiaire}` : resumeVestiaire(a)}</div>
               ))}
               <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6, lineHeight: 1.4 }}>Réservation gérée dans l'onglet « Demandes de vestiaire et terrain ». Les cases ci-dessous ne sont pas modifiables ici.</div>
+              {peutValider && majPlanning && (
+                <div style={{ marginTop: 10 }}>
+                  <Btn variant="danger" size="sm" full onClick={() => setConfirmReinit(true)}><Trash2 size={15} /> Réinitialiser l'attribution</Btn>
+                  <div style={{ fontSize: 11, color: C.gris, marginTop: 5, lineHeight: 1.4 }}>Efface le terrain et les vestiaires attribués à ce match (y compris une réservation restée bloquée). Les cases redeviennent modifiables.</div>
+                </div>
+              )}
             </div>
           )}
 
@@ -12481,6 +12532,11 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) 
       {roster && <RosterEncadrement demo={demo} db={db} mutate={mutate} onClose={() => setRoster(false)} />}
       {gererDir && <GestionDirigeants liste={liste} maj={majListe} onClose={() => setGererDir(false)} />}
       {convoc && <Convocation db={db} cat={cur.cat} match={match} mutate={mutate} onClose={() => setConvoc(false)} />}
+      {confirmReinit && (
+        <Modal title="Réinitialiser l'attribution" onClose={() => setConfirmReinit(false)} footer={<><Btn variant="ghost" full onClick={() => setConfirmReinit(false)}>Annuler</Btn><Btn variant="danger" full onClick={reinitialiserAttribution}><Trash2 size={16} /> Réinitialiser</Btn></>}>
+          <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.5 }}>Supprimer les attributions de terrain et de vestiaires de ce match contre {cur.adversaire || "l'adversaire"} (y compris le vestiaire visiteurs) ? Les cases redeviendront modifiables et tu pourras ré-attribuer si besoin.</div>
+        </Modal>
+      )}
     </Modal>
   );
 }
@@ -13242,7 +13298,7 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
   );
 }
 
-function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDelete, peutValider, profil, onNotifierCorrection, planning }) {
+function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDelete, peutValider, profil, onNotifierCorrection, planning, majPlanning }) {
   const [noteFor, setNoteFor] = useState(null);
   const [evalEssaiFor, setEvalEssaiFor] = useState(null); // joueur à l'essai dont on saisit l'évaluation détection
   const [orga, setOrga] = useState(false);
@@ -14040,7 +14096,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
         onClose={() => setEvalEssaiFor(null)}
         onSave={(data) => { saveEvalEssai(evalEssaiFor.id, data); setEvalEssaiFor(null); }}
         onEffacer={() => { saveEvalEssai(evalEssaiFor.id, null); setEvalEssaiFor(null); }} />}
-      {orga && <OrgaMatch demo={demo} match={match} db={db} mutate={mutate} peutValider={peutValider} planning={planning} onClose={() => setOrga(false)} />}
+      {orga && <OrgaMatch demo={demo} match={match} db={db} mutate={mutate} peutValider={peutValider} planning={planning} majPlanning={majPlanning} onClose={() => setOrga(false)} />}
       {plateau && <OrganiserPlateau tournoi={{ nom: `${match.type}${match.date ? " du " + fmtDate(match.date) : ""}`, organisation: cur.organisation }} jsonActif={jsonImportActif(db)} onClose={() => setPlateau(false)} onSave={enregistrerPlateau} />}
       {jong && (/^U13/.test(match.cat)
         ? <DefiJonglageLigue match={match} players={players} db={db} mutate={mutate} onClose={() => setJong(false)} />
@@ -16063,7 +16119,7 @@ function PlanningSemaine({ planning, cat, type, onClose }) {
   const bgTer = (t) => t === "Synthétique dôme" ? "#E7EEF6" : t === "Synthétique centre" ? "#E2F4E9" : t === "Pouges" ? "#FBEAD9" : "#EDF2F8";
   const colTer = (t) => t === "Synthétique dôme" ? C.bleu : t === "Synthétique centre" ? C.vert : t === "Pouges" ? "#B87A2B" : C.bleu;
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 70, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 70, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>{typeLabel} · semaine · {cat}</div>
@@ -16454,7 +16510,7 @@ function Planning({ planning, majPlanning, chargement, erreur, cats, profil, peu
   );
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Planning des {type === "vestiaires" ? "vestiaires" : "terrains"}</div>
@@ -16807,7 +16863,7 @@ function AccesSecteurs({ db, mutate, estAdmin, onClose }) {
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Droits d'accès</div>
@@ -17312,7 +17368,7 @@ function ProgrammeSemaine({ db, localDb, peutValider, userId, encadrement, cats,
   const fermerApercuImg = () => setApercuImg(null);
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Programme de la semaine</div>
@@ -17509,7 +17565,7 @@ function SuiviMedical({ db, mutate, cat, estMedical, onSignalerBlessure, onClose
   const sousType = priseEnChargeMedicale(cat);
   const blessures = (db.injuries || []).filter((i) => i.cat === cat && (i.priseEnCharge ? i.priseEnCharge === "club" : sousType !== "parents")).sort((a, b) => (a.fini === b.fini) ? 0 : a.fini ? 1 : -1);
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Suivi médical · {cat}</div>
@@ -17560,7 +17616,7 @@ function PlanningHebdo({ onClose }) {
     catch (e) { setMsg("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
   }
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Planning hebdomadaire des entraînements</div>
@@ -17781,7 +17837,7 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onRafra
   );
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16, flex: 1, minWidth: 0 }}>Messagerie du club</div>
@@ -18038,7 +18094,7 @@ function DocumentsAdmin({ players, cat, db, mutate, lectureSeule, demo, adminUnl
   const horsPeriode = players.filter((p) => typeMutation(p) === "hors").sort((a, b) => (a.nom || "").localeCompare(b.nom || ""));
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Documents administratifs · {cat}</div>
@@ -18901,7 +18957,7 @@ function BilanEquipe({ db, players, cat, mutate, onClose, onTournois }) {
   const SousTitre = ({ children }) => (<div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "12px 0 8px" }}>{children}</div>);
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Bilan de saison · {catSel}</div>
@@ -19919,7 +19975,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
   const titreSection = { fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "18px 0 8px" };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 70, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 70, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={fermer} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ minWidth: 0, flex: 1 }}>
@@ -20525,7 +20581,7 @@ function Tournois({ db, mutate, cat, onClose }) {
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Tournois · {cat}</div>
@@ -20730,7 +20786,7 @@ function Reunions({ db, mutate, erreur, onClose, majEncadrement }) {
   const dateLongue = (r) => (r.date ? new Date(r.date + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) : "") + (r.heure ? ` · ${r.heure}` : "");
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={() => (sel ? setSelId(null) : onClose())} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>{sel ? "Détail de la réunion" : "Réunions"}</div>
@@ -20902,7 +20958,7 @@ function Calendrier({ db, mutate, mutateReunions, peutValider, onClose, majEncad
   const joursSem = [0, 1, 2, 3, 4, 5, 6].map((i) => { const d = new Date(lu); d.setDate(lu.getDate() + i); return fmtISO(d); });
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Calendrier du club</div>
