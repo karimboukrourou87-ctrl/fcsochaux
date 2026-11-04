@@ -1801,7 +1801,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.69";
+const APP_VERSION = "16.19.70";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -12232,15 +12232,29 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning, ma
     majReservation({ statut: "refusee", cause: resaCause.trim() });
     setResaRefus(false); setResaCause("");
   }
-  // Direction : supprime du planning toutes les attributions liees a ce match (terrain,
-  // vestiaires club, vestiaires visiteurs), y compris une reservation orpheline qui traine.
+  // Direction : supprime du planning TOUTES les attributions liees a ce match (terrain,
+  // vestiaires club, vestiaires visiteurs), y compris les eventuels doublons et une
+  // reservation orpheline qui traine. On retire par critere (match + date / adversaire + date)
+  // pour ne rien laisser derriere, pas seulement l'entree affichee.
   function reinitialiserAttribution() {
     if (!majPlanning) { setConfirmReinit(false); return; }
-    const ids = new Set();
-    [...attribTerrains, ...attribVestiaires, ...attribVisiteurs].forEach((a) => { if (a && a.id) ids.add(a.id); });
+    const d0 = cur.date || "";
+    const catMatch = cur.cat || "";
+    const adv = (cur.adversaire || "").trim().toLowerCase();
     majPlanning((d) => {
       const dv = d.demandesVestiaire || [];
-      d.demandesVestiaire = dv.filter((y) => y && !ids.has(y.id) && !(y.origineVisiteurDe && ids.has(y.origineVisiteurDe)));
+      const aRetirer = new Set();
+      dv.forEach((x) => {
+        if (!x || x.statut !== "acceptee") return;
+        if ((x.date || "") !== d0) return;
+        const advX = (x.adversaire || "").trim().toLowerCase();
+        const estClub = (x.cat || "") === catMatch && (!adv || !advX || advX === adv);        // terrain + vestiaires de notre equipe
+        const estVisiteur = adv && (x.cat || "").trim().toLowerCase() === adv;                 // vestiaire de l'adversaire
+        if (estClub || estVisiteur) aRetirer.add(x.id);
+      });
+      // Enfants (vestiaire visiteurs rattache a une demande) des entrees retirees.
+      dv.forEach((x) => { if (x && x.origineVisiteurDe && aRetirer.has(x.origineVisiteurDe)) aRetirer.add(x.id); });
+      d.demandesVestiaire = dv.filter((y) => y && !aRetirer.has(y.id));
       return d;
     });
     setConfirmReinit(false);
