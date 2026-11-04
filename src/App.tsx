@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.80";
+const APP_VERSION = "16.19.81";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -13694,11 +13694,15 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
   // Les joueurs avec un motif de non-retenu (non qualifié, prévu en catégorie supérieure, blessé, suspendu, absent)
   // ne sont PAS comptés dans la feuille de match : ils sont seulement mentionnés dans la section dédiée.
   const motifsNonRetenu = new Set(Object.entries((cur && cur.nonRetenus) || {}).filter(([, m]) => (m || "").trim()).map(([id]) => id));
+  // Un joueur suspendu (dans sa catégorie, sur un match officiel) ne doit PAS figurer sur la feuille de match :
+  // il bascule automatiquement dans « Joueurs non retenus ».
+  const matchOfficielRap = estMatchPurgeable(cur.type, match.cat, cur.officiel);
+  const estSuspenduRap = (p) => matchOfficielRap && !p.surclasse && !p.essai && estSuspenduPourDate(p, cur.date) && players.some((q) => q.id === p.id);
   // Joueurs à l'essai alignés sur ce match (présents dans la compo) : ajoutés à la feuille pour saisir temps de jeu et évaluation.
   const essaisPresents = (db.essais || [])
     .filter((e) => e.cat === match.cat && e.statut !== "archive" && idsCompo.has(e.id) && !players.some((q) => q.id === e.id))
     .map((e) => ({ id: e.id, prenom: e.prenom || "", nom: e.nom || "", poste: e.poste || "", photo: e.photo || "", cat: e.cat, essai: true }));
-  const joueursRapport = [...players.filter((p) => !motifsNonRetenu.has(p.id)), ...surclassesPresents, ...essaisPresents];
+  const joueursRapport = [...players.filter((p) => !motifsNonRetenu.has(p.id) && !estSuspenduRap(p)), ...surclassesPresents, ...essaisPresents];
   // Diagnostic temps de jeu : compare le temps de jeu stocké sur le match avec les joueurs affichés,
   // pour repérer un éventuel écart d'identifiants (temps enregistré sous un id absent de la feuille).
   useEffect(() => {
@@ -13729,7 +13733,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
   function retirerSurclSup(pid) { mutate((d) => { const m = d.matches.find((x) => x.id === match.id); if (m.surclasses) delete m.surclasses[pid]; return d; }); }
 
   // Joueurs de la catégorie non retenus (ni titulaire, ni remplaçant, sans stats)
-  const nonRetenusDispo = players.filter((p) => !idsCompo.has(p.id));
+  const nonRetenusDispo = players.filter((p) => !idsCompo.has(p.id) || estSuspenduRap(p));
   const catsSup = categoriesAuDessus(match.cat);
   function setNonRetenu(joueurId, motif) {
     mutate((d) => {
@@ -14157,7 +14161,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
       ) : (
         <div style={{ display: "grid", gap: 7 }}>
           {nonRetenusDispo.map((p) => {
-            const motif = (cur.nonRetenus || {})[p.id] || "";
+            const motif = (cur.nonRetenus || {})[p.id] || (estSuspenduRap(p) ? "Suspendu" : "");
             return (
               <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "8px 11px" }}>
                 <div style={{ flex: 1, minWidth: 0, fontWeight: 700 }}>{p.prenom} {p.nom}</div>
