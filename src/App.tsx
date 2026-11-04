@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.73";
+const APP_VERSION = "16.19.74";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -2663,7 +2663,10 @@ function pushSupporte() {
 async function activerNotificationsPush(me) {
   if (!pushSupporte()) return { ok: false, raison: "non_supporte" };
   try {
-    const perm = await Notification.requestPermission();
+    // On ne redemande l'autorisation que si elle n'a jamais ete donnee. Sur iPhone,
+    // redemander alors qu'elle est deja accordee (hors appui direct) est rejete par iOS.
+    let perm = Notification.permission;
+    if (perm === "default") perm = await Notification.requestPermission();
     if (perm !== "granted") return { ok: false, raison: "refuse" };
     const reg = await enregistrerServiceWorker();
     if (!reg) return { ok: false, raison: "sw" };
