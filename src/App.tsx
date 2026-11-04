@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.79";
+const APP_VERSION = "16.19.80";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -10456,7 +10456,23 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
     if (compoScellee) return;
     if (!t) return;
     if (Object.keys(lineup.slots || {}).length > 0 && typeof window !== "undefined" && !window.confirm("Remplacer la composition actuelle par la composition type \"" + t.nom + "\" ?")) return;
-    mutate((d) => { d.lineups[key] = { formation: t.formation, slots: { ...(t.slots || {}) }, remplacants: [...(t.remplacants || [])], capitaine: t.capitaine || null, format: t.format, numeros: { ...(t.numeros || {}) } }; return d; });
+    // Un joueur suspendu (dans sa catégorie, sur un match officiel) ne doit PAS être recopié depuis la compo type.
+    const estBloque = (id) => {
+      if (!dateMatchCompo || !matchCompoOfficiel) return false; // match non officiel : suspendus autorisés
+      const p = players.find((x) => x.id === id);
+      return p ? estSuspenduPourDate(p, dateMatchCompo) : false;
+    };
+    const slotsFiltres = {};
+    Object.entries(t.slots || {}).forEach(([slot, id]) => { if (!estBloque(id)) slotsFiltres[slot] = id; });
+    const rempFiltres = (t.remplacants || []).filter((id) => !estBloque(id));
+    const capFiltre = (t.capitaine && !estBloque(t.capitaine)) ? t.capitaine : null;
+    mutate((d) => { d.lineups[key] = { formation: t.formation, slots: slotsFiltres, remplacants: rempFiltres, capitaine: capFiltre, format: t.format, numeros: { ...(t.numeros || {}) } }; return d; });
+    // Prévenir des joueurs écartés pour suspension.
+    const retires = [...Object.values(t.slots || {}), ...(t.remplacants || [])].filter((id, i, arr) => arr.indexOf(id) === i && estBloque(id));
+    if (retires.length && typeof window !== "undefined") {
+      const noms = retires.map((id) => { const p = players.find((x) => x.id === id); return p ? `${p.prenom} ${p.nom}`.trim() : ""; }).filter(Boolean);
+      window.alert("Composition type appliquée. " + (noms.length > 1 ? "Joueurs écartés car suspendus : " : "Joueur écarté car suspendu : ") + noms.join(", ") + ". Complète leur place manuellement.");
+    }
   }
   function supprimerCompoType(nom) {
     mutate((d) => { if (d.config && d.config.compoTypes && d.config.compoTypes[cat]) d.config.compoTypes[cat] = d.config.compoTypes[cat].filter((t) => t.nom !== nom); return d; });
