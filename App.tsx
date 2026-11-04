@@ -1253,7 +1253,7 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
     maj((s) => { s.demandesVestiaire = s.demandesVestiaire || []; s.demandesVestiaire.push({ ...f, id: uid(), cat, demandeur: moi, statut: "en_attente", cause: "", creeLe: new Date().toISOString() }); return s; });
     setNouveau(false);
   }
-  function supprimer(id) { maj((s) => { s.demandesVestiaire = (s.demandesVestiaire || []).filter((y) => y.id !== id); return s; }); }
+  function supprimer(id) { maj((s) => { s.demandesVestiaire = (s.demandesVestiaire || []).filter((y) => y.id !== id && y.origineVisiteurDe !== id); return s; }); }
   function archiver(id, val) { maj((s) => { s.demandesVestiaire = (s.demandesVestiaire || []).map((y) => (y.id === id ? { ...y, archive: !!val } : y)); return s; }); }
   function demanderSuppression(x) { if (peutValider && onDemanderDeverrouillage) onDemanderDeverrouillage(() => setConfirmSuppr(x)); else setConfirmSuppr(x); }
   async function rafraichirMaintenant() {
@@ -1282,10 +1282,19 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
         <div style={{ textAlign: "center", color: C.gris, fontSize: 13, padding: "24px 0" }}>{voirArchives ? "Aucune demande archivée." : "Aucune demande pour l'instant."}</div>
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
-          {liste.map((x) => (
-            <div key={x.id} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: "11px 13px" }}>
+          {liste.map((x) => {
+            const estTer = x.typeLieu === "terrains";
+            const bordType = estTer ? "#AEC9AE" : "#A9BBD6";       // barre laterale (vert / bleu pastel sobres)
+            const pillBg = estTer ? "#EAF1EA" : "#E7EDF3";
+            const pillTx = estTer ? "#5B7F5B" : "#566E8C";
+            const pillBd = estTer ? "#D1E0D1" : "#CBD7E6";
+            return (
+            <div key={x.id} style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderLeft: `5px solid ${bordType}`, borderRadius: 12, padding: "11px 13px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12, color: C.gris, fontWeight: 800 }}>{x.cat || "?"} · {x.typeLieu === "terrains" ? "Terrain" : "Vestiaire"} · {x.date ? fmtDate(x.date) : "date ?"}</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 900, letterSpacing: 0.4, textTransform: "uppercase", background: pillBg, color: pillTx, border: `1px solid ${pillBd}`, borderRadius: 999, padding: "2px 9px" }}>{estTer ? "Terrain" : "Vestiaire"}</span>
+                  <span style={{ fontSize: 12, color: C.gris, fontWeight: 800 }}>{x.cat || "?"} · {x.date ? fmtDate(x.date) : "date ?"}</span>
+                </span>
                 {x.statut === "acceptee" ? <Pastille bg="#E2F4E9" color={C.vert}>Attribuée</Pastille> : x.statut === "refusee" ? <Pastille bg="#FBE3E3" color={C.rouge}>Refusée</Pastille> : <Pastille bg={C.jaune} color={C.bleuNuit}>En attente</Pastille>}
               </div>
               <div style={{ fontWeight: 800, marginTop: 3 }}>{x.adversaire ? `${CLUB} contre ${x.adversaire}` : (x.directe ? `${x.cat || "Réservation"}${x.catPrevenir && x.catPrevenir !== x.cat ? " · " + x.catPrevenir : ""} · attribution directe` : `${CLUB} contre adversaire ?`)}</div>
@@ -1313,7 +1322,8 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
       {nouveau && <FormVestiaire matchs={matchsDom} vestBloque={!peutValider && vestBloque} terBloque={!peutValider && terBloque} onSubmit={creer} onClose={() => setNouveau(false)} />}
@@ -1334,7 +1344,7 @@ function DemandesVestiaire({ store, maj, peutValider, profil, cat, db, onValider
   );
 }
 
-function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose, planning }) {
+function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose, planning, majPlanning }) {
   const [sel, setSel] = useState(null);
   const [edit, setEdit] = useState(null);
   const [roster, setRoster] = useState(false);
@@ -1382,15 +1392,16 @@ function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose, plann
         });
         setEdit(null);
       }} />}
-      {sel && <OrgaMatch demo={demo} match={sel} db={db} mutate={mutate} peutValider={peutValider} planning={planning} onClose={() => setSel(null)} />}
+      {sel && <OrgaMatch demo={demo} match={sel} db={db} mutate={mutate} peutValider={peutValider} planning={planning} majPlanning={majPlanning} onClose={() => setSel(null)} />}
       {roster && <RosterEncadrement demo={demo} db={db} mutate={mutate} onClose={() => setRoster(false)} />}
     </Modal>
   );
 }
 
-function Classement({ cat, db, mutate, onClose }) {
+function Classement({ cat, db, mutate, peutValider, onClose }) {
   const url = ((db.config && db.config.classement) || {})[cat] || "";
-  const [editer, setEditer] = useState(!url);
+  const peutEditer = !!peutValider; // seule la direction peut saisir / modifier le lien
+  const [editer, setEditer] = useState(!url && peutEditer);
   const [val, setVal] = useState(url);
   const [direct, setDirect] = useState((((db.config && db.config.classementDirect) || {})[cat]) || false);
   let niveau, siteSource;
@@ -1419,12 +1430,12 @@ function Classement({ cat, db, mutate, onClose }) {
 
   return (
     <Modal title={`Classement ${cat}`} onClose={onClose}
-      footer={url && !editer
+      footer={!peutEditer ? null : (url && !editer
         ? <Btn variant="ghost" full onClick={() => { setVal(url); setEditer(true); }}><Edit3 size={16} /> Modifier le lien</Btn>
-        : <Btn variant="accent" full disabled={!val.trim()} onClick={enregistrer}><Save size={16} /> Enregistrer</Btn>}>
+        : <Btn variant="accent" full disabled={!val.trim()} onClick={enregistrer}><Save size={16} /> Enregistrer</Btn>)}>
       <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12 }}>Compétition suivie au niveau : <strong style={{ color: C.bleu }}>{niveau}</strong></div>
 
-      {editer || !url ? (
+      {(editer || !url) && peutEditer ? (
         <>
           <div style={{ fontSize: 13, color: C.encre, background: "#F4F7FB", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 12, marginBottom: 12, lineHeight: 1.5 }}>
             Pour obtenir le lien : sur {siteSource}, ouvre la compétition de la catégorie {cat}, puis le classement de ta poule, et copie le lien de partage du widget « score en direct » (adresse du type fff.fr/score-en-direct/...). Colle-le ci-dessous : le classement et les résultats du groupe s'afficheront en direct.
@@ -1438,6 +1449,8 @@ function Classement({ cat, db, mutate, onClose }) {
           </label>
           {url && <Btn variant="ghost" size="sm" onClick={() => setEditer(false)}>Annuler</Btn>}
         </>
+      ) : !url ? (
+        <div style={{ fontSize: 13, color: C.encre, background: "#F4F7FB", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 12, lineHeight: 1.5 }}>Le lien du classement n'a pas encore été renseigné par la direction pour cette catégorie.</div>
       ) : direct ? (
         <>
           <div style={{ fontSize: 13, color: C.encre, background: "#F4F7FB", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 12, marginBottom: 12, lineHeight: 1.5 }}>Le classement de cette catégorie s'ouvre directement dans le navigateur. Il vient de s'ouvrir dans un onglet. Touche le bouton ci-dessous pour le rouvrir.</div>
@@ -1791,7 +1804,9 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.62";
+const APP_VERSION = "16.19.79";
+// Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
+const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
 // Désactivé par défaut : les imports JSON restent cachés tant que la direction ne les active pas.
 const jsonImportActif = (db) => !!(db && db.config && db.config.jsonActif === true);
@@ -2624,6 +2639,159 @@ async function loadCat(cat) {
   if (error) throw error;
   return (data && data.data) ? { ...EMPTY_DB, ...data.data } : { ...EMPTY_DB };
 }
+
+// ===== Notifications push (alerte sur l'ecran d'accueil, meme appli fermee) =====
+const VAPID_PUBLIC = "BC8cdgfNvZ3tpxC6GFAdSm7jm9OyqsvCUKQNgWg14vYTcMMKYASOoHUoyVZmGNM3hMpadAiaRCtn7eeQzwKhupI";
+function b64ToUint8(base64) {
+  const pad = "=".repeat((4 - (base64.length % 4)) % 4);
+  const b = (base64 + pad).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b); const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+let _swReg = null;
+async function enregistrerServiceWorker() {
+  try {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return null;
+    if (!_swReg) _swReg = await navigator.serviceWorker.register("/sw.js");
+    return _swReg;
+  } catch (e) { return null; }
+}
+function pushSupporte() {
+  return typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+}
+// Limite de temps sur une etape : si elle n'aboutit pas, on sait laquelle bloque.
+function _avecDelai(p, ms, nom) {
+  return Promise.race([
+    Promise.resolve(p),
+    new Promise((_, rej) => setTimeout(() => rej(new Error("timeout:" + nom)), ms)),
+  ]);
+}
+// Attend qu'une registration ait un worker ACTIF, sans dependre de navigator.serviceWorker.ready
+// (qui, dans certaines configs PWA, ne se resout jamais). On surveille directement reg.active.
+function attendreWorkerActif(reg) {
+  return new Promise((resolve) => {
+    if (reg && reg.active) { resolve(true); return; }
+    let fini = false;
+    const ok = () => { if (!fini && reg && reg.active) { fini = true; clearInterval(iv); resolve(true); return true; } return false; };
+    const suivre = (w) => { if (w) w.addEventListener("statechange", ok); };
+    suivre(reg && (reg.installing || reg.waiting));
+    if (reg && reg.addEventListener) reg.addEventListener("updatefound", () => suivre(reg.installing));
+    const iv = setInterval(ok, 300);
+  });
+}
+async function activerNotificationsPush(me, creerSiAbsent = true) {
+  if (!pushSupporte()) return { ok: false, raison: "non_supporte" };
+  try {
+    // On ne redemande l'autorisation que si elle n'a jamais ete donnee. Sur iPhone,
+    // redemander alors qu'elle est deja accordee (hors appui direct) est rejete par iOS.
+    let perm = Notification.permission;
+    if (perm === "default" && creerSiAbsent) perm = await Notification.requestPermission();
+    if (perm !== "granted") return { ok: false, raison: "refuse" };
+    const reg = await _avecDelai(enregistrerServiceWorker(), 8000, "sw_register");
+    if (!reg) return { ok: false, raison: "sw_null" };
+    await _avecDelai(attendreWorkerActif(reg), 10000, "sw_actif");
+    let sub = await _avecDelai(reg.pushManager.getSubscription(), 8000, "get_sub");
+    if (!sub) {
+      // Au demarrage (creerSiAbsent=false) on ne cree rien, on attend l'appui sur le bouton.
+      if (!creerSiAbsent) return { ok: false, raison: "pas_abonne" };
+      sub = await _avecDelai(reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToUint8(VAPID_PUBLIC) }), 12000, "subscribe");
+    }
+    const j = sub.toJSON();
+    const sb = await getSupabase();
+    const { error: upErr } = await _avecDelai(sb.from("push_subscriptions").upsert({
+      email: (((me && me.email) || "").trim().toLowerCase()) || null,
+      nom: (me && me.nom) || null,
+      role: (me && me.role) || null,
+      cats: (me && me.cats) || [],
+      endpoint: j.endpoint,
+      p256dh: j.keys && j.keys.p256dh,
+      auth: j.keys && j.keys.auth,
+    }, { onConflict: "endpoint" }), 10000, "upsert");
+    if (upErr) return { ok: false, raison: "db:" + (upErr.message || String(upErr)) };
+    return { ok: true };
+  } catch (e) { return { ok: false, raison: (e && e.message) ? e.message : String(e) }; }
+}
+async function notifierPush(info) {
+  try { const sb = await getSupabase(); await sb.functions.invoke("notifier", { body: info }); } catch (e) {}
+}
+// Bouton que le coach touche une fois pour recevoir les alertes sur son ecran d'accueil.
+function BoutonNotifs({ me }) {
+  const [etat, setEtat] = useState("off"); // off (bouton visible) -> ok | refuse | err ; le bouton reste toujours touchable
+  const [busy, setBusy] = useState(false);
+  const [detail, setDetail] = useState("");  // derniere raison / erreur (diagnostic)
+  const [swInfo, setSwInfo] = useState(""); // etat du service worker (diagnostic)
+  // Lit l'etat reel du service worker pour comprendre un blocage d'activation.
+  useEffect(() => {
+    let annule = false;
+    (async () => {
+      try {
+        if (!("serviceWorker" in navigator)) { if (!annule) setSwInfo("sw: indisponible"); return; }
+        const reg = await navigator.serviceWorker.getRegistration();
+        const ctrl = navigator.serviceWorker.controller ? "oui" : "non";
+        if (!reg) { if (!annule) setSwInfo("sw: aucune registration · controle:" + ctrl); return; }
+        if (!annule) setSwInfo("sw: installing=" + (reg.installing ? "o" : "n") + " waiting=" + (reg.waiting ? "o" : "n") + " active=" + (reg.active ? "o" : "n") + " · controle:" + ctrl + " · scope:" + (reg.scope || "").replace(/^https?:\/\/[^/]+/, ""));
+      } catch (e) { if (!annule) setSwInfo("sw: err " + ((e && e.message) || e)); }
+    })();
+    return () => { annule = true; };
+  }, [detail]);
+  // A l'ouverture : si l'autorisation est deja donnee, on (re)enregistre vraiment
+  // l'appareil dans la base, sans rien redemander. Le bandeau vert ne s'affiche
+  // que si l'enregistrement a reellement reussi.
+  useEffect(() => {
+    let annule = false;
+    (async () => {
+      if (!pushSupporte()) { if (!annule) { setEtat("off"); setDetail("non supporte par ce navigateur / cette ouverture"); } return; }
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        const r = await activerNotificationsPush(me, false); // au demarrage : on n'enregistre que si l'abonnement existe deja (iOS)
+        if (!annule) { setEtat(r.ok ? "ok" : "off"); setDetail(r.ok ? "enregistre" : (r.raison || "echec")); }
+      } else {
+        if (!annule) { setEtat("off"); setDetail("autorisation non accordee (" + ((typeof Notification !== "undefined") ? Notification.permission : "?") + ")"); }
+      }
+    })();
+    return () => { annule = true; };
+  }, []);
+  async function activer() {
+    setBusy(true); setDetail("activation en cours...");
+    let r;
+    try { r = await activerNotificationsPush(me, true); }
+    catch (e) { r = { ok: false, raison: (e && e.message) ? e.message : String(e) }; }
+    setBusy(false);
+    setEtat(r.ok ? "ok" : (r.raison === "refuse" ? "refuse" : "err"));
+    setDetail(r.ok ? "enregistre" : (r.raison || "echec"));
+  }
+  // Encart de diagnostic : montre l'etat reel sur l'appareil pour comprendre un blocage.
+  const supporte = pushSupporte();
+  const perm = (typeof Notification !== "undefined") ? Notification.permission : "indisponible";
+  const installe = (typeof window !== "undefined" && (((window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)) || window.navigator.standalone === true)) ? "oui" : "non";
+  const diag = (
+    <div style={{ fontSize: 10.5, color: C.gris, marginTop: 6, lineHeight: 1.5, background: "#F4F6F9", border: `1px solid ${C.grisClair}`, borderRadius: 8, padding: "7px 9px" }}>
+      <div style={{ fontWeight: 800, marginBottom: 2 }}>Diagnostic notifications</div>
+      Supporte : {supporte ? "oui" : "non"} · Autorisation : {perm} · Installée (écran d'accueil) : {installe}
+      {swInfo ? <div style={{ marginTop: 2, wordBreak: "break-word" }}>{swInfo}</div> : null}
+      {detail ? <div style={{ marginTop: 2, color: detail === "enregistre" ? "#2F6D43" : C.rouge, fontWeight: 700, wordBreak: "break-word" }}>Dernier message : {detail}</div> : null}
+    </div>
+  );
+  if (etat === "verif") return <div style={{ marginBottom: 12 }}>{diag}</div>;
+  if (etat === "ok") {
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: "#2F6D43", background: "#E2F4E9", border: "1px solid #BFE3CC", borderRadius: 10, padding: "9px 12px", display: "flex", alignItems: "center", gap: 7 }}><Bell size={15} /> Notifications activées sur cet appareil</div>
+        {diag}
+      </div>
+    );
+  }
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <Btn variant="ghost" full onClick={activer} disabled={busy}><Bell size={15} /> {busy ? "Activation..." : "Activer les notifications sur cet appareil"}</Btn>
+      {etat === "refuse" && <div style={{ fontSize: 11.5, color: C.rouge, marginTop: 5, lineHeight: 1.4 }}>Les notifications ont été refusées. Autorise-les dans Réglages de l'iPhone → l'app → Notifications, puis réessaie.</div>}
+      {etat === "err" && <div style={{ fontSize: 11.5, color: C.gris, marginTop: 5, lineHeight: 1.4 }}>Activation impossible pour l'instant (appli à ouvrir depuis l'icône de l'écran d'accueil, ou réessaie plus tard).</div>}
+      {diag}
+    </div>
+  );
+}
+// Enregistre le service worker au lancement (sans rien demander a l'utilisateur).
+try { enregistrerServiceWorker(); } catch (e) {}
 async function saveCat(cat, blob, userId) {
   const sb = await getSupabase();
   const { error } = await sb.from("categorie_data").upsert({ categorie: cat, data: blob, maj_le: new Date().toISOString(), maj_par: userId });
@@ -3441,11 +3609,13 @@ function Modal({ title, onClose, children, footer, titleCenter, wide, fullscreen
   return (
     <div onClick={onClose} style={{
       position: "fixed", inset: 0, background: "rgba(6,24,74,0.55)", zIndex: 50,
-      display: "flex", alignItems: fullscreen ? "stretch" : "flex-end", justifyContent: "center", padding: 0,
+      display: "flex", alignItems: fullscreen ? "flex-start" : "flex-end", justifyContent: "center", padding: 0,
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
         background: C.fond, width: "100%", maxWidth: fullscreen ? "none" : wide ? "min(1280px, 97vw)" : 560,
-        height: fullscreen ? "100%" : "auto", maxHeight: fullscreen ? "100%" : wide ? "96vh" : "92vh",
+        height: fullscreen ? `calc(100% - ${ESPACE_BARRE})` : "auto",
+        maxHeight: fullscreen ? `calc(100% - ${ESPACE_BARRE})` : `calc(${wide ? "96vh" : "92vh"} - ${ESPACE_BARRE})`,
+        marginBottom: ESPACE_BARRE,
         borderTopLeftRadius: fullscreen ? 0 : 22, borderTopRightRadius: fullscreen ? 0 : 22, overflow: "hidden",
         display: "flex", flexDirection: "column",
       }}>
@@ -4383,6 +4553,7 @@ export default function App() {
   const [demTick, setDemTick] = useState(0);
   const [saveStatus, setSaveStatus] = useState(null);
   const [dirty, setDirty] = useState(false);
+  const [navPending, setNavPending] = useState(null); // onglet cible en attente quand il y a des modifs non enregistrees
   const [showScores, setShowScores] = useState(false);
   const [showDemandes, setShowDemandes] = useState(false);
   const [showClassement, setShowClassement] = useState(false);
@@ -5118,6 +5289,22 @@ export default function App() {
   const groupeActif = (groupeSel && groupesDispo.includes(groupeSel)) ? groupeSel
     : (catInfo && groupesDispo.includes(catInfo.groupe) ? catInfo.groupe : groupesDispo[0]);
 
+  // Navigation : passer d'un onglet a l'autre depuis n'importe quelle page, sans fermer manuellement.
+  function fermerToutesLesFenetres() {
+    setShowMessagerie(false); setShowMotDePasse(false); setShowVersion(false); setShowJournal(false);
+    setShowScores(false); setShowDemandes(false); setShowClassement(false); setShowTransport(false);
+    setShowVestiaire(false); setShowOrganisation(false); setShowSauvegarde(false); setShowPlanning(false);
+    setShowPlanningHebdo(false); setShowAcces(false); setShowProgramme(false); setShowDocs(false);
+    setShowArrets(false); setShowSuivi(false); setShowBilan(false); setShowTournois(false);
+    setShowReunions(false); setShowCalendrier(false);
+  }
+  function naviguerVers(id) { fermerToutesLesFenetres(); setTab(id); setNavPending(null); }
+  function allerOnglet(id) {
+    if (id === tab) { fermerToutesLesFenetres(); return; } // meme onglet : on ferme juste la page ouverte
+    if (dirty && !demo) { setNavPending(id); return; } // modifs non enregistrees : on alerte avant de partir
+    naviguerVers(id);
+  }
+
   const TABS = estMedical ? [
     { id: "accueil", label: "Accueil", icon: Home },
     { id: "effectif", label: "Effectif", icon: Users },
@@ -5227,7 +5414,7 @@ export default function App() {
         </div>
       </header>
 
-      <main style={{ maxWidth: 760, margin: "0 auto", padding: 16 }}>
+      <main style={{ maxWidth: 760, margin: "0 auto", padding: 16, paddingBottom: ESPACE_BARRE }}>
         {lectureSeuleCat && (
           <div style={{ background: "#EAF0F7", border: `1px solid ${C.bleu}`, color: C.bleu, borderRadius: 12, padding: "10px 14px", fontSize: 13, fontWeight: 700, marginBottom: 14, lineHeight: 1.4 }}>
             Consultation seule sur cette catégorie. Tu peux tout voir, mais la modification est réservée à son responsable.
@@ -5236,7 +5423,7 @@ export default function App() {
         {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={(d) => { setTransportFocus(typeof d === "string" ? d : null); setShowTransport(true); if (rafraichirTransport) rafraichirTransport(); }} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowSauvegarde(true)) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowAcces(true)) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => demanderDeverrouillageAdmin(() => setShowDocs(true))} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onArrets={() => setShowArrets(true)} onMessagerie={ouvrirMessagerie} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} msgVuLe={msgVuLe} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onVestiaire={() => { setShowVestiaire(true); if (rafraichirPlanning) rafraichirPlanning(); }} demVestiaire={peutValider ? demandesVestiaire : []} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} peutValider={peutValider} demo={demo} adminUnlock={adminUnlock} onDemanderDeverrouillage={demanderDeverrouillageAdmin} auteur={{ nom: monNom, role: monRole }} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
-        {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} planning={planningClub} onNotifierCorrection={notifierCorrection} />}
+        {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} planning={planningClub} majPlanning={majPlanningClub} onNotifierCorrection={notifierCorrection} />}
         {tab === "entrainements" && <Entrainements players={players} cat={cat} db={db} mutate={mutate} estMedical={estMedical} onSignalerBlessure={signalerBlessure} initialSous={entSous} onConsumeSous={() => setEntSous(null)} />}
         {tab === "detection" && <Detection cat={cat} db={db} mutate={mutate} lectureSeule={lectureSeuleCat} />}
         <div style={{ display: "flex", justifyContent: "center", padding: "10px 16px 26px" }}>
@@ -5249,13 +5436,14 @@ export default function App() {
       <nav style={{
         position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff",
         borderTop: `1px solid ${C.grisClair}`, display: "flex", justifyContent: "center",
-        boxShadow: "0 -2px 12px rgba(10,42,107,0.06)", zIndex: 30,
+        boxShadow: "0 -2px 12px rgba(10,42,107,0.06)", zIndex: 100,
+        paddingBottom: "env(safe-area-inset-bottom)",
       }}>
         <div style={{ display: "flex", width: "100%", maxWidth: 760 }}>
           {TABS.map((t) => {
             const I = t.icon; const active = tab === t.id;
             return (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{
+              <button key={t.id} onClick={() => allerOnglet(t.id)} style={{
                 flex: 1, border: "none", background: "none", cursor: "pointer",
                 padding: "9px 2px 10px", display: "flex", flexDirection: "column",
                 alignItems: "center", gap: 3, color: active ? C.bleu : C.gris,
@@ -5269,7 +5457,7 @@ export default function App() {
       </nav>
 
       {dirty && !demo && saveStatus !== "saving" && (
-        <div style={{ position: "fixed", bottom: 16, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 9000, padding: "0 12px", pointerEvents: "none" }}>
+        <div style={{ position: "fixed", bottom: "calc(74px + env(safe-area-inset-bottom))", left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 9000, padding: "0 12px", pointerEvents: "none" }}>
           <div style={{ pointerEvents: "auto", width: "100%", maxWidth: 760, background: C.bleuNuit, color: "#fff", borderRadius: 12, padding: "10px 14px", boxShadow: "0 6px 18px rgba(0,0,0,0.22)", display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>Modifications non enregistrées</span>
             <button onClick={enregistrerManuel} style={{ border: "none", background: C.jaune, color: C.bleuNuit, borderRadius: 9, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}><Save size={15} /> Enregistrer</button>
@@ -5278,7 +5466,7 @@ export default function App() {
       )}
 
       {saveStatus && !demo && (
-        <div style={{ position: "fixed", bottom: 70, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 9001, padding: "0 16px", pointerEvents: "none" }}>
+        <div style={{ position: "fixed", bottom: "calc(132px + env(safe-area-inset-bottom))", left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 9001, padding: "0 16px", pointerEvents: "none" }}>
           <div style={{ pointerEvents: "auto", maxWidth: 400, background: saveStatus === "error" ? C.rouge : saveStatus === "ok" ? C.vert : C.bleu, color: "#fff", borderRadius: 12, padding: "10px 16px", fontSize: 13, fontWeight: 700, boxShadow: "0 4px 14px rgba(0,0,0,0.22)", display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ flex: 1 }}>{saveStatus === "saving" ? "Enregistrement en cours..." : saveStatus === "ok" ? "Enregistré" : saveStatus === "ro" ? "Consultation seule : cette catégorie n'est pas modifiable par toi." : "Échec de l'enregistrement. Vérifie ta connexion et réessaie."}</span>
             {saveStatus === "error" && <span onClick={() => setSaveStatus(null)} style={{ cursor: "pointer", textDecoration: "underline", flex: "0 0 auto" }}>OK</span>}
@@ -5286,12 +5474,22 @@ export default function App() {
         </div>
       )}
 
+      {navPending && (
+        <Modal title="Modifications non enregistrées" onClose={() => setNavPending(null)}
+          footer={<>
+            <Btn variant="ghost" full onClick={() => naviguerVers(navPending)}>Changer de page sans enregistrer</Btn>
+            <Btn variant="accent" full onClick={() => { enregistrerManuel(); naviguerVers(navPending); }}><Save size={16} /> Enregistrer et continuer</Btn>
+          </>}>
+          <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.55 }}>Tu as des changements qui ne sont pas encore enregistrés. Enregistre-les pour ne rien perdre avant de changer de page.</div>
+        </Modal>
+      )}
+
       {showScores && <ScoresWeekend onClose={() => setShowScores(false)} localDb={demo ? db : null} />}
       {showDemandes && <Demandes demo={demo} db={db} mutate={mutate} cat={cat} session={session} onNotifierJoueur={notifierJoueur} onVu={() => setDemTick((t) => t + 1)} onClose={() => { setDemTick((t) => t + 1); setShowDemandes(false); }} />}
-      {showClassement && <Classement cat={cat} db={db} mutate={mutate} onClose={() => setShowClassement(false)} />}
+      {showClassement && <Classement cat={cat} db={db} mutate={mutate} peutValider={peutValider} onClose={() => setShowClassement(false)} />}
       {showTransport && <Transports store={transportClub} maj={majTransportClub} chargement={chargementTransport} peutValider={peutValider} profil={profil} cat={cat} encadrement={encadrementClub} majEncadrement={majEncadrementClub} onValiderDem={validerTransport} onRefuserDem={refuserTransport} db={db} mutate={mutate} onRafraichir={rafraichirTransport} onDemanderDeverrouillage={demanderDeverrouillageAdmin} focusDate={transportFocus} onClose={() => { setShowTransport(false); setTransportFocus(null); }} />}
       {showVestiaire && <DemandesVestiaire store={planningClub} maj={majPlanningClub} peutValider={peutValider} profil={profil} cat={cat} db={db} onValider={validerVestiaire} onRefuser={refuserVestiaire} onAttribuerDirect={attribuerVestiaireDirect} onOuvrirPlanning={() => setShowPlanning(true)} onRafraichir={rafraichirPlanning} onDemanderDeverrouillage={demanderDeverrouillageAdmin} onClose={() => setShowVestiaire(false)} />}
-      {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} planning={planningClub} onClose={() => setShowOrganisation(false)} />}
+      {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} planning={planningClub} majPlanning={majPlanningClub} onClose={() => setShowOrganisation(false)} />}
       {showSauvegarde && <Sauvegarde db={db} mutate={mutate} cat={cat} demo={demo} estAdmin={estAdmin} userId={session ? session.user.id : null} onClose={() => setShowSauvegarde(false)} />}
       {apercuPDF && <ApercuPDF url={apercuPDF.url} nom={apercuPDF.nom} onClose={() => { try { URL.revokeObjectURL(apercuPDF.url); } catch (e) {} setApercuPDF(null); }} />}
       {showPlanning && <Planning planning={planningClub} majPlanning={majPlanningClub} chargement={chargementPlanning} erreur={erreurPlanning} cats={cats} profil={profil} peutValider={peutValider} cat={cat} onClose={() => setShowPlanning(false)} />}
@@ -5495,6 +5693,7 @@ function Login({ configManquante, onDemo }) {
   const [mode, setMode] = useState("connexion");
   const [email, setEmail] = useState(() => { try { return localStorage.getItem("fcsm-email") || ""; } catch (e) { return ""; } });
   const [mdp, setMdp] = useState("");
+  const [voirMdp, setVoirMdp] = useState(false);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -5534,7 +5733,12 @@ function Login({ configManquante, onDemo }) {
               <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 14 }}>{mode === "connexion" ? "Connexion éducateur" : "Créer un compte"}</div>
               <form onSubmit={(e) => { e.preventDefault(); go(); }}>
                 <Field label="Adresse email"><Inp type="email" name="username" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="prenom.nom@club.fr" /></Field>
-                <Field label="Mot de passe"><Inp type="password" name="password" autoComplete={mode === "connexion" ? "current-password" : "new-password"} value={mdp} onChange={(e) => setMdp(e.target.value)} placeholder="6 caractères minimum" /></Field>
+                <Field label="Mot de passe">
+                  <div style={{ position: "relative" }}>
+                    <Inp type={voirMdp ? "text" : "password"} name="password" autoComplete={mode === "connexion" ? "current-password" : "new-password"} value={mdp} onChange={(e) => setMdp(e.target.value)} placeholder="6 caractères minimum" style={{ paddingRight: 86 }} />
+                    <button type="button" onClick={() => setVoirMdp((v) => !v)} aria-label={voirMdp ? "Masquer le mot de passe" : "Afficher le mot de passe"} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", padding: 0, cursor: "pointer", color: C.bleu, fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><Eye size={15} /> {voirMdp ? "Masquer" : "Afficher"}</button>
+                  </div>
+                </Field>
                 <Btn variant="primary" full type="submit" style={{ marginTop: 6 }}>{busy ? "Patiente..." : (mode === "connexion" ? "Se connecter" : "Créer le compte")}</Btn>
               </form>
               {msg && <div style={{ fontSize: 12.5, color: C.encre, marginTop: 12, background: C.fond, padding: 10, borderRadius: 10, lineHeight: 1.5 }}>{msg}</div>}
@@ -6082,6 +6286,8 @@ function Accueil({ db, cat, setTab, onScores, onDemandes, onClassement, onTransp
         {stat("Blessés", blesses, HeartPulse, () => (priseEnChargeMedicale(cat) !== "parents" ? onSuivi() : setTab("effectif")))}
         {stat("À préparer", nbOrga, MapPin, onOrganisation)}
       </div>
+
+      <BoutonNotifs me={msgMe} />
 
       {lstNotifs.length > 0 && (
         <div style={{ display: "grid", gap: 8, marginBottom: 18 }}>
@@ -6940,7 +7146,13 @@ function recalcSuspensionsCat(d) {
   d.players.forEach((pl) => {
     if ((+pl.suspension || 0) > 0 && !pl.suspensionManuelle) {
       const ref = dateDernierCartonActif(pl, d) || pl.discDate || "";
-      if (ref) { const per = periodeSuspension(pl, d, ref, +pl.suspension); pl.suspensionDebut = per.debut; pl.suspensionFin = per.fin; }
+      if (ref) {
+        const per = periodeSuspension(pl, d, ref, +pl.suspension);
+        // La date de debut (lendemain du carton) reste FIGEE : on ne la fixe que si elle est vide.
+        // Seule la date de fin se recalcule (elle recule si les matchs tombent en vacances/arret).
+        if (!pl.suspensionDebut) pl.suspensionDebut = per.debut;
+        pl.suspensionFin = per.fin;
+      }
     }
   });
 }
@@ -10669,7 +10881,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
 /* ============================================================
    Matchs : calendrier, score, rapport, notes
    ============================================================ */
-function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil, onNotifierCorrection, planning }) {
+function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil, onNotifierCorrection, planning, majPlanning }) {
   const [edit, setEdit] = useState(null);
   const [open, setOpen] = useState(null);
   const [filtre, setFiltre] = useState("Tous");
@@ -10886,7 +11098,7 @@ function Matchs({ demo, players, cat, catInfo, db, mutate, peutValider, profil, 
         setEdit(null);
       }} />}
 
-      {open && <RapportMatch demo={demo} match={open} players={players} db={db} mutate={mutate} peutValider={peutValider} profil={profil} planning={planning} onNotifierCorrection={onNotifierCorrection}
+      {open && <RapportMatch demo={demo} match={open} players={players} db={db} mutate={mutate} peutValider={peutValider} profil={profil} planning={planning} majPlanning={majPlanning} onNotifierCorrection={onNotifierCorrection}
         onClose={() => setOpen(null)}
         onEdit={() => { setEdit(open); setOpen(null); }}
         onDelete={() => { mutate((d) => { const m = (d.matches || []).find((x) => x.id === open.id); ajouterCorbeille(d, m, "match", cat); d.matches = d.matches.filter((x) => x.id !== open.id); return d; }); setOpen(null); }} />}
@@ -11967,13 +12179,14 @@ function Convocation({ db, cat, match, mutate, onClose }) {
 }
 
 
-function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) {
+function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning, majPlanning }) {
   const [roster, setRoster] = useState(false);
   const [causeRefus, setCauseRefus] = useState(false);
   const [cause, setCause] = useState("");
   const [resaRefus, setResaRefus] = useState(false);
   const [resaCause, setResaCause] = useState("");
   const [convoc, setConvoc] = useState(false);
+  const [confirmReinit, setConfirmReinit] = useState(false);
   const cur = db.matches.find((x) => x.id === match.id) || match;
   const t = cur.transport || {};
   const e = cur.encadrement || {};
@@ -12092,6 +12305,33 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) 
     majReservation({ statut: "refusee", cause: resaCause.trim() });
     setResaRefus(false); setResaCause("");
   }
+  // Direction : supprime du planning TOUTES les attributions liees a ce match (terrain,
+  // vestiaires club, vestiaires visiteurs), y compris les eventuels doublons et une
+  // reservation orpheline qui traine. On retire par critere (match + date / adversaire + date)
+  // pour ne rien laisser derriere, pas seulement l'entree affichee.
+  function reinitialiserAttribution() {
+    if (!majPlanning) { setConfirmReinit(false); return; }
+    const d0 = cur.date || "";
+    const catMatch = cur.cat || "";
+    const adv = (cur.adversaire || "").trim().toLowerCase();
+    majPlanning((d) => {
+      const dv = d.demandesVestiaire || [];
+      const aRetirer = new Set();
+      dv.forEach((x) => {
+        if (!x || x.statut !== "acceptee") return;
+        if ((x.date || "") !== d0) return;
+        const advX = (x.adversaire || "").trim().toLowerCase();
+        const estClub = (x.cat || "") === catMatch && (!adv || !advX || advX === adv);        // terrain + vestiaires de notre equipe
+        const estVisiteur = adv && (x.cat || "").trim().toLowerCase() === adv;                 // vestiaire de l'adversaire
+        if (estClub || estVisiteur) aRetirer.add(x.id);
+      });
+      // Enfants (vestiaire visiteurs rattache a une demande) des entrees retirees.
+      dv.forEach((x) => { if (x && x.origineVisiteurDe && aRetirer.has(x.origineVisiteurDe)) aRetirer.add(x.id); });
+      d.demandesVestiaire = dv.filter((y) => y && !aRetirer.has(y.id));
+      return d;
+    });
+    setConfirmReinit(false);
+  }
 
   return (
     <Modal title="Organisation administrative" onClose={onClose}>
@@ -12114,6 +12354,12 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) 
                 <div key={"vis" + i} style={{ fontSize: 12.5, color: C.bleu, fontWeight: 800 }}>Visiteurs ({cur.adversaire}) : {a.partage ? `partagé avec nos joueurs · Vestiaire ${a.vestiaire}` : resumeVestiaire(a)}</div>
               ))}
               <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6, lineHeight: 1.4 }}>Réservation gérée dans l'onglet « Demandes de vestiaire et terrain ». Les cases ci-dessous ne sont pas modifiables ici.</div>
+              {peutValider && majPlanning && (
+                <div style={{ marginTop: 10 }}>
+                  <Btn variant="danger" size="sm" full onClick={() => setConfirmReinit(true)}><Trash2 size={15} /> Réinitialiser l'attribution</Btn>
+                  <div style={{ fontSize: 11, color: C.gris, marginTop: 5, lineHeight: 1.4 }}>Efface le terrain et les vestiaires attribués à ce match (y compris une réservation restée bloquée). Les cases redeviennent modifiables.</div>
+                </div>
+              )}
             </div>
           )}
 
@@ -12373,6 +12619,11 @@ function OrgaMatch({ demo, match, db, mutate, onClose, peutValider, planning }) 
       {roster && <RosterEncadrement demo={demo} db={db} mutate={mutate} onClose={() => setRoster(false)} />}
       {gererDir && <GestionDirigeants liste={liste} maj={majListe} onClose={() => setGererDir(false)} />}
       {convoc && <Convocation db={db} cat={cur.cat} match={match} mutate={mutate} onClose={() => setConvoc(false)} />}
+      {confirmReinit && (
+        <Modal title="Réinitialiser l'attribution" onClose={() => setConfirmReinit(false)} footer={<><Btn variant="ghost" full onClick={() => setConfirmReinit(false)}>Annuler</Btn><Btn variant="danger" full onClick={reinitialiserAttribution}><Trash2 size={16} /> Réinitialiser</Btn></>}>
+          <div style={{ fontSize: 14, color: C.encre, lineHeight: 1.5 }}>Supprimer les attributions de terrain et de vestiaires de ce match contre {cur.adversaire || "l'adversaire"} (y compris le vestiaire visiteurs) ? Les cases redeviendront modifiables et tu pourras ré-attribuer si besoin.</div>
+        </Modal>
+      )}
     </Modal>
   );
 }
@@ -13134,7 +13385,7 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
   );
 }
 
-function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDelete, peutValider, profil, onNotifierCorrection, planning }) {
+function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDelete, peutValider, profil, onNotifierCorrection, planning, majPlanning }) {
   const [noteFor, setNoteFor] = useState(null);
   const [evalEssaiFor, setEvalEssaiFor] = useState(null); // joueur à l'essai dont on saisit l'évaluation détection
   const [orga, setOrga] = useState(false);
@@ -13932,7 +14183,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
         onClose={() => setEvalEssaiFor(null)}
         onSave={(data) => { saveEvalEssai(evalEssaiFor.id, data); setEvalEssaiFor(null); }}
         onEffacer={() => { saveEvalEssai(evalEssaiFor.id, null); setEvalEssaiFor(null); }} />}
-      {orga && <OrgaMatch demo={demo} match={match} db={db} mutate={mutate} peutValider={peutValider} planning={planning} onClose={() => setOrga(false)} />}
+      {orga && <OrgaMatch demo={demo} match={match} db={db} mutate={mutate} peutValider={peutValider} planning={planning} majPlanning={majPlanning} onClose={() => setOrga(false)} />}
       {plateau && <OrganiserPlateau tournoi={{ nom: `${match.type}${match.date ? " du " + fmtDate(match.date) : ""}`, organisation: cur.organisation }} jsonActif={jsonImportActif(db)} onClose={() => setPlateau(false)} onSave={enregistrerPlateau} />}
       {jong && (/^U13/.test(match.cat)
         ? <DefiJonglageLigue match={match} players={players} db={db} mutate={mutate} onClose={() => setJong(false)} />
@@ -15955,7 +16206,7 @@ function PlanningSemaine({ planning, cat, type, onClose }) {
   const bgTer = (t) => t === "Synthétique dôme" ? "#E7EEF6" : t === "Synthétique centre" ? "#E2F4E9" : t === "Pouges" ? "#FBEAD9" : "#EDF2F8";
   const colTer = (t) => t === "Synthétique dôme" ? C.bleu : t === "Synthétique centre" ? C.vert : t === "Pouges" ? "#B87A2B" : C.bleu;
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 70, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 70, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>{typeLabel} · semaine · {cat}</div>
@@ -16346,7 +16597,7 @@ function Planning({ planning, majPlanning, chargement, erreur, cats, profil, peu
   );
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Planning des {type === "vestiaires" ? "vestiaires" : "terrains"}</div>
@@ -16699,7 +16950,7 @@ function AccesSecteurs({ db, mutate, estAdmin, onClose }) {
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Droits d'accès</div>
@@ -17204,7 +17455,7 @@ function ProgrammeSemaine({ db, localDb, peutValider, userId, encadrement, cats,
   const fermerApercuImg = () => setApercuImg(null);
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Programme de la semaine</div>
@@ -17401,7 +17652,7 @@ function SuiviMedical({ db, mutate, cat, estMedical, onSignalerBlessure, onClose
   const sousType = priseEnChargeMedicale(cat);
   const blessures = (db.injuries || []).filter((i) => i.cat === cat && (i.priseEnCharge ? i.priseEnCharge === "club" : sousType !== "parents")).sort((a, b) => (a.fini === b.fini) ? 0 : a.fini ? 1 : -1);
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Suivi médical · {cat}</div>
@@ -17452,7 +17703,7 @@ function PlanningHebdo({ onClose }) {
     catch (e) { setMsg("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
   }
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Planning hebdomadaire des entraînements</div>
@@ -17633,6 +17884,18 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onRafra
     } else {
       const msg = { id: uid(), de: me.nom || "Direction", deEmail: me.email || "", date: nowISO(), objet: objet.trim(), texte: texte.trim(), type, urgence, categories, destinataires: dests, lectures: {}, reponses: {} };
       maj((list) => [msg, ...(list || [])]);
+      // Notification push aux destinataires (alerte sur l'ecran d'accueil, meme appli fermee).
+      try {
+        notifierPush({
+          titre: "Message du club" + (objet.trim() ? " : " + objet.trim() : ""),
+          corps: texte.trim().slice(0, 140),
+          url: "/",
+          emails: dests.map((d) => d.email).filter(Boolean),
+          cats: categories,
+          excludeEmail: me.email || "",
+          tag: "msg-" + msg.id,
+        });
+      } catch (e) {}
     }
     fermerCompose();
     setVue("envoyes");
@@ -17661,7 +17924,7 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onRafra
   );
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16, flex: 1, minWidth: 0 }}>Messagerie du club</div>
@@ -17676,6 +17939,7 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onRafra
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
        <div style={{ maxWidth: 760, margin: "0 auto", width: "100%" }}>
+        <BoutonNotifs me={me} />
         {peutValider && (
           <>
             <Btn variant="accent" full style={{ marginBottom: 12 }} onClick={() => (compose ? fermerCompose() : ouvrirCompose())}><Plus size={16} /> Nouveau message aux éducateurs</Btn>
@@ -17917,7 +18181,7 @@ function DocumentsAdmin({ players, cat, db, mutate, lectureSeule, demo, adminUnl
   const horsPeriode = players.filter((p) => typeMutation(p) === "hors").sort((a, b) => (a.nom || "").localeCompare(b.nom || ""));
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Documents administratifs · {cat}</div>
@@ -18780,7 +19044,7 @@ function BilanEquipe({ db, players, cat, mutate, onClose, onTournois }) {
   const SousTitre = ({ children }) => (<div style={{ fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "12px 0 8px" }}>{children}</div>);
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>Bilan de saison · {catSel}</div>
@@ -19798,7 +20062,7 @@ function OrganiserPlateau({ tournoi, onClose, onSave, jsonActif }) {
   const titreSection = { fontSize: 12, fontWeight: 800, color: C.bleu, textTransform: "uppercase", letterSpacing: 0.4, margin: "18px 0 8px" };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 70, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 70, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={fermer} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ minWidth: 0, flex: 1 }}>
@@ -20404,7 +20668,7 @@ function Tournois({ db, mutate, cat, onClose }) {
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Tournois · {cat}</div>
@@ -20609,7 +20873,7 @@ function Reunions({ db, mutate, erreur, onClose, majEncadrement }) {
   const dateLongue = (r) => (r.date ? new Date(r.date + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) : "") + (r.heure ? ` · ${r.heure}` : "");
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={() => (sel ? setSelId(null) : onClose())} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>{sel ? "Détail de la réunion" : "Réunions"}</div>
@@ -20781,7 +21045,7 @@ function Calendrier({ db, mutate, mutateReunions, peutValider, onClose, majEncad
   const joursSem = [0, 1, 2, 3, 4, 5, 6].map((i) => { const d = new Date(lu); d.setDate(lu.getDate() + i); return fmtISO(d); });
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.fond, zIndex: 60, display: "flex", flexDirection: "column", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif", paddingBottom: ESPACE_BARRE, boxSizing: "border-box" }}>
       <header style={{ background: `linear-gradient(160deg, ${C.bleuNuit}, ${C.bleu})`, color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 11px", borderBottom: `2px solid ${C.jaune}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", borderRadius: 10, width: 34, height: 34, cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><ChevronLeft size={20} /></button>
         <div style={{ fontWeight: 800, fontSize: 16 }}>Calendrier du club</div>
