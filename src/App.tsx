@@ -1398,9 +1398,10 @@ function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose, plann
   );
 }
 
-function Classement({ cat, db, mutate, onClose }) {
+function Classement({ cat, db, mutate, peutValider, onClose }) {
   const url = ((db.config && db.config.classement) || {})[cat] || "";
-  const [editer, setEditer] = useState(!url);
+  const peutEditer = !!peutValider; // seule la direction peut saisir / modifier le lien
+  const [editer, setEditer] = useState(!url && peutEditer);
   const [val, setVal] = useState(url);
   const [direct, setDirect] = useState((((db.config && db.config.classementDirect) || {})[cat]) || false);
   let niveau, siteSource;
@@ -1429,12 +1430,12 @@ function Classement({ cat, db, mutate, onClose }) {
 
   return (
     <Modal title={`Classement ${cat}`} onClose={onClose}
-      footer={url && !editer
+      footer={!peutEditer ? null : (url && !editer
         ? <Btn variant="ghost" full onClick={() => { setVal(url); setEditer(true); }}><Edit3 size={16} /> Modifier le lien</Btn>
-        : <Btn variant="accent" full disabled={!val.trim()} onClick={enregistrer}><Save size={16} /> Enregistrer</Btn>}>
+        : <Btn variant="accent" full disabled={!val.trim()} onClick={enregistrer}><Save size={16} /> Enregistrer</Btn>)}>
       <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12 }}>Compétition suivie au niveau : <strong style={{ color: C.bleu }}>{niveau}</strong></div>
 
-      {editer || !url ? (
+      {(editer || !url) && peutEditer ? (
         <>
           <div style={{ fontSize: 13, color: C.encre, background: "#F4F7FB", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 12, marginBottom: 12, lineHeight: 1.5 }}>
             Pour obtenir le lien : sur {siteSource}, ouvre la compétition de la catégorie {cat}, puis le classement de ta poule, et copie le lien de partage du widget « score en direct » (adresse du type fff.fr/score-en-direct/...). Colle-le ci-dessous : le classement et les résultats du groupe s'afficheront en direct.
@@ -1448,6 +1449,8 @@ function Classement({ cat, db, mutate, onClose }) {
           </label>
           {url && <Btn variant="ghost" size="sm" onClick={() => setEditer(false)}>Annuler</Btn>}
         </>
+      ) : !url ? (
+        <div style={{ fontSize: 13, color: C.encre, background: "#F4F7FB", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 12, lineHeight: 1.5 }}>Le lien du classement n'a pas encore été renseigné par la direction pour cette catégorie.</div>
       ) : direct ? (
         <>
           <div style={{ fontSize: 13, color: C.encre, background: "#F4F7FB", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 12, marginBottom: 12, lineHeight: 1.5 }}>Le classement de cette catégorie s'ouvre directement dans le navigateur. Il vient de s'ouvrir dans un onglet. Touche le bouton ci-dessous pour le rouvrir.</div>
@@ -1801,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.71";
+const APP_VERSION = "16.19.73";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -2689,38 +2692,56 @@ async function notifierPush(info) {
 function BoutonNotifs({ me }) {
   const [etat, setEtat] = useState("verif"); // verif -> ok | off | refuse | err
   const [busy, setBusy] = useState(false);
+  const [detail, setDetail] = useState("");  // derniere raison / erreur (diagnostic)
   // A l'ouverture : si l'autorisation est deja donnee, on (re)enregistre vraiment
   // l'appareil dans la base, sans rien redemander. Le bandeau vert ne s'affiche
   // que si l'enregistrement a reellement reussi.
   useEffect(() => {
     let annule = false;
     (async () => {
-      if (!pushSupporte()) { if (!annule) setEtat("off"); return; }
+      if (!pushSupporte()) { if (!annule) { setEtat("off"); setDetail("non supporte par ce navigateur / cette ouverture"); } return; }
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
         const r = await activerNotificationsPush(me);
-        if (!annule) setEtat(r.ok ? "ok" : "off");
+        if (!annule) { setEtat(r.ok ? "ok" : "off"); setDetail(r.ok ? "enregistre" : (r.raison || "echec")); }
       } else {
-        if (!annule) setEtat("off");
+        if (!annule) { setEtat("off"); setDetail("autorisation non accordee (" + ((typeof Notification !== "undefined") ? Notification.permission : "?") + ")"); }
       }
     })();
     return () => { annule = true; };
   }, []);
-  if (!pushSupporte()) return null;
-  if (etat === "verif") return null;
   async function activer() {
     setBusy(true);
     const r = await activerNotificationsPush(me);
     setBusy(false);
     setEtat(r.ok ? "ok" : (r.raison === "refuse" ? "refuse" : "err"));
+    setDetail(r.ok ? "enregistre" : (r.raison || "echec"));
   }
+  // Encart de diagnostic : montre l'etat reel sur l'appareil pour comprendre un blocage.
+  const supporte = pushSupporte();
+  const perm = (typeof Notification !== "undefined") ? Notification.permission : "indisponible";
+  const installe = (typeof window !== "undefined" && (((window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)) || window.navigator.standalone === true)) ? "oui" : "non";
+  const diag = (
+    <div style={{ fontSize: 10.5, color: C.gris, marginTop: 6, lineHeight: 1.5, background: "#F4F6F9", border: `1px solid ${C.grisClair}`, borderRadius: 8, padding: "7px 9px" }}>
+      <div style={{ fontWeight: 800, marginBottom: 2 }}>Diagnostic notifications</div>
+      Supporte : {supporte ? "oui" : "non"} · Autorisation : {perm} · Installée (écran d'accueil) : {installe}
+      {detail ? <div style={{ marginTop: 2, color: detail === "enregistre" ? "#2F6D43" : C.rouge, fontWeight: 700, wordBreak: "break-word" }}>Dernier message : {detail}</div> : null}
+    </div>
+  );
+  if (etat === "verif") return <div style={{ marginBottom: 12 }}>{diag}</div>;
   if (etat === "ok") {
-    return <div style={{ fontSize: 12.5, fontWeight: 700, color: "#2F6D43", background: "#E2F4E9", border: "1px solid #BFE3CC", borderRadius: 10, padding: "9px 12px", marginBottom: 12, display: "flex", alignItems: "center", gap: 7 }}><Bell size={15} /> Notifications activées sur cet appareil</div>;
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: "#2F6D43", background: "#E2F4E9", border: "1px solid #BFE3CC", borderRadius: 10, padding: "9px 12px", display: "flex", alignItems: "center", gap: 7 }}><Bell size={15} /> Notifications activées sur cet appareil</div>
+        {diag}
+      </div>
+    );
   }
   return (
     <div style={{ marginBottom: 12 }}>
       <Btn variant="ghost" full onClick={activer} disabled={busy}><Bell size={15} /> {busy ? "Activation..." : "Activer les notifications sur cet appareil"}</Btn>
-      {etat === "refuse" && <div style={{ fontSize: 11.5, color: C.rouge, marginTop: 5, lineHeight: 1.4 }}>Les notifications ont été refusées. Autorise-les dans les réglages du navigateur, puis réessaie.</div>}
-      {etat === "err" && <div style={{ fontSize: 11.5, color: C.gris, marginTop: 5, lineHeight: 1.4 }}>Activation impossible pour l'instant (appli à installer sur l'écran d'accueil, ou réessaie plus tard).</div>}
+      {etat === "refuse" && <div style={{ fontSize: 11.5, color: C.rouge, marginTop: 5, lineHeight: 1.4 }}>Les notifications ont été refusées. Autorise-les dans Réglages de l'iPhone → l'app → Notifications, puis réessaie.</div>}
+      {etat === "err" && <div style={{ fontSize: 11.5, color: C.gris, marginTop: 5, lineHeight: 1.4 }}>Activation impossible pour l'instant (appli à ouvrir depuis l'icône de l'écran d'accueil, ou réessaie plus tard).</div>}
+      {diag}
     </div>
   );
 }
@@ -5420,7 +5441,7 @@ export default function App() {
 
       {showScores && <ScoresWeekend onClose={() => setShowScores(false)} localDb={demo ? db : null} />}
       {showDemandes && <Demandes demo={demo} db={db} mutate={mutate} cat={cat} session={session} onNotifierJoueur={notifierJoueur} onVu={() => setDemTick((t) => t + 1)} onClose={() => { setDemTick((t) => t + 1); setShowDemandes(false); }} />}
-      {showClassement && <Classement cat={cat} db={db} mutate={mutate} onClose={() => setShowClassement(false)} />}
+      {showClassement && <Classement cat={cat} db={db} mutate={mutate} peutValider={peutValider} onClose={() => setShowClassement(false)} />}
       {showTransport && <Transports store={transportClub} maj={majTransportClub} chargement={chargementTransport} peutValider={peutValider} profil={profil} cat={cat} encadrement={encadrementClub} majEncadrement={majEncadrementClub} onValiderDem={validerTransport} onRefuserDem={refuserTransport} db={db} mutate={mutate} onRafraichir={rafraichirTransport} onDemanderDeverrouillage={demanderDeverrouillageAdmin} focusDate={transportFocus} onClose={() => { setShowTransport(false); setTransportFocus(null); }} />}
       {showVestiaire && <DemandesVestiaire store={planningClub} maj={majPlanningClub} peutValider={peutValider} profil={profil} cat={cat} db={db} onValider={validerVestiaire} onRefuser={refuserVestiaire} onAttribuerDirect={attribuerVestiaireDirect} onOuvrirPlanning={() => setShowPlanning(true)} onRafraichir={rafraichirPlanning} onDemanderDeverrouillage={demanderDeverrouillageAdmin} onClose={() => setShowVestiaire(false)} />}
       {showOrganisation && <OrganisationMatchs demo={demo} db={db} mutate={mutate} cat={cat} peutValider={peutValider} planning={planningClub} majPlanning={majPlanningClub} onClose={() => setShowOrganisation(false)} />}
