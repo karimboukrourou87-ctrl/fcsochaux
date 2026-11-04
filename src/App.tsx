@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.81";
+const APP_VERSION = "16.19.82";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -13702,7 +13702,9 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
   const essaisPresents = (db.essais || [])
     .filter((e) => e.cat === match.cat && e.statut !== "archive" && idsCompo.has(e.id) && !players.some((q) => q.id === e.id))
     .map((e) => ({ id: e.id, prenom: e.prenom || "", nom: e.nom || "", poste: e.poste || "", photo: e.photo || "", cat: e.cat, essai: true }));
-  const joueursRapport = [...players.filter((p) => !motifsNonRetenu.has(p.id) && !estSuspenduRap(p)), ...surclassesPresents, ...essaisPresents];
+  // La feuille de match ne contient QUE les joueurs de la compo (titulaires + remplaçants prévus, ou ayant déjà
+  // des stats/cartons sur ce match). Les autres joueurs de la catégorie basculent dans « Joueurs non retenus ».
+  const joueursRapport = [...players.filter((p) => idsCompo.has(p.id) && !motifsNonRetenu.has(p.id) && !estSuspenduRap(p)), ...surclassesPresents, ...essaisPresents];
   // Diagnostic temps de jeu : compare le temps de jeu stocké sur le match avec les joueurs affichés,
   // pour repérer un éventuel écart d'identifiants (temps enregistré sous un id absent de la feuille).
   useEffect(() => {
