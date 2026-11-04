@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.74";
+const APP_VERSION = "16.19.75";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -2660,19 +2660,24 @@ async function enregistrerServiceWorker() {
 function pushSupporte() {
   return typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 }
-async function activerNotificationsPush(me) {
+async function activerNotificationsPush(me, creerSiAbsent = true) {
   if (!pushSupporte()) return { ok: false, raison: "non_supporte" };
   try {
     // On ne redemande l'autorisation que si elle n'a jamais ete donnee. Sur iPhone,
     // redemander alors qu'elle est deja accordee (hors appui direct) est rejete par iOS.
     let perm = Notification.permission;
-    if (perm === "default") perm = await Notification.requestPermission();
+    if (perm === "default" && creerSiAbsent) perm = await Notification.requestPermission();
     if (perm !== "granted") return { ok: false, raison: "refuse" };
     const reg = await enregistrerServiceWorker();
     if (!reg) return { ok: false, raison: "sw" };
     await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
-    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToUint8(VAPID_PUBLIC) });
+    if (!sub) {
+      // iOS n'autorise la creation de l'abonnement que depuis un appui du doigt :
+      // au demarrage (creerSiAbsent=false) on ne cree rien, on attend le bouton.
+      if (!creerSiAbsent) return { ok: false, raison: "pas_abonne" };
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToUint8(VAPID_PUBLIC) });
+    }
     const j = sub.toJSON();
     const sb = await getSupabase();
     const { error: upErr } = await sb.from("push_subscriptions").upsert({
@@ -2704,7 +2709,7 @@ function BoutonNotifs({ me }) {
     (async () => {
       if (!pushSupporte()) { if (!annule) { setEtat("off"); setDetail("non supporte par ce navigateur / cette ouverture"); } return; }
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        const r = await activerNotificationsPush(me);
+        const r = await activerNotificationsPush(me, false); // au demarrage : on n'enregistre que si l'abonnement existe deja (iOS)
         if (!annule) { setEtat(r.ok ? "ok" : "off"); setDetail(r.ok ? "enregistre" : (r.raison || "echec")); }
       } else {
         if (!annule) { setEtat("off"); setDetail("autorisation non accordee (" + ((typeof Notification !== "undefined") ? Notification.permission : "?") + ")"); }
