@@ -1801,7 +1801,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.70";
+const APP_VERSION = "16.19.71";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -3543,12 +3543,13 @@ function Modal({ title, onClose, children, footer, titleCenter, wide, fullscreen
   return (
     <div onClick={onClose} style={{
       position: "fixed", inset: 0, background: "rgba(6,24,74,0.55)", zIndex: 50,
-      display: "flex", alignItems: fullscreen ? "stretch" : "flex-end", justifyContent: "center",
-      padding: 0, paddingBottom: ESPACE_BARRE, boxSizing: "border-box",
+      display: "flex", alignItems: fullscreen ? "flex-start" : "flex-end", justifyContent: "center", padding: 0,
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
         background: C.fond, width: "100%", maxWidth: fullscreen ? "none" : wide ? "min(1280px, 97vw)" : 560,
-        height: fullscreen ? "100%" : "auto", maxHeight: fullscreen ? "100%" : wide ? "96vh" : "92vh",
+        height: fullscreen ? `calc(100% - ${ESPACE_BARRE})` : "auto",
+        maxHeight: fullscreen ? `calc(100% - ${ESPACE_BARRE})` : `calc(${wide ? "96vh" : "92vh"} - ${ESPACE_BARRE})`,
+        marginBottom: ESPACE_BARRE,
         borderTopLeftRadius: fullscreen ? 0 : 22, borderTopRightRadius: fullscreen ? 0 : 22, overflow: "hidden",
         display: "flex", flexDirection: "column",
       }}>
