@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.78";
+const APP_VERSION = "16.19.79";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -7146,7 +7146,13 @@ function recalcSuspensionsCat(d) {
   d.players.forEach((pl) => {
     if ((+pl.suspension || 0) > 0 && !pl.suspensionManuelle) {
       const ref = dateDernierCartonActif(pl, d) || pl.discDate || "";
-      if (ref) { const per = periodeSuspension(pl, d, ref, +pl.suspension); pl.suspensionDebut = per.debut; pl.suspensionFin = per.fin; }
+      if (ref) {
+        const per = periodeSuspension(pl, d, ref, +pl.suspension);
+        // La date de debut (lendemain du carton) reste FIGEE : on ne la fixe que si elle est vide.
+        // Seule la date de fin se recalcule (elle recule si les matchs tombent en vacances/arret).
+        if (!pl.suspensionDebut) pl.suspensionDebut = per.debut;
+        pl.suspensionFin = per.fin;
+      }
     }
   });
 }
