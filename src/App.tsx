@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.77";
+const APP_VERSION = "16.19.78";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -2720,6 +2720,21 @@ function BoutonNotifs({ me }) {
   const [etat, setEtat] = useState("off"); // off (bouton visible) -> ok | refuse | err ; le bouton reste toujours touchable
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState("");  // derniere raison / erreur (diagnostic)
+  const [swInfo, setSwInfo] = useState(""); // etat du service worker (diagnostic)
+  // Lit l'etat reel du service worker pour comprendre un blocage d'activation.
+  useEffect(() => {
+    let annule = false;
+    (async () => {
+      try {
+        if (!("serviceWorker" in navigator)) { if (!annule) setSwInfo("sw: indisponible"); return; }
+        const reg = await navigator.serviceWorker.getRegistration();
+        const ctrl = navigator.serviceWorker.controller ? "oui" : "non";
+        if (!reg) { if (!annule) setSwInfo("sw: aucune registration · controle:" + ctrl); return; }
+        if (!annule) setSwInfo("sw: installing=" + (reg.installing ? "o" : "n") + " waiting=" + (reg.waiting ? "o" : "n") + " active=" + (reg.active ? "o" : "n") + " · controle:" + ctrl + " · scope:" + (reg.scope || "").replace(/^https?:\/\/[^/]+/, ""));
+      } catch (e) { if (!annule) setSwInfo("sw: err " + ((e && e.message) || e)); }
+    })();
+    return () => { annule = true; };
+  }, [detail]);
   // A l'ouverture : si l'autorisation est deja donnee, on (re)enregistre vraiment
   // l'appareil dans la base, sans rien redemander. Le bandeau vert ne s'affiche
   // que si l'enregistrement a reellement reussi.
@@ -2753,6 +2768,7 @@ function BoutonNotifs({ me }) {
     <div style={{ fontSize: 10.5, color: C.gris, marginTop: 6, lineHeight: 1.5, background: "#F4F6F9", border: `1px solid ${C.grisClair}`, borderRadius: 8, padding: "7px 9px" }}>
       <div style={{ fontWeight: 800, marginBottom: 2 }}>Diagnostic notifications</div>
       Supporte : {supporte ? "oui" : "non"} · Autorisation : {perm} · Installée (écran d'accueil) : {installe}
+      {swInfo ? <div style={{ marginTop: 2, wordBreak: "break-word" }}>{swInfo}</div> : null}
       {detail ? <div style={{ marginTop: 2, color: detail === "enregistre" ? "#2F6D43" : C.rouge, fontWeight: 700, wordBreak: "break-word" }}>Dernier message : {detail}</div> : null}
     </div>
   );
