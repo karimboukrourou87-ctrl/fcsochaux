@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.75";
+const APP_VERSION = "16.19.76";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -2660,6 +2660,13 @@ async function enregistrerServiceWorker() {
 function pushSupporte() {
   return typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 }
+// Limite de temps sur une etape : si elle n'aboutit pas, on sait laquelle bloque.
+function _avecDelai(p, ms, nom) {
+  return Promise.race([
+    Promise.resolve(p),
+    new Promise((_, rej) => setTimeout(() => rej(new Error("timeout:" + nom)), ms)),
+  ]);
+}
 async function activerNotificationsPush(me, creerSiAbsent = true) {
   if (!pushSupporte()) return { ok: false, raison: "non_supporte" };
   try {
@@ -2668,19 +2675,18 @@ async function activerNotificationsPush(me, creerSiAbsent = true) {
     let perm = Notification.permission;
     if (perm === "default" && creerSiAbsent) perm = await Notification.requestPermission();
     if (perm !== "granted") return { ok: false, raison: "refuse" };
-    const reg = await enregistrerServiceWorker();
-    if (!reg) return { ok: false, raison: "sw" };
-    await navigator.serviceWorker.ready;
-    let sub = await reg.pushManager.getSubscription();
+    const reg = await _avecDelai(enregistrerServiceWorker(), 8000, "sw_register");
+    if (!reg) return { ok: false, raison: "sw_null" };
+    await _avecDelai(navigator.serviceWorker.ready, 8000, "sw_ready");
+    let sub = await _avecDelai(reg.pushManager.getSubscription(), 8000, "get_sub");
     if (!sub) {
-      // iOS n'autorise la creation de l'abonnement que depuis un appui du doigt :
-      // au demarrage (creerSiAbsent=false) on ne cree rien, on attend le bouton.
+      // Au demarrage (creerSiAbsent=false) on ne cree rien, on attend l'appui sur le bouton.
       if (!creerSiAbsent) return { ok: false, raison: "pas_abonne" };
-      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToUint8(VAPID_PUBLIC) });
+      sub = await _avecDelai(reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToUint8(VAPID_PUBLIC) }), 12000, "subscribe");
     }
     const j = sub.toJSON();
     const sb = await getSupabase();
-    const { error: upErr } = await sb.from("push_subscriptions").upsert({
+    const { error: upErr } = await _avecDelai(sb.from("push_subscriptions").upsert({
       email: (((me && me.email) || "").trim().toLowerCase()) || null,
       nom: (me && me.nom) || null,
       role: (me && me.role) || null,
@@ -2688,17 +2694,17 @@ async function activerNotificationsPush(me, creerSiAbsent = true) {
       endpoint: j.endpoint,
       p256dh: j.keys && j.keys.p256dh,
       auth: j.keys && j.keys.auth,
-    }, { onConflict: "endpoint" });
+    }, { onConflict: "endpoint" }), 10000, "upsert");
     if (upErr) return { ok: false, raison: "db:" + (upErr.message || String(upErr)) };
     return { ok: true };
-  } catch (e) { return { ok: false, raison: String(e) }; }
+  } catch (e) { return { ok: false, raison: (e && e.message) ? e.message : String(e) }; }
 }
 async function notifierPush(info) {
   try { const sb = await getSupabase(); await sb.functions.invoke("notifier", { body: info }); } catch (e) {}
 }
 // Bouton que le coach touche une fois pour recevoir les alertes sur son ecran d'accueil.
 function BoutonNotifs({ me }) {
-  const [etat, setEtat] = useState("verif"); // verif -> ok | off | refuse | err
+  const [etat, setEtat] = useState("off"); // off (bouton visible) -> ok | refuse | err ; le bouton reste toujours touchable
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState("");  // derniere raison / erreur (diagnostic)
   // A l'ouverture : si l'autorisation est deja donnee, on (re)enregistre vraiment
@@ -2718,8 +2724,10 @@ function BoutonNotifs({ me }) {
     return () => { annule = true; };
   }, []);
   async function activer() {
-    setBusy(true);
-    const r = await activerNotificationsPush(me);
+    setBusy(true); setDetail("activation en cours...");
+    let r;
+    try { r = await activerNotificationsPush(me, true); }
+    catch (e) { r = { ok: false, raison: (e && e.message) ? e.message : String(e) }; }
     setBusy(false);
     setEtat(r.ok ? "ok" : (r.raison === "refuse" ? "refuse" : "err"));
     setDetail(r.ok ? "enregistre" : (r.raison || "echec"));
