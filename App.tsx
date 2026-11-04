@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.79";
+const APP_VERSION = "16.19.83";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -2794,6 +2794,19 @@ function BoutonNotifs({ me }) {
 try { enregistrerServiceWorker(); } catch (e) {}
 async function saveCat(cat, blob, userId) {
   const sb = await getSupabase();
+  // SECURITE ANTI-EFFACEMENT : on n'ecrase JAMAIS un effectif rempli par un effectif vide.
+  // (protege du cas ou un mauvais chargement laisserait la liste de joueurs vide en memoire.)
+  if (blob && Array.isArray(blob.players) && blob.players.length === 0) {
+    try {
+      const { data: actuel } = await sb.from("categorie_data").select("data").eq("categorie", cat).maybeSingle();
+      const nbServeur = actuel && actuel.data && Array.isArray(actuel.data.players) ? actuel.data.players.length : 0;
+      if (nbServeur > 0) {
+        trace("saveCat BLOQUE anti-effacement " + cat, { joueursServeur: nbServeur });
+        try { if (typeof console !== "undefined") console.warn("Sauvegarde bloquee (anti-effacement) : " + cat + " allait etre enregistre vide alors que le serveur contient " + nbServeur + " joueur(s)."); } catch (e) {}
+        return; // on ne sauvegarde pas : le serveur conserve ses joueurs
+      }
+    } catch (e) { /* lecture serveur impossible : on ne bloque pas une sauvegarde normale */ }
+  }
   const { error } = await sb.from("categorie_data").upsert({ categorie: cat, data: blob, maj_le: new Date().toISOString(), maj_par: userId });
   if (error) { trace("saveCat ERREUR " + cat, (error && error.message) || error); throw error; }
   trace("saveCat OK " + cat, userId ? "" : "sans userId");
@@ -10456,7 +10469,23 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
     if (compoScellee) return;
     if (!t) return;
     if (Object.keys(lineup.slots || {}).length > 0 && typeof window !== "undefined" && !window.confirm("Remplacer la composition actuelle par la composition type \"" + t.nom + "\" ?")) return;
-    mutate((d) => { d.lineups[key] = { formation: t.formation, slots: { ...(t.slots || {}) }, remplacants: [...(t.remplacants || [])], capitaine: t.capitaine || null, format: t.format, numeros: { ...(t.numeros || {}) } }; return d; });
+    // Un joueur suspendu (dans sa catégorie, sur un match officiel) ne doit PAS être recopié depuis la compo type.
+    const estBloque = (id) => {
+      if (!dateMatchCompo || !matchCompoOfficiel) return false; // match non officiel : suspendus autorisés
+      const p = players.find((x) => x.id === id);
+      return p ? estSuspenduPourDate(p, dateMatchCompo) : false;
+    };
+    const slotsFiltres = {};
+    Object.entries(t.slots || {}).forEach(([slot, id]) => { if (!estBloque(id)) slotsFiltres[slot] = id; });
+    const rempFiltres = (t.remplacants || []).filter((id) => !estBloque(id));
+    const capFiltre = (t.capitaine && !estBloque(t.capitaine)) ? t.capitaine : null;
+    mutate((d) => { d.lineups[key] = { formation: t.formation, slots: slotsFiltres, remplacants: rempFiltres, capitaine: capFiltre, format: t.format, numeros: { ...(t.numeros || {}) } }; return d; });
+    // Prévenir des joueurs écartés pour suspension.
+    const retires = [...Object.values(t.slots || {}), ...(t.remplacants || [])].filter((id, i, arr) => arr.indexOf(id) === i && estBloque(id));
+    if (retires.length && typeof window !== "undefined") {
+      const noms = retires.map((id) => { const p = players.find((x) => x.id === id); return p ? `${p.prenom} ${p.nom}`.trim() : ""; }).filter(Boolean);
+      window.alert("Composition type appliquée. " + (noms.length > 1 ? "Joueurs écartés car suspendus : " : "Joueur écarté car suspendu : ") + noms.join(", ") + ". Complète leur place manuellement.");
+    }
   }
   function supprimerCompoType(nom) {
     mutate((d) => { if (d.config && d.config.compoTypes && d.config.compoTypes[cat]) d.config.compoTypes[cat] = d.config.compoTypes[cat].filter((t) => t.nom !== nom); return d; });
@@ -13678,11 +13707,17 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
   // Les joueurs avec un motif de non-retenu (non qualifié, prévu en catégorie supérieure, blessé, suspendu, absent)
   // ne sont PAS comptés dans la feuille de match : ils sont seulement mentionnés dans la section dédiée.
   const motifsNonRetenu = new Set(Object.entries((cur && cur.nonRetenus) || {}).filter(([, m]) => (m || "").trim()).map(([id]) => id));
+  // Un joueur suspendu (dans sa catégorie, sur un match officiel) ne doit PAS figurer sur la feuille de match :
+  // il bascule automatiquement dans « Joueurs non retenus ».
+  const matchOfficielRap = estMatchPurgeable(cur.type, match.cat, cur.officiel);
+  const estSuspenduRap = (p) => matchOfficielRap && !p.surclasse && !p.essai && estSuspenduPourDate(p, cur.date) && players.some((q) => q.id === p.id);
   // Joueurs à l'essai alignés sur ce match (présents dans la compo) : ajoutés à la feuille pour saisir temps de jeu et évaluation.
   const essaisPresents = (db.essais || [])
     .filter((e) => e.cat === match.cat && e.statut !== "archive" && idsCompo.has(e.id) && !players.some((q) => q.id === e.id))
     .map((e) => ({ id: e.id, prenom: e.prenom || "", nom: e.nom || "", poste: e.poste || "", photo: e.photo || "", cat: e.cat, essai: true }));
-  const joueursRapport = [...players.filter((p) => !motifsNonRetenu.has(p.id)), ...surclassesPresents, ...essaisPresents];
+  // La feuille de match ne contient QUE les joueurs de la compo (titulaires + remplaçants prévus, ou ayant déjà
+  // des stats/cartons sur ce match). Les autres joueurs de la catégorie basculent dans « Joueurs non retenus ».
+  const joueursRapport = [...players.filter((p) => idsCompo.has(p.id) && !motifsNonRetenu.has(p.id) && !estSuspenduRap(p)), ...surclassesPresents, ...essaisPresents];
   // Diagnostic temps de jeu : compare le temps de jeu stocké sur le match avec les joueurs affichés,
   // pour repérer un éventuel écart d'identifiants (temps enregistré sous un id absent de la feuille).
   useEffect(() => {
@@ -13713,7 +13748,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
   function retirerSurclSup(pid) { mutate((d) => { const m = d.matches.find((x) => x.id === match.id); if (m.surclasses) delete m.surclasses[pid]; return d; }); }
 
   // Joueurs de la catégorie non retenus (ni titulaire, ni remplaçant, sans stats)
-  const nonRetenusDispo = players.filter((p) => !idsCompo.has(p.id));
+  const nonRetenusDispo = players.filter((p) => !idsCompo.has(p.id) || estSuspenduRap(p));
   const catsSup = categoriesAuDessus(match.cat);
   function setNonRetenu(joueurId, motif) {
     mutate((d) => {
@@ -14141,7 +14176,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
       ) : (
         <div style={{ display: "grid", gap: 7 }}>
           {nonRetenusDispo.map((p) => {
-            const motif = (cur.nonRetenus || {})[p.id] || "";
+            const motif = (cur.nonRetenus || {})[p.id] || (estSuspenduRap(p) ? "Suspendu" : "");
             return (
               <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 11, padding: "8px 11px" }}>
                 <div style={{ flex: 1, minWidth: 0, fontWeight: 700 }}>{p.prenom} {p.nom}</div>
