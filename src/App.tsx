@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.76";
+const APP_VERSION = "16.19.77";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -2667,6 +2667,19 @@ function _avecDelai(p, ms, nom) {
     new Promise((_, rej) => setTimeout(() => rej(new Error("timeout:" + nom)), ms)),
   ]);
 }
+// Attend qu'une registration ait un worker ACTIF, sans dependre de navigator.serviceWorker.ready
+// (qui, dans certaines configs PWA, ne se resout jamais). On surveille directement reg.active.
+function attendreWorkerActif(reg) {
+  return new Promise((resolve) => {
+    if (reg && reg.active) { resolve(true); return; }
+    let fini = false;
+    const ok = () => { if (!fini && reg && reg.active) { fini = true; clearInterval(iv); resolve(true); return true; } return false; };
+    const suivre = (w) => { if (w) w.addEventListener("statechange", ok); };
+    suivre(reg && (reg.installing || reg.waiting));
+    if (reg && reg.addEventListener) reg.addEventListener("updatefound", () => suivre(reg.installing));
+    const iv = setInterval(ok, 300);
+  });
+}
 async function activerNotificationsPush(me, creerSiAbsent = true) {
   if (!pushSupporte()) return { ok: false, raison: "non_supporte" };
   try {
@@ -2677,7 +2690,7 @@ async function activerNotificationsPush(me, creerSiAbsent = true) {
     if (perm !== "granted") return { ok: false, raison: "refuse" };
     const reg = await _avecDelai(enregistrerServiceWorker(), 8000, "sw_register");
     if (!reg) return { ok: false, raison: "sw_null" };
-    await _avecDelai(navigator.serviceWorker.ready, 8000, "sw_ready");
+    await _avecDelai(attendreWorkerActif(reg), 10000, "sw_actif");
     let sub = await _avecDelai(reg.pushManager.getSubscription(), 8000, "get_sub");
     if (!sub) {
       // Au demarrage (creerSiAbsent=false) on ne cree rien, on attend l'appui sur le bouton.
