@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.82";
+const APP_VERSION = "16.19.83";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -2794,6 +2794,19 @@ function BoutonNotifs({ me }) {
 try { enregistrerServiceWorker(); } catch (e) {}
 async function saveCat(cat, blob, userId) {
   const sb = await getSupabase();
+  // SECURITE ANTI-EFFACEMENT : on n'ecrase JAMAIS un effectif rempli par un effectif vide.
+  // (protege du cas ou un mauvais chargement laisserait la liste de joueurs vide en memoire.)
+  if (blob && Array.isArray(blob.players) && blob.players.length === 0) {
+    try {
+      const { data: actuel } = await sb.from("categorie_data").select("data").eq("categorie", cat).maybeSingle();
+      const nbServeur = actuel && actuel.data && Array.isArray(actuel.data.players) ? actuel.data.players.length : 0;
+      if (nbServeur > 0) {
+        trace("saveCat BLOQUE anti-effacement " + cat, { joueursServeur: nbServeur });
+        try { if (typeof console !== "undefined") console.warn("Sauvegarde bloquee (anti-effacement) : " + cat + " allait etre enregistre vide alors que le serveur contient " + nbServeur + " joueur(s)."); } catch (e) {}
+        return; // on ne sauvegarde pas : le serveur conserve ses joueurs
+      }
+    } catch (e) { /* lecture serveur impossible : on ne bloque pas une sauvegarde normale */ }
+  }
   const { error } = await sb.from("categorie_data").upsert({ categorie: cat, data: blob, maj_le: new Date().toISOString(), maj_par: userId });
   if (error) { trace("saveCat ERREUR " + cat, (error && error.message) || error); throw error; }
   trace("saveCat OK " + cat, userId ? "" : "sans userId");
