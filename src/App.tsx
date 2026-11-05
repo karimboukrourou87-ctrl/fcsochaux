@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.83";
+const APP_VERSION = "16.19.88";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -4502,12 +4502,12 @@ export default function App() {
   const [tab, setTab] = useState("accueil");
   const [entSous, setEntSous] = useState(null); // sous-vue initiale de l'onglet Séances (ex : "infirmerie" depuis l'accueil)
   const [db, setDb] = useState(null);
-  // Toujours servir la derniere version : on neutralise tout cache / service worker a l'ouverture de l'appli.
+  // On vide le cache classique a l'ouverture pour toujours servir la derniere version.
+  // IMPORTANT : on NE supprime PAS les service workers. Les supprimer detruisait les
+  // notifications push a chaque ouverture (le sw.js ne met aucune page en cache, donc
+  // le garder vivant ne bloque jamais l'arrivee des nouvelles versions de l'appli).
   useEffect(() => {
     try {
-      if (typeof navigator !== "undefined" && navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
-        navigator.serviceWorker.getRegistrations().then((rs) => { (rs || []).forEach((r) => { try { r.unregister(); } catch (e) {} }); }).catch(() => {});
-      }
       if (typeof caches !== "undefined" && caches.keys) {
         caches.keys().then((ks) => { (ks || []).forEach((k) => { try { caches.delete(k); } catch (e) {} }); }).catch(() => {});
       }
@@ -10217,6 +10217,208 @@ async function exporterCompositionPDF(jsPDF, fmt, data) {
 }
 
 const FORMATS_MULTI = { U9: [8, 9], U10: [8, 9], U11: [8, 9], U12: [8, 9], U13: [8, 9, 10, 11], "Foot loisirs": [11, 9, 8], "Foot santé": [6, 5] };
+/* ============================================================
+   Coups de pied arretes (CPA) : tableau tactique 3D + fiche PDF
+   ============================================================ */
+// Couleurs envoyees au tableau 3D (maillot, short, bas) et logo sur le maillot.
+const TENUE_FCSM = {
+  maillot: "#F6D40C", epaules: "#15325C", short: "#15325C", chaussettes: "#F6D40C",
+  adversaire: "#C0392B", gardien: "#27AE60",
+  crest: (typeof LOGO_CLUB === "string" ? LOGO_CLUB : ""),
+};
+// Modeles de depart proposes au coach. key = modele du tableau 3D, label = texte du bouton.
+const CPA_MODELES = [
+  { key: "cfDirect",  label: "CPA offensif" },
+  { key: "vide",      label: "CPA défensif" },
+  { key: "cornerOff", label: "Corner offensif" },
+  { key: "cornerDef", label: "Corner défensif" },
+  { key: "penalty",   label: "Pénalty" },
+];
+// Roles proposes pour associer un joueur a une situation du CPA.
+const CPA_ROLES = ["Tireur", "1er poteau", "2e poteau", "Point de pénalty", "Couverture", "Mur", "Autre"];
+
+// Editeur des joueurs concernes par une fiche : on choisit des joueurs de la compo du match.
+function CpaJoueursEditor({ joueurs, compoJoueurs, onChange }) {
+  const liste = Array.isArray(joueurs) ? joueurs : [];
+  const selStyle = { padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.grisClair}`, background: "#fff", color: C.encre, fontSize: 13, fontWeight: 600 };
+  function maj(i, patch) { onChange(liste.map((x, k) => (k === i ? { ...x, ...patch } : x))); }
+  function ajouter() { onChange([...liste, { role: CPA_ROLES[0], roleLibre: "", playerId: "" }]); }
+  function retirer(i) { onChange(liste.filter((_, k) => k !== i)); }
+  return (
+    <div>
+      {compoJoueurs.length === 0 && (
+        <div style={{ fontSize: 12.5, color: "#B87A2B", background: "#FFF7E6", border: "1px solid #F0DBA8", borderRadius: 10, padding: 10, marginBottom: 10, lineHeight: 1.45 }}>Aucun joueur dans la compo de ce match pour l'instant. Place d'abord tes joueurs dans la composition, ils apparaîtront ici.</div>
+      )}
+      <div style={{ display: "grid", gap: 8 }}>
+        {liste.map((r, i) => (
+          <div key={i} style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+            <select value={r.role || CPA_ROLES[0]} onChange={(e) => maj(i, { role: e.target.value })} style={{ ...selStyle, flex: "0 0 auto" }}>
+              {CPA_ROLES.map((ro) => <option key={ro} value={ro}>{ro}</option>)}
+            </select>
+            {r.role === "Autre" && (
+              <input value={r.roleLibre || ""} onChange={(e) => maj(i, { roleLibre: e.target.value })} placeholder="Rôle" style={{ ...selStyle, width: 110 }} />
+            )}
+            <select value={r.playerId || ""} onChange={(e) => maj(i, { playerId: e.target.value })} style={{ ...selStyle, flex: 1, minWidth: 130 }}>
+              <option value="">— Joueur —</option>
+              {compoJoueurs.map((p) => <option key={p.id} value={p.id}>{(p.num ? ("N°" + p.num + " ") : "") + p.nom}</option>)}
+            </select>
+            <button type="button" onClick={() => retirer(i)} title="Retirer" style={{ cursor: "pointer", background: "none", border: "none", color: C.rouge, padding: 4, display: "inline-flex", flex: "0 0 auto" }}><Trash2 size={16} /></button>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <Btn variant="accent" size="sm" onClick={ajouter} disabled={compoJoueurs.length === 0}><Plus size={14} /> Ajouter un joueur</Btn>
+      </div>
+    </div>
+  );
+}
+
+// Fiche CPA en PDF, version claire aux couleurs du club : en-tete + logo, image 3D, consignes.
+async function exporterCpaPDF(jsPDF, info) {
+  const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "portrait" });
+  const W = 595.28, H = 841.89, M = 30;
+  const bleu = [21, 56, 92], gris = [107, 118, 130], grisCl = [217, 222, 228], or = [184, 138, 46], encre = [34, 48, 63], blanc = [255, 255, 255];
+  const sc = (a) => doc.setTextColor(a[0], a[1], a[2]);
+  const sf = (a) => doc.setFillColor(a[0], a[1], a[2]);
+  const sd = (a) => doc.setDrawColor(a[0], a[1], a[2]);
+  try { doc.setProperties({ title: info.titre || "Fiche CPA", author: CLUB_LONG, creator: CLUB_LONG }); } catch (e) {}
+  // En-tete
+  try {
+    if (typeof LOGO_CLUB === "string" && LOGO_CLUB) {
+      const lw = 46; let lh = lw * 1.18;
+      try { const pr = doc.getImageProperties(LOGO_CLUB); if (pr && pr.width) lh = lw * (pr.height / pr.width); } catch (e) {}
+      doc.addImage(LOGO_CLUB, "PNG", M, 22, lw, lh);
+    }
+  } catch (e) {}
+  sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.text(CLUB_LONG, M + 58, 44);
+  sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.text("École de foot · Formation · Professionnels", M + 58, 59);
+  sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text("FICHE TACTIQUE", W - M, 44, { align: "right" });
+  sc(or); doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text("Coups de pied arrêtés", W - M, 59, { align: "right" });
+  sd(grisCl); doc.setLineWidth(1); doc.line(M, 86, W - M, 86);
+  sd(or); doc.setLineWidth(2.5); doc.line(M, 86, M + 120, 86);
+  // Titre + match
+  let y = 114;
+  sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(22); doc.text(String(info.titre || "Fiche"), M, y);
+  y += 20;
+  sc(encre); doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.text(String(info.ligneMatch || ""), M, y);
+  // Image du tableau 3D dans un cadre clair
+  const py = y + 12;
+  const pw = W - 2 * M;
+  let iw = pw, ih = iw * 0.60;
+  try { const pr = doc.getImageProperties(info.imgDataUrl); if (pr && pr.width) ih = iw * (pr.height / pr.width); } catch (e) {}
+  const maxH = 330;
+  if (ih > maxH) { try { const pr = doc.getImageProperties(info.imgDataUrl); if (pr && pr.width) iw = maxH * (pr.width / pr.height); } catch (e) {} ih = maxH; }
+  const ix = M + (pw - iw) / 2;
+  sf(blanc); sd(grisCl); doc.setLineWidth(1); doc.roundedRect(M, py, pw, ih + 12, 10, 10, "FD");
+  try { if (info.imgDataUrl) doc.addImage(info.imgDataUrl, "JPEG", ix, py + 6, iw, ih); } catch (e) {}
+  let cy = py + ih + 12 + 26;
+  // Dispositif (joueurs concernes), si renseigne
+  const disp = Array.isArray(info.dispositif) ? info.dispositif.filter((x) => x && (x.nom || x.num)) : [];
+  if (disp.length) {
+    sf(or); doc.rect(M, cy - 11, 4, 14, "F");
+    sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text("Dispositif", M + 12, cy);
+    cy += 12;
+    const colW = (pw - 10) / 2;
+    disp.forEach((x, i) => {
+      const col = i % 2, row = Math.floor(i / 2);
+      const bx = M + col * (colW + 10);
+      const by = cy + row * 26;
+      sf(blanc); sd(grisCl); doc.setLineWidth(1); doc.roundedRect(bx, by - 2, colW, 22, 6, 6, "FD");
+      sc(or); doc.setFont("helvetica", "bold"); doc.setFontSize(8.3); doc.text(String(x.role || "").toUpperCase(), bx + 8, by + 7);
+      sc(encre); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+      const nomTxt = (x.num ? ("N°" + x.num + " ") : "") + String(x.nom || "");
+      doc.text(nomTxt, bx + colW - 8, by + 9, { align: "right" });
+    });
+    cy += Math.ceil(disp.length / 2) * 26 + 20;
+  }
+  // Consignes
+  sf(or); doc.rect(M, cy - 11, 4, 14, "F");
+  sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text("Consignes aux joueurs", M + 12, cy);
+  cy += 6;
+  const consignes = String(info.consignes || "").trim();
+  if (consignes) {
+    sc(encre); doc.setFont("helvetica", "normal"); doc.setFontSize(10.3);
+    const lignes = doc.splitTextToSize(consignes, pw - 10);
+    lignes.forEach((l) => { cy += 15; if (cy < H - 60) doc.text(l, M + 6, cy); });
+  } else {
+    sc(gris); doc.setFont("helvetica", "italic"); doc.setFontSize(10.3); doc.text("Aucune consigne saisie.", M + 6, cy + 15);
+  }
+  // Pied de page
+  sd(grisCl); doc.setLineWidth(1); doc.line(M, H - 44, W - M, H - 44);
+  sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(8.3);
+  doc.text(CLUB_LONG + " · Fiche générée par l'application", M, H - 32);
+  doc.text("Coups de pied arrêtés", W - M, H - 32, { align: "right" });
+  telechargerDoc(doc, nomPdf("CPA", info.titre || "fiche"));
+}
+
+// Fenetre plein ecran : le tableau 3D (iframe) et le pont de messages avec l'appli.
+function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, onSave, onClose }) {
+  const iframeRef = useRef(null);
+  const ficheRef = useRef(fiche || null);
+  const pending = useRef({});
+  const [titre, setTitre] = useState((fiche && fiche.title) || titreInitial || "Fiche");
+  const [pret, setPret] = useState(false);
+  const [pdfMsg, setPdfMsg] = useState(null);
+  function envoyer(action, extra) {
+    try { const w = iframeRef.current && iframeRef.current.contentWindow; if (w) w.postMessage(Object.assign({ target: "cpa3d", action: action }, extra || {}), "*"); } catch (e) {}
+  }
+  useEffect(() => {
+    function onMsg(e) {
+      const d = e.data;
+      if (!d || d.source !== "cpa3d") return;
+      if (d.id && pending.current[d.id]) { const f = pending.current[d.id]; delete pending.current[d.id]; f(d); return; }
+      if (d.type === "ready") {
+        setPret(true);
+        envoyer("setTenue", { tenue: TENUE_FCSM });
+        if (fiche) envoyer("loadFiche", { fiche: fiche });
+        else if (modele) envoyer("newFiche", { modele: modele });
+      } else if (d.type === "change") {
+        ficheRef.current = d.fiche;
+        if (d.fiche && d.fiche.title) setTitre(d.fiche.title);
+        if (onSave) onSave(d.fiche);
+      }
+    }
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  function demander(action, extra) {
+    return new Promise((res, rej) => {
+      const id = "r" + Date.now() + "_" + Math.random().toString(16).slice(2);
+      pending.current[id] = res;
+      envoyer(action, Object.assign({ id: id }, extra || {}));
+      setTimeout(() => { if (pending.current[id]) { delete pending.current[id]; rej(new Error("timeout")); } }, 15000);
+    });
+  }
+  async function exporterPDF() {
+    setPdfMsg("Préparation du PDF...");
+    try {
+      const rep = await demander("exportImage", {});
+      const brut = rep && rep.data ? String(rep.data) : "";
+      const imgDataUrl = brut.slice(0, 5) === "data:" ? brut : ("data:" + (rep.mime || "image/jpeg") + ";base64," + brut);
+      const f = ficheRef.current || fiche || {};
+      const jsPDF = await chargerJsPDF();
+      await exporterCpaPDF(jsPDF, { titre: (f.title || titre || "Fiche"), ligneMatch: ligneMatch || "", imgDataUrl: imgDataUrl, consignes: (f.notes || ""), dispositif: dispositif || [] });
+      setPdfMsg(null);
+    } catch (e) { setPdfMsg("Export PDF impossible. Réessaie."); setTimeout(() => setPdfMsg(null), 2600); }
+  }
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "#0b1018", display: "flex", flexDirection: "column" }}>
+      <div style={{ background: C.bleu, color: "#fff", padding: "10px 12px", display: "flex", alignItems: "center", gap: 9, flex: "0 0 auto" }}>
+        <Target size={18} style={{ flex: "0 0 auto" }} />
+        <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titre}</div>
+        <button type="button" onClick={exporterPDF} disabled={!pret || !!pdfMsg} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.jaune, color: C.bleuNuit, border: "none", borderRadius: 9, padding: "8px 12px", fontWeight: 800, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", opacity: (!pret || !!pdfMsg) ? 0.6 : 1 }}><FileDown size={15} /> PDF club</button>
+        <button type="button" onClick={onClose} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.16)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 12px", fontWeight: 800, fontSize: 13, cursor: "pointer" }}><X size={16} /> Fermer</button>
+      </div>
+      {pdfMsg && <div style={{ background: "#11203a", color: "#fff", fontSize: 12.5, padding: "6px 12px", flex: "0 0 auto" }}>{pdfMsg}</div>}
+      <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
+        <iframe ref={iframeRef} src="/cpa3d/index.html?guide=0" title="Tableau CPA 3D" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "0", display: "block" }} allow="fullscreen" />
+      </div>
+      <div style={{ height: ESPACE_BARRE, flex: "0 0 auto", background: "#0b1018" }} />
+    </div>
+  );
+}
+
 function Compo({ demo, players, cat, catInfo, db, mutate }) {
   const matchsCat = (db.matches || []).filter((m) => m.cat === cat).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const aujourdhui = hoyISO();
@@ -10265,6 +10467,92 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
     if (!matchSel) return;
     if (compoScellee) return;
     mutate((d) => { const m = d.matches.find((x) => x.id === matchSel); if (m) m.encadrement = { ...(m.encadrement || {}), ...patch }; return d; });
+  }
+  // --- Coups de pied arretes (CPA) rattaches au match selectionne ---
+  const cpaFiches = (matchCourant && Array.isArray(matchCourant.cpa)) ? matchCourant.cpa : [];
+  const cpaLigneMatch = matchCourant
+    ? ["FCSM c. " + (matchCourant.adversaire || "Adversaire"), matchCourant.date ? jjmm(matchCourant.date) : null, matchCourant.lieu || null, cat].filter(Boolean).join("   ·   ")
+    : "";
+  function cpaNouvelle(m) {
+    if (compoScellee || !matchSel) return;
+    setCpaModal({ id: uid(), modele: m.key, fiche: null, titre: m.label });
+  }
+  function cpaOuvrir(entry) {
+    setCpaModal({ id: entry.id, modele: null, fiche: entry.fiche, titre: entry.titre || (entry.fiche && entry.fiche.title) || "Fiche" });
+  }
+  function cpaSauver(fiche) {
+    if (!matchSel || !cpaModal) return;
+    const fid = cpaModal.id;
+    const titreFiche = (fiche && fiche.title) || cpaModal.titre || "Fiche";
+    mutate((d) => {
+      const m = d.matches.find((x) => x.id === matchSel);
+      if (!m) return d;
+      const arr = Array.isArray(m.cpa) ? m.cpa.slice() : [];
+      const i = arr.findIndex((e) => e.id === fid);
+      const entry = { id: fid, titre: titreFiche, fiche: fiche, maj: new Date().toISOString() };
+      if (i >= 0) arr[i] = entry; else arr.push(entry);
+      m.cpa = arr;
+      return d;
+    });
+  }
+  function cpaSupprimer(entry) {
+    if (compoScellee) return;
+    if (typeof window !== "undefined" && !window.confirm("Supprimer la fiche \"" + (entry.titre || "") + "\" ?")) return;
+    mutate((d) => { const m = d.matches.find((x) => x.id === matchSel); if (m && Array.isArray(m.cpa)) m.cpa = m.cpa.filter((e) => e.id !== entry.id); return d; });
+  }
+  function cpaDupliquer(entry) {
+    if (compoScellee || !matchSel) return;
+    const nid = uid();
+    let fiche = null;
+    try { fiche = entry.fiche ? JSON.parse(JSON.stringify(entry.fiche)) : null; } catch (e) { fiche = entry.fiche || null; }
+    const base = (entry.fiche && entry.fiche.title) || entry.titre || "Fiche";
+    const nouveauTitre = base + " (copie)";
+    if (fiche) fiche.title = nouveauTitre;
+    mutate((d) => {
+      const m = d.matches.find((x) => x.id === matchSel);
+      if (!m) return d;
+      const arr = Array.isArray(m.cpa) ? m.cpa.slice() : [];
+      arr.push({ id: nid, titre: nouveauTitre, fiche: fiche, maj: new Date().toISOString() });
+      m.cpa = arr;
+      return d;
+    });
+  }
+  // Bibliotheque de strategies type (par categorie, comme les compos types).
+  const cpaTypes = (db.config && db.config.cpaTypes && db.config.cpaTypes[cat]) || [];
+  function cpaEnregistrerType(entry) {
+    const nom = (typeof window !== "undefined") ? window.prompt("Nom de la stratégie type :", (entry.fiche && entry.fiche.title) || entry.titre || "") : "";
+    if (!nom || !nom.trim()) return;
+    const n = nom.trim();
+    let fiche = null;
+    try { fiche = entry.fiche ? JSON.parse(JSON.stringify(entry.fiche)) : null; } catch (e) { fiche = entry.fiche || null; }
+    if (fiche) fiche.title = n;
+    mutate((d) => {
+      d.config = d.config || {};
+      d.config.cpaTypes = d.config.cpaTypes || {};
+      const liste = (d.config.cpaTypes[cat] || []).filter((t) => t.nom !== n);
+      liste.unshift({ id: uid(), nom: n, fiche: fiche });
+      d.config.cpaTypes[cat] = liste.slice(0, 8);
+      return d;
+    });
+  }
+  function cpaUtiliserType(t) {
+    if (compoScellee || !matchSel) return;
+    let fiche = null;
+    try { fiche = t.fiche ? JSON.parse(JSON.stringify(t.fiche)) : null; } catch (e) { fiche = t.fiche || null; }
+    setCpaModal({ id: uid(), modele: null, fiche: fiche, titre: t.nom });
+  }
+  function cpaSupprimerType(t) {
+    if (typeof window !== "undefined" && !window.confirm("Supprimer la stratégie type \"" + (t.nom || "") + "\" ?")) return;
+    mutate((d) => { if (d.config && d.config.cpaTypes && d.config.cpaTypes[cat]) d.config.cpaTypes[cat] = d.config.cpaTypes[cat].filter((x) => x.id !== t.id); return d; });
+  }
+  function cpaSetJoueurs(entryId, joueurs) {
+    mutate((d) => {
+      const m = d.matches.find((x) => x.id === matchSel);
+      if (!m || !Array.isArray(m.cpa)) return d;
+      const e = m.cpa.find((x) => x.id === entryId);
+      if (e) e.joueurs = joueurs;
+      return d;
+    });
   }
   // Dernier encadrement renseigné sur un autre match (pour le reprendre en un clic).
   const ENC_KEYS_COMPO = ["educateur", "coachAdjoint", "coachGardiens", "prepaPhysique", "dirigeant", "delegue", "arbitre", "assistant1", "assistant2", "assistant3"];
@@ -10319,8 +10607,26 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
   // un identifiant « fantôme » (joueur supprimé/déplacé) ne doit pas gonfler le compteur.
   const remplacantsValides = (remplacants || []).filter((pid) => trouve(pid));
   const numeroDe = (p) => { if (!p) return ""; const o = lineup.numeros && lineup.numeros[p.id]; return (o != null && o !== "") ? o : (p.numero ?? ""); };
+  // Joueurs de la compo du match (titulaires + remplacants) pour les associer aux CPA.
+  const compoJoueurs = (() => {
+    const ids = [];
+    Object.values((lineup && lineup.slots) || {}).forEach((pid) => { if (pid && ids.indexOf(pid) < 0) ids.push(pid); });
+    (remplacants || []).forEach((pid) => { if (pid && ids.indexOf(pid) < 0) ids.push(pid); });
+    return ids.map((pid) => { const p = trouve(pid); return p ? { id: pid, nom: `${p.prenom || ""} ${p.nom || ""}`.trim() || "Joueur", num: numeroDe(p) } : null; }).filter(Boolean);
+  })();
+  function dispositifFiche(entry) {
+    const arr = (entry && Array.isArray(entry.joueurs)) ? entry.joueurs : [];
+    return arr.map((j) => {
+      const p = j.playerId ? compoJoueurs.find((x) => x.id === j.playerId) : null;
+      const role = j.role === "Autre" ? (j.roleLibre || "Autre") : (j.role || "");
+      return { role: role, nom: p ? p.nom : "", num: p ? p.num : "" };
+    }).filter((x) => x.nom || x.num);
+  }
   const GK_COL = "#2FA36B"; // couleur distincte du gardien
   const [pick, setPick] = useState(null);       // index de slot à remplir
+  const [cpaModal, setCpaModal] = useState(null); // fiche CPA ouverte dans le tableau 3D
+  const [cpaJoueursEntry, setCpaJoueursEntry] = useState(null); // id de la fiche dont on edite les joueurs concernes
+  const cpaModalDispositif = cpaModal ? dispositifFiche(cpaFiches.find((e) => e.id === cpaModal.id) || {}) : [];
   const [pickRempl, setPickRempl] = useState(false);
   const [pdfCompoMsg, setPdfCompoMsg] = useState(null);
   const [avecPhotos, setAvecPhotos] = useState(false);
@@ -10606,6 +10912,63 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
           </div>
         )}
       </div>}
+
+      {matchSel && (
+        <div style={{ background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+          <div style={{ fontWeight: 800, marginBottom: 4, display: "flex", alignItems: "center", gap: 7 }}><Target size={16} color={C.bleu} /> Coups de pied arrêtés</div>
+          <div style={{ fontSize: 12, color: C.gris, marginBottom: 10, lineHeight: 1.45 }}>Prépare les corners, coups francs et pénaltys de ce match sur un tableau tactique en 3D. Chaque fiche est enregistrée avec le match et partagée avec le staff.</div>
+          {cpaFiches.length > 0 && (
+            <div style={{ display: "grid", gap: 7, marginBottom: 10 }}>
+              {cpaFiches.map((entry) => {
+                const nbJ = (entry.joueurs || []).filter((j) => j && j.playerId).length;
+                return (
+                <div key={entry.id} style={{ border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: "9px 11px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 800, color: C.encre, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(entry.fiche && entry.fiche.title) || entry.titre || "Fiche"}</div>
+                      <div style={{ fontSize: 11, color: C.gris }}>{(entry.fiche && Array.isArray(entry.fiche.players)) ? `${entry.fiche.players.length} joueurs placés` : "Tableau 3D"}{nbJ ? ` · ${nbJ} nommé${nbJ > 1 ? "s" : ""}` : ""}</div>
+                    </div>
+                    <button type="button" onClick={() => cpaOuvrir(entry)} style={{ cursor: "pointer", borderRadius: 8, padding: "7px 14px", fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${C.bleu}`, background: C.bleu, color: "#fff", whiteSpace: "nowrap" }}>{compoScellee ? "Voir" : "Ouvrir"}</button>
+                  </div>
+                  {!compoScellee && (
+                    <div style={{ display: "flex", gap: 14, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <button type="button" onClick={() => setCpaJoueursEntry(entry.id)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: C.bleu, fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><Users size={13} /> Joueurs concernés{nbJ ? ` (${nbJ})` : ""}</button>
+                      <button type="button" onClick={() => cpaDupliquer(entry)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: C.bleu, fontSize: 12, fontWeight: 700 }}>Dupliquer</button>
+                      <button type="button" onClick={() => cpaEnregistrerType(entry)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: C.bleu, fontSize: 12, fontWeight: 700 }}>Enregistrer comme type</button>
+                      <button type="button" onClick={() => cpaSupprimer(entry)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: C.rouge, fontSize: 12, fontWeight: 700 }}>Supprimer</button>
+                    </div>
+                  )}
+                </div>
+                );
+              })}
+            </div>
+          )}
+          {cpaTypes.length > 0 && !compoScellee && (
+            <div style={{ background: "#F7F9FB", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 10, marginBottom: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: C.encre, marginBottom: 2 }}>Stratégies type</div>
+              <div style={{ fontSize: 11, color: C.gris, marginBottom: 8, lineHeight: 1.4 }}>Réutilise une stratégie enregistrée (le schéma, sans les noms). Tu réassocies les joueurs du match ensuite.</div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {cpaTypes.map((t) => (
+                  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", border: `1px solid ${C.grisClair}`, borderRadius: 8, padding: "6px 9px" }}>
+                    <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, color: C.encre, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.nom}</div>
+                    <button type="button" onClick={() => cpaUtiliserType(t)} style={{ cursor: "pointer", borderRadius: 7, padding: "5px 11px", fontSize: 12, fontWeight: 800, border: `1.5px solid ${C.bleu}`, background: C.bleu, color: "#fff", whiteSpace: "nowrap" }}>Utiliser</button>
+                    <button type="button" onClick={() => cpaSupprimerType(t)} style={{ cursor: "pointer", background: "none", border: "none", color: C.rouge, padding: 3, display: "inline-flex" }} title="Supprimer"><Trash2 size={15} /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {compoScellee ? (
+            cpaFiches.length === 0 ? <div style={{ fontSize: 11.5, color: C.gris }}>Aucune fiche pour ce match.</div> : null
+          ) : (
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+              {CPA_MODELES.map((m) => (
+                <button key={m.key} type="button" onClick={() => cpaNouvelle(m)} style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", borderRadius: 999, padding: "7px 13px", fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${C.bleu}`, background: "#fff", color: C.bleu }}><Plus size={14} /> {m.label}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {(() => {
         const simplesConv = idsConvoques.map(trouve).filter(Boolean).filter((p) => { const t = typeMutation(p); return t === "normale" || t === "sansdate"; }).length;
@@ -10902,6 +11265,29 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
           )}
         </Modal>
       )}
+
+      {cpaModal && (
+        <ModalCpa3D
+          titreInitial={cpaModal.titre}
+          modele={cpaModal.modele}
+          fiche={cpaModal.fiche}
+          ligneMatch={cpaLigneMatch}
+          dispositif={cpaModalDispositif}
+          onSave={cpaSauver}
+          onClose={() => setCpaModal(null)}
+        />
+      )}
+
+      {cpaJoueursEntry && (() => {
+        const entry = cpaFiches.find((e) => e.id === cpaJoueursEntry);
+        if (!entry) return null;
+        return (
+          <Modal title="Joueurs concernés" onClose={() => setCpaJoueursEntry(null)}>
+            <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10, lineHeight: 1.45 }}>Associe les joueurs de la compo de ce match aux rôles du coup de pied arrêté « {(entry.fiche && entry.fiche.title) || entry.titre || "Fiche"} ». Ils apparaîtront dans le bandeau « Dispositif » du PDF.</div>
+            <CpaJoueursEditor joueurs={entry.joueurs || []} compoJoueurs={compoJoueurs} onChange={(n) => cpaSetJoueurs(cpaJoueursEntry, n)} />
+          </Modal>
+        );
+      })()}
     </div>
   );
 }
