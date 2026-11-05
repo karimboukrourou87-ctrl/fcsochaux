@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.92";
+const APP_VERSION = "16.19.93";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -4993,6 +4993,23 @@ export default function App() {
   const sousTitre = demo ? "" : (profil && profil.role === "direction" ? " · DIRECTION" : "");
   const peutValider = demo || (profil && (profil.role === "responsable" || profil.role === "direction"));
   const estAdmin = demo || (profil && profil.role === "direction");
+  // Pastille rouge sur l'icone de l'accueil : nombre de messages recus non lus par l'utilisateur connecte.
+  // API Badging : fonctionne sur l'appli installee (iPhone iOS 16.4+, Android, Chrome/Edge bureau), sans effet ailleurs.
+  const monEmailBadge = demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "");
+  const nbMsgNonLus = useMemo(() => {
+    const moi = { nom: monNom, email: monEmailBadge, role: monRole, cats: cats || [] };
+    const estPourMoi = (m) => !memeEduc({ nom: m.de, email: m.deEmail }, moi)
+      && (((m.categories || []).some((c) => (moi.cats || []).includes(c))) || (m.destinataires || []).some((d) => memeEduc(d, moi)));
+    const cleMoi = (m) => { const d = (m.destinataires || []).find((x) => memeEduc(x, moi)); return d ? cleEduc(d) : cleEduc(moi); };
+    return (messagesSource || []).filter((m) => estPourMoi(m) && !((m.lectures || {})[cleMoi(m)])).length;
+  }, [messagesSource, monNom, monRole, cats, monEmailBadge]);
+  useEffect(() => {
+    try {
+      if (typeof navigator === "undefined") return;
+      if (nbMsgNonLus > 0 && navigator.setAppBadge) navigator.setAppBadge(nbMsgNonLus).catch(() => {});
+      else if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+    } catch (e) {}
+  }, [nbMsgNonLus]);
   // Validation / refus d'une demande de créneau posée par un éducateur
   const estCelluleDemande = (c, k, dem) => c && c.statut === "attente" && k.split("__")[1] === dem.col
     && (c.debut || k.split("__")[0]) === dem.debut
@@ -18387,21 +18404,68 @@ function Messagerie({ liste, maj, me, peutValider, mesCats, encadrement, onRafra
   }
   function marquerLu(m) {
     const k = maCle(m);
+    const dejaLu = !!(m.lectures && m.lectures[k]);
     maj((list) => (list || []).map((x) => x.id === m.id ? { ...x, lectures: { ...(x.lectures || {}), [k]: (x.lectures && x.lectures[k]) || { nom: me.nom || "", at: nowISO() } } } : x));
+    // Accuse de reception : on previent l'expediteur (push sur tous ses appareils) la premiere fois seulement.
+    if (!dejaLu && m.deEmail) {
+      try {
+        notifierPush({
+          titre: "Message lu",
+          corps: (me.nom || "Un educateur") + " a lu : " + (m.objet || "votre message"),
+          url: "/",
+          emails: [m.deEmail],
+          excludeEmail: me.email || "",
+          tag: "lu-" + m.id + "-" + k,
+        });
+      } catch (e) {}
+    }
   }
   function repondre(m, statut, raison) {
     const k = maCle(m);
+    const dejaRep = !!(m.reponses && m.reponses[k]);
     maj((list) => (list || []).map((x) => x.id === m.id ? {
       ...x,
       lectures: { ...(x.lectures || {}), [k]: (x.lectures && x.lectures[k]) || { nom: me.nom || "", at: nowISO() } },
       reponses: { ...(x.reponses || {}), [k]: { nom: me.nom || "", statut, raison: raison || "", date: nowISO() } },
     } : x));
     setRepEnCours(null);
+    // Reponse a une demande de disponibilite : on previent l'expediteur (push) la premiere fois seulement.
+    if (!dejaRep && m.deEmail) {
+      try {
+        const txt = statut === "accepte" ? "Disponible" : statut === "refuse" ? "Indisponible" : "a repondu";
+        notifierPush({
+          titre: "Reponse recue",
+          corps: (me.nom || "Un educateur") + " : " + txt + (raison ? " (" + raison + ")" : "") + (m.objet ? " - " + m.objet : ""),
+          url: "/",
+          emails: [m.deEmail],
+          excludeEmail: me.email || "",
+          tag: "rep-" + m.id + "-" + k,
+        });
+      } catch (e) {}
+    }
   }
   function supprimer(id) { maj((list) => (list || []).filter((x) => x.id !== id)); }
   // La direction accuse la réponse/lecture d'un éducateur (« J'ai vu »), pour clôturer l'échange côté éducateur.
   function marquerVu(m, k) {
+    const dejaVu = !!(m.vus && m.vus[k]);
     maj((list) => (list || []).map((x) => x.id === m.id ? { ...x, vus: { ...(x.vus || {}), [k]: { nom: me.nom || "", at: nowISO() } } } : x));
+    // On previent l'educateur concerne que la direction a bien vu sa reponse (push), la premiere fois seulement.
+    if (!dejaVu) {
+      try {
+        const dest = (m.destinataires || []).find((d) => cleEduc(d) === k);
+        const emailEduc = dest && dest.email ? dest.email : "";
+        if (emailEduc) {
+          notifierPush({
+            titre: "Reponse prise en compte",
+            corps: "La direction a vu votre reponse" + (m.objet ? " - " + m.objet : ""),
+            url: "/",
+            emails: [emailEduc],
+            excludeEmail: me.email || "",
+            tag: "vu-" + m.id + "-" + k,
+          });
+        }
+      } catch (e) {}
+    }
   }
 
   const Onglet = ({ v, children }) => (
