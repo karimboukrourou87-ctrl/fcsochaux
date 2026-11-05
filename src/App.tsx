@@ -4974,6 +4974,30 @@ export default function App() {
     cacheRef.current = {};
   }
 
+  // Pastille rouge sur l'icone de l'accueil : nombre de messages recus non lus par l'utilisateur connecte.
+  // API Badging : appli installee seulement (iPhone iOS 16.4+, Android, Chrome/Edge bureau), sans effet ailleurs.
+  // IMPORTANT : ces hooks doivent rester AVANT les retours de chargement ci-dessous (regle des hooks React).
+  const nbMsgNonLus = useMemo(() => {
+    const moi = {
+      nom: monNom,
+      email: demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || ""),
+      role: monRole,
+      cats: demo ? CATEGORIES.map((c) => c.id) : ((profil && profil.cats) || []),
+    };
+    const liste = demo ? ((db && db.messages) || []) : (messagesClub || []);
+    const estPourMoi = (m) => !memeEduc({ nom: m.de, email: m.deEmail }, moi)
+      && (((m.categories || []).some((c) => (moi.cats || []).includes(c))) || (m.destinataires || []).some((d) => memeEduc(d, moi)));
+    const cleMoi = (m) => { const d = (m.destinataires || []).find((x) => memeEduc(x, moi)); return d ? cleEduc(d) : cleEduc(moi); };
+    return (liste || []).filter((m) => estPourMoi(m) && !((m.lectures || {})[cleMoi(m)])).length;
+  }, [demo, session, profil, messagesClub, db, monNom, monRole]);
+  useEffect(() => {
+    try {
+      if (typeof navigator === "undefined") return;
+      if (nbMsgNonLus > 0 && navigator.setAppBadge) navigator.setAppBadge(nbMsgNonLus).catch(() => {});
+      else if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+    } catch (e) {}
+  }, [nbMsgNonLus]);
+
   if (!demo) {
     if (!estConfigure()) return <Login configManquante onDemo={() => setDemo(true)} />;
     if (session === undefined) return <PleinEcran>Chargement...</PleinEcran>;
@@ -4993,23 +5017,6 @@ export default function App() {
   const sousTitre = demo ? "" : (profil && profil.role === "direction" ? " · DIRECTION" : "");
   const peutValider = demo || (profil && (profil.role === "responsable" || profil.role === "direction"));
   const estAdmin = demo || (profil && profil.role === "direction");
-  // Pastille rouge sur l'icone de l'accueil : nombre de messages recus non lus par l'utilisateur connecte.
-  // API Badging : fonctionne sur l'appli installee (iPhone iOS 16.4+, Android, Chrome/Edge bureau), sans effet ailleurs.
-  const monEmailBadge = demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "");
-  const nbMsgNonLus = useMemo(() => {
-    const moi = { nom: monNom, email: monEmailBadge, role: monRole, cats: cats || [] };
-    const estPourMoi = (m) => !memeEduc({ nom: m.de, email: m.deEmail }, moi)
-      && (((m.categories || []).some((c) => (moi.cats || []).includes(c))) || (m.destinataires || []).some((d) => memeEduc(d, moi)));
-    const cleMoi = (m) => { const d = (m.destinataires || []).find((x) => memeEduc(x, moi)); return d ? cleEduc(d) : cleEduc(moi); };
-    return (messagesSource || []).filter((m) => estPourMoi(m) && !((m.lectures || {})[cleMoi(m)])).length;
-  }, [messagesSource, monNom, monRole, cats, monEmailBadge]);
-  useEffect(() => {
-    try {
-      if (typeof navigator === "undefined") return;
-      if (nbMsgNonLus > 0 && navigator.setAppBadge) navigator.setAppBadge(nbMsgNonLus).catch(() => {});
-      else if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
-    } catch (e) {}
-  }, [nbMsgNonLus]);
   // Validation / refus d'une demande de créneau posée par un éducateur
   const estCelluleDemande = (c, k, dem) => c && c.statut === "attente" && k.split("__")[1] === dem.col
     && (c.debut || k.split("__")[0]) === dem.debut
