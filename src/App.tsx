@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.88";
+const APP_VERSION = "16.19.89";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -10301,17 +10301,84 @@ async function exporterCpaPDF(jsPDF, info) {
   sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(22); doc.text(String(info.titre || "Fiche"), M, y);
   y += 20;
   sc(encre); doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.text(String(info.ligneMatch || ""), M, y);
-  // Image du tableau 3D dans un cadre clair
-  const py = y + 12;
+  // Terrain dessine a partir de la fiche (positions reelles des joueurs), style clair pastel.
+  const fiche = info.fiche || {};
   const pw = W - 2 * M;
-  let iw = pw, ih = iw * 0.60;
-  try { const pr = doc.getImageProperties(info.imgDataUrl); if (pr && pr.width) ih = iw * (pr.height / pr.width); } catch (e) {}
-  const maxH = 330;
-  if (ih > maxH) { try { const pr = doc.getImageProperties(info.imgDataUrl); if (pr && pr.width) iw = maxH * (pr.width / pr.height); } catch (e) {} ih = maxH; }
-  const ix = M + (pw - iw) / 2;
-  sf(blanc); sd(grisCl); doc.setLineWidth(1); doc.roundedRect(M, py, pw, ih + 12, 10, 10, "FD");
-  try { if (info.imgDataUrl) doc.addImage(info.imgDataUrl, "JPEG", ix, py + 6, iw, ih); } catch (e) {}
-  let cy = py + ih + 12 + 26;
+  const pTop = y + 12;
+  const ph = 300, legendH = 22;
+  sf(blanc); sd(grisCl); doc.setLineWidth(1); doc.roundedRect(M, pTop, pw, ph + legendH + 12, 10, 10, "FD");
+  const cxp = W / 2, bx0 = M + 8, bx1 = W - M - 8;
+  const pyA = pTop + 8, pyB = pTop + 8 + ph;
+  const nearHalf = (bx1 - bx0) / 2 * 0.98, farHalf = nearHalf * 0.60;
+  const P = (u, v) => { const hw = nearHalf + (farHalf - nearHalf) * v; return [cxp + (u - 0.5) * 2 * hw, pyA + (1 - v) * ph]; };
+  const FP = (x, z) => P((x + 34) / 68, 1 - Math.max(0, Math.min(52.5, z)) / 52.5);
+  // bandes de tonte pastel (par profondeur)
+  const nb = 7;
+  for (let i = 0; i < nb; i++) {
+    const a = P(0, i / nb), b = P(1, i / nb), c = P(1, (i + 1) / nb), d = P(0, (i + 1) / nb);
+    sf(i % 2 ? [244, 248, 244] : [236, 243, 237]);
+    doc.triangle(a[0], a[1], b[0], b[1], c[0], c[1], "F");
+    doc.triangle(a[0], a[1], c[0], c[1], d[0], d[1], "F");
+  }
+  // lignes du terrain (vert)
+  const vcol = [47, 125, 70];
+  sd(vcol); doc.setLineWidth(1.3);
+  const seg = (x1, z1, x2, z2) => { const p = FP(x1, z1), q = FP(x2, z2); doc.line(p[0], p[1], q[0], q[1]); };
+  seg(-34, 0, 34, 0); seg(-34, 52.5, 34, 52.5); seg(-34, 0, -34, 52.5); seg(34, 0, 34, 52.5);
+  seg(-20.16, 16.5, 20.16, 16.5); seg(-20.16, 0, -20.16, 16.5); seg(20.16, 0, 20.16, 16.5);
+  seg(-9.16, 5.5, 9.16, 5.5); seg(-9.16, 0, -9.16, 5.5); seg(9.16, 0, 9.16, 5.5);
+  doc.setLineWidth(2.4); seg(-3.66, 0, 3.66, 0); doc.setLineWidth(1.3);
+  const pp = FP(0, 11); sf(vcol); doc.circle(pp[0], pp[1], 1.6, "F");
+  let prev = null;
+  for (let a = 37; a <= 143; a += 6) { const r = a * Math.PI / 180; const p = FP(9.15 * Math.cos(r), 11 + 9.15 * Math.sin(r)); if (prev) doc.line(prev[0], prev[1], p[0], p[1]); prev = p; }
+  prev = null;
+  for (let a = 200; a <= 340; a += 8) { const r = a * Math.PI / 180; const p = FP(9.15 * Math.cos(r), 52.5 + 9.15 * Math.sin(r)); if (prev) doc.line(prev[0], prev[1], p[0], p[1]); prev = p; }
+  // actions : course = bleu plein, ballon = or pointille
+  const players = Array.isArray(fiche.players) ? fiche.players : [];
+  const byId = {}; players.forEach((p) => { byId[p.id] = p; });
+  const fleche = (x1, z1, x2, z2, colArr, dash) => {
+    const a = FP(x1, z1), b = FP(x2, z2);
+    sd(colArr); doc.setLineWidth(2);
+    if (dash) doc.setLineDashPattern([4, 3], 0); else doc.setLineDashPattern([], 0);
+    const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2 - 14;
+    let pr2 = a;
+    for (let t = 0.1; t <= 1.001; t += 0.1) {
+      const xx = (1 - t) * (1 - t) * a[0] + 2 * (1 - t) * t * mx + t * t * b[0];
+      const yy = (1 - t) * (1 - t) * a[1] + 2 * (1 - t) * t * my + t * t * b[1];
+      doc.line(pr2[0], pr2[1], xx, yy); pr2 = [xx, yy];
+    }
+    doc.setLineDashPattern([], 0);
+    const ang = Math.atan2(b[1] - my, b[0] - mx);
+    doc.line(b[0], b[1], b[0] + 7 * Math.cos(ang + 2.6), b[1] + 7 * Math.sin(ang + 2.6));
+    doc.line(b[0], b[1], b[0] + 7 * Math.cos(ang - 2.6), b[1] + 7 * Math.sin(ang - 2.6));
+  };
+  (Array.isArray(fiche.actions) ? fiche.actions : []).forEach((ac) => {
+    const p = byId[ac.pid]; if (!p || !ac.to) return;
+    if (ac.type === "pass") fleche(p.x, p.z, ac.to.x, ac.to.z, or, true);
+    else fleche(p.x, p.z, ac.to.x, ac.to.z, [42, 102, 176], false);
+  });
+  if (fiche.ball) { const bb = FP(fiche.ball.x, fiche.ball.z); sf([30, 30, 30]); sd([30, 30, 30]); doc.setLineWidth(0.8); doc.circle(bb[0], bb[1], 3.2, "FD"); }
+  // joueurs
+  players.forEach((p) => {
+    const pt = FP(p.x, p.z);
+    const v = 1 - Math.max(0, Math.min(52.5, p.z)) / 52.5;
+    const r = 8.5 + 3 * (1 - v);
+    let colA = [226, 179, 62], txtA = encre;
+    if (p.gk) { colA = [39, 125, 70]; txtA = blanc; }
+    else if (p.team === "B") { colA = [181, 72, 63]; txtA = blanc; }
+    sf(colA); sd(blanc); doc.setLineWidth(1.2); doc.circle(pt[0], pt[1], r, "FD");
+    sc(txtA); doc.setFont("helvetica", "bold"); doc.setFontSize(Math.max(7, r * 0.95));
+    doc.text(String(p.num || ""), pt[0], pt[1] + r * 0.34, { align: "center" });
+  });
+  // legende
+  const ly = pyB + 6;
+  const pastille = (xx, colArr, lbl) => { sf(colArr); doc.circle(xx + 4, ly + 4, 3.5, "F"); sc(encre); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text(lbl, xx + 11, ly + 7); return xx + 14 + doc.getTextWidth(lbl); };
+  let lx = bx0;
+  lx = pastille(lx, [226, 179, 62], "Notre équipe"); lx = pastille(lx + 5, [181, 72, 63], "Adversaire"); lx = pastille(lx + 5, [39, 125, 70], "Gardien");
+  sd(or); doc.setLineDashPattern([4, 3], 0); doc.setLineWidth(2); doc.line(lx + 6, ly + 4, lx + 24, ly + 4); doc.setLineDashPattern([], 0);
+  sc(encre); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text("Ballon", lx + 29, ly + 7); lx = lx + 29 + doc.getTextWidth("Ballon");
+  sd([42, 102, 176]); doc.setLineWidth(2); doc.line(lx + 8, ly + 4, lx + 26, ly + 4); sc(encre); doc.text("Course", lx + 31, ly + 7);
+  let cy = pTop + ph + legendH + 12 + 26;
   // Dispositif (joueurs concernes), si renseigne
   const disp = Array.isArray(info.dispositif) ? info.dispositif.filter((x) => x && (x.nom || x.num)) : [];
   if (disp.length) {
@@ -10393,12 +10460,10 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, onSav
   async function exporterPDF() {
     setPdfMsg("Préparation du PDF...");
     try {
-      const rep = await demander("exportImage", {});
-      const brut = rep && rep.data ? String(rep.data) : "";
-      const imgDataUrl = brut.slice(0, 5) === "data:" ? brut : ("data:" + (rep.mime || "image/jpeg") + ";base64," + brut);
-      const f = ficheRef.current || fiche || {};
+      let f = ficheRef.current || fiche || {};
+      try { const rep = await demander("getFiche", {}); if (rep && rep.fiche) f = rep.fiche; } catch (e) {}
       const jsPDF = await chargerJsPDF();
-      await exporterCpaPDF(jsPDF, { titre: (f.title || titre || "Fiche"), ligneMatch: ligneMatch || "", imgDataUrl: imgDataUrl, consignes: (f.notes || ""), dispositif: dispositif || [] });
+      await exporterCpaPDF(jsPDF, { titre: (f.title || titre || "Fiche"), ligneMatch: ligneMatch || "", fiche: f, consignes: (f.notes || ""), dispositif: dispositif || [] });
       setPdfMsg(null);
     } catch (e) { setPdfMsg("Export PDF impossible. Réessaie."); setTimeout(() => setPdfMsg(null), 2600); }
   }
