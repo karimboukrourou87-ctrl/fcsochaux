@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.93";
+const APP_VERSION = "16.19.94";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -10333,7 +10333,9 @@ async function exporterCpaPDF(jsPDF, info) {
   sf(blanc); sd(grisCl); doc.setLineWidth(1); doc.roundedRect(M, pTop, pw, ph + legendH + 12, 10, 10, "FD");
   const cxp = W / 2, bx0 = M + 8, bx1 = W - M - 8;
   const pyA = pTop + 8, pyB = pTop + 8 + ph;
-  const nearHalf = (bx1 - bx0) / 2 * 0.98, farHalf = nearHalf * 0.60;
+  // Vue 3D (perspective, terrain en trapeze) ou 2D (vue de dessus, terrain rectangulaire). Meme mise en page.
+  const persp = (info.vue !== "2d");
+  const nearHalf = (bx1 - bx0) / 2 * 0.98, farHalf = persp ? nearHalf * 0.60 : nearHalf;
   const P = (u, v) => { const hw = nearHalf + (farHalf - nearHalf) * v; return [cxp + (u - 0.5) * 2 * hw, pyA + (1 - v) * ph]; };
   const FP = (x, z) => P((x + 34) / 68, 1 - Math.max(0, Math.min(52.5, z)) / 52.5);
   // bandes de tonte pastel (par profondeur)
@@ -10386,7 +10388,7 @@ async function exporterCpaPDF(jsPDF, info) {
   players.forEach((p) => {
     const pt = FP(p.x, p.z);
     const v = 1 - Math.max(0, Math.min(52.5, p.z)) / 52.5;
-    const r = 8.5 + 3 * (1 - v);
+    const r = persp ? (8.5 + 3 * (1 - v)) : 9.5;
     let colA = [226, 179, 62], txtA = encre;
     if (p.gk) { colA = [39, 125, 70]; txtA = blanc; }
     else if (p.team === "B") { colA = [181, 72, 63]; txtA = blanc; }
@@ -10447,6 +10449,8 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, onSav
   const iframeRef = useRef(null);
   const ficheRef = useRef(fiche || null);
   const pending = useRef({});
+  const saveTimer = useRef(null);
+  const onSaveRef = useRef(onSave); onSaveRef.current = onSave;
   const [titre, setTitre] = useState((fiche && fiche.title) || titreInitial || "Fiche");
   const [pret, setPret] = useState(false);
   const [pdfMsg, setPdfMsg] = useState(null);
@@ -10466,12 +10470,19 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, onSav
       } else if (d.type === "change") {
         ficheRef.current = d.fiche;
         if (d.fiche && d.fiche.title) setTitre(d.fiche.title);
-        if (onSave) onSave(d.fiche);
+        // Enregistrement differe : au plus une sauvegarde 5 s apres le dernier geste (evite les sauvegardes a chaque mouvement).
+        if (saveTimer.current) clearTimeout(saveTimer.current);
+        saveTimer.current = setTimeout(() => { saveTimer.current = null; if (onSaveRef.current && ficheRef.current) onSaveRef.current(ficheRef.current); }, 5000);
       }
     }
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // A la fermeture du tableau : on enregistre immediatement la derniere version (rien n'est perdu).
+  useEffect(() => () => {
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
+    if (onSaveRef.current && ficheRef.current) onSaveRef.current(ficheRef.current);
   }, []);
   function demander(action, extra) {
     return new Promise((res, rej) => {
@@ -10481,13 +10492,13 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, onSav
       setTimeout(() => { if (pending.current[id]) { delete pending.current[id]; rej(new Error("timeout")); } }, 15000);
     });
   }
-  async function exporterPDF() {
+  async function exporterPDF(vue) {
     setPdfMsg("Préparation du PDF...");
     try {
       let f = ficheRef.current || fiche || {};
       try { const rep = await demander("getFiche", {}); if (rep && rep.fiche) f = rep.fiche; } catch (e) {}
       const jsPDF = await chargerJsPDF();
-      await exporterCpaPDF(jsPDF, { titre: (f.title || titre || "Fiche"), ligneMatch: ligneMatch || "", fiche: f, consignes: (f.notes || ""), dispositif: dispositif || [] });
+      await exporterCpaPDF(jsPDF, { titre: (f.title || titre || "Fiche"), ligneMatch: ligneMatch || "", fiche: f, consignes: (f.notes || ""), dispositif: dispositif || [], vue: vue === "2d" ? "2d" : "3d" });
       setPdfMsg(null);
     } catch (e) { setPdfMsg("Export PDF impossible. Réessaie."); setTimeout(() => setPdfMsg(null), 2600); }
   }
@@ -10496,7 +10507,8 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, onSav
       <div style={{ background: C.bleu, color: "#fff", padding: "10px 12px", display: "flex", alignItems: "center", gap: 9, flex: "0 0 auto" }}>
         <Target size={18} style={{ flex: "0 0 auto" }} />
         <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titre}</div>
-        <button type="button" onClick={exporterPDF} disabled={!pret || !!pdfMsg} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.jaune, color: C.bleuNuit, border: "none", borderRadius: 9, padding: "8px 12px", fontWeight: 800, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", opacity: (!pret || !!pdfMsg) ? 0.6 : 1 }}><FileDown size={15} /> PDF club</button>
+        <button type="button" onClick={() => exporterPDF("3d")} disabled={!pret || !!pdfMsg} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.jaune, color: C.bleuNuit, border: "none", borderRadius: 9, padding: "8px 11px", fontWeight: 800, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", opacity: (!pret || !!pdfMsg) ? 0.6 : 1 }}><FileDown size={15} /> PDF 3D</button>
+        <button type="button" onClick={() => exporterPDF("2d")} disabled={!pret || !!pdfMsg} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", color: C.bleuNuit, border: "none", borderRadius: 9, padding: "8px 11px", fontWeight: 800, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", opacity: (!pret || !!pdfMsg) ? 0.6 : 1 }}><FileDown size={15} /> PDF 2D</button>
         <button type="button" onClick={onClose} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.16)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 12px", fontWeight: 800, fontSize: 13, cursor: "pointer" }}><X size={16} /> Fermer</button>
       </div>
       {pdfMsg && <div style={{ background: "#11203a", color: "#fff", fontSize: 12.5, padding: "6px 12px", flex: "0 0 auto" }}>{pdfMsg}</div>}
