@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.89";
+const APP_VERSION = "16.19.90";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -10476,10 +10476,9 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, onSav
         <button type="button" onClick={onClose} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.16)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 12px", fontWeight: 800, fontSize: 13, cursor: "pointer" }}><X size={16} /> Fermer</button>
       </div>
       {pdfMsg && <div style={{ background: "#11203a", color: "#fff", fontSize: 12.5, padding: "6px 12px", flex: "0 0 auto" }}>{pdfMsg}</div>}
-      <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
-        <iframe ref={iframeRef} src="/cpa3d/index.html?guide=0" title="Tableau CPA 3D" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "0", display: "block" }} allow="fullscreen" />
+      <div style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", justifyContent: "center", background: "#0b1018" }}>
+        <iframe ref={iframeRef} src="/cpa3d/index.html?guide=0" title="Tableau CPA 3D" style={{ width: "100%", maxWidth: 560, height: "100%", border: "0", display: "block", background: "#0b1018" }} allow="fullscreen" />
       </div>
-      <div style={{ height: ESPACE_BARRE, flex: "0 0 auto", background: "#0b1018" }} />
     </div>
   );
 }
