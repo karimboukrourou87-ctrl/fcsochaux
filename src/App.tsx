@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.1";
+const APP_VERSION = "16.20.3";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -4492,11 +4492,67 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
 
 
 /* ============================================================
+   Mode consultation (lecture seule) : pour les comptes "dirigeant" (role = consultation
+   dans la table educateurs). Tout ce qui permet de saisir ou d'agir est grise et bloque.
+   La fonction Supabase est_consultation() renvoie true seulement pour ces comptes.
+   ============================================================ */
+function useConsultation() {
+  const [consultation, setConsultation] = useState(false);
+
+  useEffect(() => {
+    let annule = false;
+    (async () => {
+      try {
+        const sb = await getSupabase();
+        const { data } = await sb.rpc("est_consultation");
+        if (!annule) setConsultation(data === true);
+      } catch (e) {}
+    })();
+    return () => { annule = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!consultation) return;
+
+    const MOTS = ["enregistrer", "ajouter", "supprimer", "modifier", "valider",
+      "nouveau", "nouvelle", "importer", "envoyer", "creer", "créer",
+      "retirer", "effacer", "certifier", "match joué", "match remis",
+      "dupliquer", "generer", "générer"];
+
+    const style = document.createElement("style");
+    style.textContent = ".lecture-seule { opacity:.4 !important; pointer-events:none !important; filter:grayscale(1) !important; cursor:not-allowed !important; }";
+    document.head.appendChild(style);
+
+    const appliquer = () => {
+      document.querySelectorAll('button, [role="button"], input[type="submit"]').forEach((el) => {
+        const texte = (el.textContent || "").toLowerCase();
+        if (MOTS.some((m) => texte.includes(m))) el.classList.add("lecture-seule");
+      });
+      document.querySelectorAll("input, textarea").forEach((el) => {
+        const type = (el.type || "").toLowerCase();
+        const place = (el.placeholder || "").toLowerCase();
+        if (type === "search" || place.includes("recherch")) return;
+        el.disabled = true;
+        el.classList.add("lecture-seule");
+      });
+    };
+
+    appliquer();
+    const observateur = new MutationObserver(appliquer);
+    observateur.observe(document.body, { childList: true, subtree: true });
+    return () => { observateur.disconnect(); style.remove(); };
+  }, [consultation]);
+
+  return consultation;
+}
+
+/* ============================================================
    Application
    ============================================================ */
 export default function App() {
   const [session, setSession] = useState(undefined);
   const [profil, setProfil] = useState(null);
+  const consultation = useConsultation();
   const [cat, setCat] = useState(null);
   const catRef = useRef(null); catRef.current = cat;
   const [tab, setTab] = useState("accueil");
@@ -10565,7 +10621,7 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, noms,
   }
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 130, background: "#0b1018", display: "flex", flexDirection: "column" }}>
-      <div style={{ background: C.bleu, color: "#fff", padding: "10px 12px", display: "flex", alignItems: "center", gap: 9, flex: "0 0 auto" }}>
+      <div style={{ background: C.bleu, color: "#fff", padding: "calc(10px + env(safe-area-inset-top)) 12px 10px", display: "flex", flexWrap: "wrap", rowGap: 6, alignItems: "center", gap: 9, flex: "0 0 auto" }}>
         <Target size={18} style={{ flex: "0 0 auto" }} />
         <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 15, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titre}</div>
         <button type="button" onClick={enregistrer} disabled={!dirty} title="Enregistrer la fiche" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: dirty ? "#2E8B61" : "rgba(255,255,255,0.16)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 11px", fontWeight: 800, fontSize: 13, cursor: dirty ? "pointer" : "default", whiteSpace: "nowrap", opacity: dirty ? 1 : 0.6 }}><Check size={15} /> {dirty ? "Enregistrer" : "Enregistré"}</button>
