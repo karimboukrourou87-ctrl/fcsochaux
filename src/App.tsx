@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.3";
+const APP_VERSION = "16.20.4";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -4501,14 +4501,25 @@ function useConsultation() {
 
   useEffect(() => {
     let annule = false;
-    (async () => {
+    let souscription = null;
+    const verifier = async () => {
       try {
         const sb = await getSupabase();
         const { data } = await sb.rpc("est_consultation");
         if (!annule) setConsultation(data === true);
+      } catch (e) { if (!annule) setConsultation(false); }
+    };
+    verifier();
+    // On re-verifie a chaque changement de session : deconnecte, personne n'est en consultation
+    // (la connexion reste donc toujours possible), et a la connexion le droit est re-evalue.
+    (async () => {
+      try {
+        const sb = await getSupabase();
+        const { data } = sb.auth.onAuthStateChange(() => verifier());
+        souscription = data && data.subscription;
       } catch (e) {}
     })();
-    return () => { annule = true; };
+    return () => { annule = true; try { if (souscription) souscription.unsubscribe(); } catch (e) {} };
   }, []);
 
   useEffect(() => {
@@ -4531,7 +4542,12 @@ function useConsultation() {
       document.querySelectorAll("input, textarea").forEach((el) => {
         const type = (el.type || "").toLowerCase();
         const place = (el.placeholder || "").toLowerCase();
+        const auto = (el.getAttribute("autocomplete") || "").toLowerCase();
         if (type === "search" || place.includes("recherch")) return;
+        // On ne bloque JAMAIS les champs de connexion (mail/identifiant + mot de passe) pour laisser l'acces a l'appli.
+        if (type === "password" || type === "email") return;
+        if (auto.includes("password") || auto.includes("username") || auto.includes("email")) return;
+        if (place.includes("mail") || place.includes("mot de passe") || place.includes("identifiant")) return;
         el.disabled = true;
         el.classList.add("lecture-seule");
       });
