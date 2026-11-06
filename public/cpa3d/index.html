@@ -31,7 +31,7 @@ input,textarea,select{font-family:inherit}
 #views{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:6px}
 #views button{background:rgba(10,15,24,.72);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:7px 9px;font:700 12px 'Barlow Condensed';letter-spacing:.6px;text-transform:uppercase}
 #views button.on{background:var(--acc);color:#111;border-color:var(--acc)}
-#caption{position:absolute;left:0;right:0;bottom:0;padding:26px 16px 14px;background:linear-gradient(transparent,rgba(0,0,0,.72));font:800 clamp(20px,5vw,30px) 'Barlow Condensed',sans-serif;letter-spacing:.5px;text-transform:uppercase;text-shadow:0 2px 8px rgba(0,0,0,.6);pointer-events:none;opacity:0;transition:opacity .25s;display:flex;align-items:center;justify-content:center;text-align:center;gap:10px}
+#caption{position:absolute;left:0;right:0;bottom:0;padding:26px 16px 14px;background:linear-gradient(transparent,rgba(0,0,0,.72));font:600 clamp(20px,5vw,30px) 'Barlow Condensed',sans-serif;letter-spacing:.5px;text-transform:uppercase;text-shadow:0 2px 8px rgba(0,0,0,.6);pointer-events:none;opacity:0;transition:opacity .25s;display:flex;align-items:center;gap:10px}
 #caption.show{opacity:1}
 #caption .dot{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;color:#111;font-size:18px}
 #toast{position:absolute;left:50%;top:12px;transform:translateX(-50%) translateY(-80px);background:#fff;color:#111;padding:9px 14px;border-radius:12px;font-weight:600;font-size:14px;transition:transform .3s;z-index:20;max-width:86%;text-align:center}
@@ -185,6 +185,7 @@ details summary{font:700 14px 'Barlow Condensed';letter-spacing:1.2px;text-trans
   </div>
   <div class="row"><label>Projecteur sur lui</label><div class="seg" id="shSpot"><button data-s="0">Non</button><button data-s="1">Oui</button></div></div>
   <div class="row"><label>Gardien</label><div class="seg" id="shGk"><button data-g="0">Non</button><button data-g="1">Oui</button></div></div>
+  <button class="btn c" id="shHide" style="width:100%;margin-top:10px">Masquer ce joueur</button>
   <div class="grid2" style="margin-top:10px">
     <button class="btn c" id="shRuns">Effacer ses courses</button>
     <button class="btn c dng" id="shDel">Supprimer le joueur</button>
@@ -251,8 +252,10 @@ details summary{font:700 14px 'Barlow Condensed';letter-spacing:1.2px;text-trans
   <div class="empty" style="margin:-4px 0 8px">« Simples » est plus fluide sur les téléphones anciens.</div>
   <div class="row"><label>Taille des joueurs</label><input type="range" id="scale" min="1" max="2.4" step="0.1"></div>
   <div class="row"><label>Afficher les numéros</label><div class="seg" id="numsSeg"><button data-n="1">Oui</button><button data-n="0">Non</button></div></div>
+  <div class="row"><label>Couleur de peau</label><div class="seg" id="skinSeg"><button data-sk="varie">Variée</button><button data-sk="#f1c7a4">Claire</button><button data-sk="#d9a27e">Mate</button><button data-sk="#a86f4c">Hâlée</button><button data-sk="#5c3a24">Foncée</button></div></div>
   <div class="row"><label>Vitesse animation</label><div class="seg" id="speedSeg"><button data-s="0.6">Lente</button><button data-s="1">Normale</button><button data-s="1.6">Rapide</button></div></div>
   <div class="row"><label>Temps de réaction</label><div class="seg" id="reactSeg"><button data-rc="0.1">Rapide</button><button data-rc="0.4">Normal</button><button data-rc="0.9">Lent</button></div></div>
+  <div id="hiddenWrap" style="display:none"><h3>Joueurs masqués</h3><div id="hiddenBox" class="chips"></div><button class="btn c" id="showAll" style="width:100%;margin-top:6px">Tout réafficher</button></div>
 
   <div class="row"><label>Maillot Adversaire</label><input type="color" id="colB"></div>
   <div class="row"><label>Maillot gardiens</label><input type="color" id="colGK"></div>
@@ -739,6 +742,37 @@ function backName(name, shirt) {
 }
 // Nom de famille a graver dans le dos : seulement notre equipe (A), joueur de champ, et si l'appli a fourni le nom.
 function nomDos(p) { return (!p.gk && p.team === 'A') ? (teamNames[String(p.num)] || '') : ''; }
+// Texte ecrit directement sur le maillot (sponsor), fond transparent.
+const chestTextCache = {};
+function chestText(text, color) {
+  const key = text + '|' + color;
+  if (!chestTextCache[key]) {
+    const t = canvasTex(512, 128, (g) => { g.fillStyle = color; g.font = '800 74px "Barlow Condensed", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(text).toUpperCase(), 256, 70); });
+    chestTextCache[key] = new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -2 });
+  }
+  return chestTextCache[key];
+}
+// Sponsor "eimi" : symbole (swirl) bleu + texte, fond transparent, dessine en approximation du logo.
+function eimiTex() {
+  if (!chestTextCache['__eimi']) {
+    const t = canvasTex(512, 150, (g) => {
+      g.strokeStyle = '#15325C'; g.fillStyle = '#15325C'; g.lineCap = 'round'; g.lineWidth = 15;
+      g.beginPath(); g.arc(72, 78, 34, Math.PI * 0.22, Math.PI * 1.85); g.stroke();
+      g.beginPath(); g.moveTo(98, 52); g.quadraticCurveTo(142, 42, 118, 92); g.stroke();
+      g.font = '800 90px "Barlow Condensed", Arial, sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle';
+      g.fillText('eimi', 150, 82);
+    });
+    chestTextCache['__eimi'] = new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -2 });
+  }
+  return chestTextCache['__eimi'];
+}
+// Petit panneau legerement courbe : les bords reculent vers le corps pour epouser le torse au lieu de depasser a plat.
+function curvedPanel(w, h, depth, segs) {
+  const g = new THREE.PlaneGeometry(w, h, segs || 14, 1), pos = g.attributes.position, hw = w / 2;
+  for (let i = 0; i < pos.count; i++) { const t = pos.getX(i) / hw; pos.setZ(i, -(depth || 0.03) * t * t); }
+  pos.needsUpdate = true; g.computeVertexNormals();
+  return g;
+}
 function makePlayer(p) { return realModel && ui.realPlayers ? makePlayerReal(p) : makePlayerSimple(p); }
 /* ============ joueur réaliste : maillage d'un seul tenant animé par squelette ============ */
 const MODEL_META = {"nv":8979,"nt":16068,"step":0.0005,"lo":[-0.4,-0.02,-0.26],"bones":["hips","spine","chest","neck","head","upperArmL","forearmL","upperArmR","forearmR","thighL","shinL","footL","thighR","shinR","footR"],"parent":[-1,0,1,2,3,2,5,2,7,0,9,10,0,12,13],"joints":[[0,0.95,0],[0,1.08,0.0],[0,1.25,0.0],[0,1.52,-0.005],[0,1.615,0.005],[0.19,1.445,-0.012],[0.236,1.172,-0.03],[-0.19,1.445,-0.012],[-0.236,1.172,-0.03],[0.088,0.935,0.0],[0.097,0.505,0.01],[0.1,0.095,-0.02],[-0.088,0.935,0.0],[-0.097,0.505,0.01],[-0.1,0.095,-0.02]]};
@@ -813,7 +847,7 @@ function makePlayerReal(p) {
   const ours = p.team === 'A' && !p.gk, trim = ours ? c.trimA : shirt;
   const shorts = p.gk ? '#1b1d22' : (p.team === 'A' ? c.shortsA : c.shortsB);
   const socks = p.gk ? c.GK : (p.team === 'A' ? c.socksA : '#f4f4f4');
-  const skin = SKINS[hash(p.id + 3) % SKINS.length], hairC = HAIRS[hash(p.id + 7) % HAIRS.length];
+  const skin = (ui.skin && ui.skin !== 'varie') ? ui.skin : SKINS[hash(p.id + 3) % SKINS.length], hairC = HAIRS[hash(p.id + 7) % HAIRS.length];
   const hair = hash(p.id + 11) % 6 === 0 ? new THREE.Color(skin).multiplyScalar(0.72).getStyle() : hairC;
   const pal = [skin, p.gk ? shirt : skin, p.gk ? '#f2f2f2' : skin, skin, shirt, trim, trim, shorts, socks, '#151515', hair];
   const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
@@ -836,8 +870,9 @@ function makePlayerReal(p) {
   if (ours) {
     const kit = teamKit;
     const decal = (url, asp, w, x, y, z, ry = 0) => { const m = new THREE.Mesh(G.plane, decalMat(url)); const hh = Math.min(w / asp, w * 1.2); m.scale.set(hh * asp, hh, 1); m.position.set(x, y, z); m.rotation.y = ry; chest.add(m); };
-    if (kit.sponsor) decal(kit.sponsor, kit.sponsorAsp || 2, 0.26, 0, 0.05, 0.125);
-    if (kit.sponsor2) decal(kit.sponsor2, kit.sponsor2Asp || 2, 0.22, 0, kit.sponsor ? -0.05 : 0.0, 0.113);
+    // Sponsor ecrit directement : PEUGEOT, bleu du club, fond transparent, legerement courbe pour epouser le torse (pas de rectangle blanc qui depasse).
+    try { const pm = new THREE.Mesh(curvedPanel(0.22, 0.055, 0.03), chestText('PEUGEOT', '#15325C')); pm.position.set(0, 0.04, 0.107); chest.add(pm); } catch (e) {}
+    try { const em = new THREE.Mesh(curvedPanel(0.2, 0.05, 0.028), eimiTex()); em.position.set(0, -0.02, 0.106); chest.add(em); } catch (e) {}
     if (kit.crest) decal(kit.crest, kit.crestAsp || 1, 0.075, 0.068, 0.125, 0.11, 0.35);
   }
   const rig = { root, skinned: true, hipL: B('thighL'), hipR: B('thighR'), kneeL: B('shinL'), kneeR: B('shinR'),
@@ -865,7 +900,7 @@ function makePlayerSimple(p) {
   const shirt = p.gk ? c.GK : c[p.team];
   const shorts = p.gk ? '#1b1d22' : (p.team === 'A' ? c.shortsA : c.shortsB);
   const socks = p.gk ? c.GK : (p.team === 'A' ? c.socksA : '#f4f4f4');
-  const skin = SKINS[hash(p.id + 3) % SKINS.length], hair = HAIRS[hash(p.id + 7) % HAIRS.length];
+  const skin = (ui.skin && ui.skin !== 'varie') ? ui.skin : SKINS[hash(p.id + 3) % SKINS.length], hair = HAIRS[hash(p.id + 7) % HAIRS.length];
   const ours = p.team === 'A' && !p.gk;
   const trim = ours ? c.trimA : shirt;
   const g = new THREE.Group();
@@ -1038,7 +1073,7 @@ let selRing;
 function buildPlayers() {
   playersGroup.children.slice().forEach(o => { playersGroup.remove(o); o.traverse(m => { if (m.userData.own && m.geometry) m.geometry.dispose(); if (m.material && m.material.map && m.isSprite) { m.material.map.dispose(); m.material.dispose(); } }); });
   playerObjs.clear();
-  state.players.forEach(p => { const g = makePlayer(p); playersGroup.add(g); playerObjs.set(p.id, g); });
+  state.players.forEach(p => { if (p.hidden) return; const g = makePlayer(p); playersGroup.add(g); playerObjs.set(p.id, g); });
   updateAmbience();
   selRing = null;
   if (ui.selected != null && playerObjs.has(ui.selected)) {
@@ -1151,7 +1186,8 @@ function disposeGroup(gr) {
 function buildActions() {
   disposeGroup(actionsGroup);
   const { res } = chains();
-  state.actions.forEach(a => { const ch = res.get(a.id); if (ch) actionsGroup.add(buildArrow(a, ch)); });
+  const hid = new Set(state.players.filter(p => p.hidden).map(p => p.id));
+  state.actions.forEach(a => { if (hid.has(a.pid)) return; const ch = res.get(a.id); if (ch) actionsGroup.add(buildArrow(a, ch)); });
 }
 function zoneMesh(z, preview = false) {
   const x1 = Math.min(z.x1, z.x2), x2 = Math.max(z.x1, z.x2), z1 = Math.min(z.z1, z.z2), z2 = Math.max(z.z1, z.z2);
@@ -1555,7 +1591,7 @@ canvas.addEventListener('pointermove', (e) => {
 });
 function previewAction(d) {
   const { ppos, bpos } = chains();
-  if (d.kind === 'run') return { a: { id: -1, type: 'run', pid: d.pid, to: d.to, step: ui.step, bend: [0, 0.2, -0.2][ui.bend] }, from: ppos.get(d.pid) };
+  if (d.kind === 'run') return { a: { id: -1, type: 'run', pid: d.pid, to: d.to, step: ui.step, bend: [0, 0.2, 0.4, -0.2, -0.4][ui.bend] }, from: ppos.get(d.pid) };
   return { a: { id: -1, type: 'pass', to: d.to, step: ui.step, kind: ui.passKind, curve: ui.passCurve }, from: bpos };
 }
 function showPreview() {
@@ -1623,7 +1659,7 @@ function renderHint() {
   const h = $('#hint'); h.innerHTML = '';
   const t = document.createElement('div'); t.className = 'txt'; t.textContent = HINTS[ui.mode]; h.appendChild(t);
   const seg = (opts, cur, onPick) => { const s = document.createElement('div'); s.className = 'seg'; opts.forEach(([v, l]) => { const b = document.createElement('button'); b.textContent = l; if (v === cur) b.classList.add('on'); b.onclick = () => { onPick(v); renderHint(); }; s.appendChild(b); }); h.appendChild(s); };
-  if (ui.mode === 'run') seg([[0, 'Droite'], [1, 'Courbe ⟲'], [2, 'Courbe ⟳']], ui.bend, v => ui.bend = v);
+  if (ui.mode === 'run') seg([[0, 'Tout droit'], [1, 'Gauche'], [2, 'Gauche +'], [3, 'Droite'], [4, 'Droite +']], ui.bend, v => ui.bend = v);
   if (ui.mode === 'pass') { seg(BALL_TYPES, ui.passKind, v => ui.passKind = v); seg(BALL_EFFECTS, ui.passCurve, v => ui.passCurve = v); }
   if (ui.mode === 'zone') {
     const s = document.createElement('div'); s.style.display = 'flex'; s.style.gap = '6px';
@@ -1727,6 +1763,17 @@ $('#shRot').addEventListener('change', e => { rotUndo = false; setRot(+e.target.
 $('#shClose').onclick = () => { document.activeElement && document.activeElement.blur(); closeSheet(); };
 $('#shRuns').onclick = () => { const id = ui.selected; pushUndo(); state.actions = state.actions.filter(a => !(a.type === 'run' && a.pid === id)); buildActions(); commit(); toast('Courses effacées'); };
 $('#shDel').onclick = () => { deletePlayer(ui.selected, true); };
+$('#shHide').onclick = () => { const p = playerById(ui.selected); if (!p) return; pushUndo(); p.hidden = true; closeSheet(); rebuildAll(); updateHidden(); commit(); toast('Joueur masqué (menu pour le réafficher)'); };
+// Liste des joueurs masques dans le menu, avec bouton pour les reafficher.
+function updateHidden() {
+  const box = $('#hiddenBox'), wrap = $('#hiddenWrap'); if (!box || !wrap) return;
+  const masq = state.players.filter(p => p.hidden);
+  wrap.style.display = masq.length ? '' : 'none';
+  box.innerHTML = '';
+  masq.forEach(p => { const b = document.createElement('button'); b.textContent = (p.gk ? 'G' : (p.num || '?')) + (p.label ? ' ' + p.label : '') + '  ✕'; b.onclick = () => { pushUndo(); p.hidden = false; rebuildAll(); updateHidden(); commit(); }; box.appendChild(b); });
+}
+$('#showAll').onclick = () => { pushUndo(); state.players.forEach(p => { p.hidden = false; }); rebuildAll(); updateHidden(); commit(); };
+document.querySelectorAll('#skinSeg button').forEach(b => b.onclick = () => { ui.skin = b.dataset.sk; store.set('cpa3d_skin', ui.skin); buildPlayers(); syncUI(); });
 function deletePlayer(id, undo) {
   if (undo) pushUndo();
   state.players = state.players.filter(p => p.id !== id);
@@ -1846,6 +1893,8 @@ function syncUI() {
   document.querySelectorAll('#numsSeg button').forEach(b => b.classList.toggle('on', (b.dataset.n === '1') === !!state.settings.nums));
   document.querySelectorAll('#speedSeg button').forEach(b => b.classList.toggle('on', parseFloat(b.dataset.s) === ui.speed));
   document.querySelectorAll('#reactSeg button').forEach(b => b.classList.toggle('on', parseFloat(b.dataset.rc) === ui.reaction));
+  document.querySelectorAll('#skinSeg button').forEach(b => b.classList.toggle('on', b.dataset.sk === (ui.skin || 'varie')));
+  updateHidden();
   $('#colA').value = state.colors.A; $('#colB').value = state.colors.B; $('#colGK').value = state.colors.GK;
   $('#colTrim').value = state.colors.trimA; $('#colShorts').value = state.colors.shortsA; $('#colSocks').value = state.colors.socksA;
   document.querySelectorAll('#menu input[type=color]').forEach(ci => { if (ci._hex) { ci._hex.value = ci.value.toUpperCase(); ci._hex.classList.remove('bad'); } });
@@ -1940,7 +1989,7 @@ function openTraj(id) {
     fill($('#trType'), BALL_TYPES, a.kind === 'air' || !a.kind ? 'air' : a.kind, v => a.kind = v);
     fill($('#trEffect'), BALL_EFFECTS, a.curve || '', v => a.curve = v);
   } else {
-    fill($('#trBend'), [[0, 'Droite'], [0.2, 'Courbe ⟲'], [-0.2, 'Courbe ⟳']], Math.abs(a.bend || 0) < 0.05 ? 0 : (a.bend > 0 ? 0.2 : -0.2), v => a.bend = v);
+    fill($('#trBend'), [[0, 'Tout droit'], [0.2, 'Gauche'], [0.4, 'Gauche +'], [-0.2, 'Droite'], [-0.4, 'Droite +']], (a.bend || 0), v => a.bend = v);
   }
   fill($('#trStep'), [1, 2, 3, 4].map(n => [n, 'Temps ' + n]), a.step, v => a.step = v);
   openModal('mTraj');
@@ -2233,6 +2282,7 @@ function loadState(s) {
 
 ui.speed = store.get('cpa3d_speed', 1);
 ui.reaction = store.get('cpa3d_reaction', 0.4);
+ui.skin = store.get('cpa3d_skin', 'varie');
 ui.realPlayers = store.get('cpa3d_real', true) !== false;
 document.querySelectorAll('#realSeg button').forEach(b => {
   b.classList.toggle('on', (b.dataset.r === '1') === ui.realPlayers);
