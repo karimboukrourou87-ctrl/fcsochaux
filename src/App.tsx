@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.99";
+const APP_VERSION = "16.20.1";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -10298,8 +10298,36 @@ function CpaJoueursEditor({ joueurs, compoJoueurs, onChange }) {
 }
 
 // Fiche CPA en PDF, version claire aux couleurs du club : en-tete + logo, image 3D, consignes.
+// Proxy jsPDF : on dessine toujours en coordonnees A4 et, pour une sortie A3, tout est mis a l'echelle (x k). A4 -> k=1 (doc reel direct).
+function docEchelle(real, k) {
+  if (k === 1) return real;
+  const S = (v) => (typeof v === "number" ? v * k : v);
+  return {
+    setFontSize: (s) => real.setFontSize(s * k),
+    setLineWidth: (w) => real.setLineWidth(w * k),
+    setFont: (...a) => real.setFont(...a),
+    setTextColor: (...a) => real.setTextColor(...a),
+    setFillColor: (...a) => real.setFillColor(...a),
+    setDrawColor: (...a) => real.setDrawColor(...a),
+    setProperties: (...a) => real.setProperties(...a),
+    setLineDashPattern: (arr, ph) => real.setLineDashPattern((arr || []).map(S), S(ph || 0)),
+    text: (t, x, y, o) => real.text(t, S(x), S(y), o),
+    line: (x1, y1, x2, y2) => real.line(S(x1), S(y1), S(x2), S(y2)),
+    circle: (x, y, r, st) => real.circle(S(x), S(y), S(r), st),
+    triangle: (x1, y1, x2, y2, x3, y3, st) => real.triangle(S(x1), S(y1), S(x2), S(y2), S(x3), S(y3), st),
+    rect: (x, y, w, h, st) => real.rect(S(x), S(y), S(w), S(h), st),
+    roundedRect: (x, y, w, h, rx, ry, st) => real.roundedRect(S(x), S(y), S(w), S(h), S(rx), S(ry), st),
+    addImage: (img, fmt, x, y, w, h, al, comp) => real.addImage(img, fmt, S(x), S(y), S(w), S(h), al, comp),
+    getImageProperties: (...a) => real.getImageProperties(...a),
+    getTextWidth: (t) => real.getTextWidth(t) / k,
+    splitTextToSize: (t, w) => real.splitTextToSize(t, w * k),
+  };
+}
 async function exporterCpaPDF(jsPDF, info) {
-  const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "portrait" });
+  const A3 = info.format === "a3";
+  const k = A3 ? Math.SQRT2 : 1;
+  const realDoc = new jsPDF({ unit: "pt", format: A3 ? "a3" : "a4", orientation: "portrait" });
+  const doc = docEchelle(realDoc, k);
   const W = 595.28, H = 841.89, M = 30;
   const bleu = [21, 56, 92], gris = [107, 118, 130], grisCl = [217, 222, 228], or = [184, 138, 46], encre = [34, 48, 63], blanc = [255, 255, 255];
   const sc = (a) => doc.setTextColor(a[0], a[1], a[2]);
@@ -10460,7 +10488,7 @@ async function exporterCpaPDF(jsPDF, info) {
   sc(gris); doc.setFont("helvetica", "normal"); doc.setFontSize(8.3);
   doc.text(CLUB_LONG + " · Fiche générée par l'application", M, H - 32);
   doc.text("Coups de pied arrêtés", W - M, H - 32, { align: "right" });
-  telechargerDoc(doc, nomPdf("CPA", info.titre || "fiche"));
+  telechargerDoc(realDoc, nomPdf("CPA", info.titre || "fiche"));
 }
 
 // Fenetre plein ecran : le tableau 3D (iframe) et le pont de messages avec l'appli.
@@ -10475,6 +10503,7 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, noms,
   const [pdfMsg, setPdfMsg] = useState(null);
   const [dirty, setDirty] = useState(false); // modifications non enregistrees (enregistrement manuel)
   const dirtyRef = useRef(false); dirtyRef.current = dirty;
+  const [format, setFormat] = useState("a4"); // format d'impression du PDF : a4 ou a3
   function envoyer(action, extra) {
     try { const w = iframeRef.current && iframeRef.current.contentWindow; if (w) w.postMessage(Object.assign({ target: "cpa3d", action: action }, extra || {}), "*"); } catch (e) {}
   }
@@ -10530,7 +10559,7 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, noms,
       let image3d = null;
       if (vue === "3d") { try { const r = await demander("exportScene", { w: 1600, h: 1120 }); if (r && r.image) image3d = r.image; } catch (e) {} }
       const jsPDF = await chargerJsPDF();
-      await exporterCpaPDF(jsPDF, { titre: (f.title || titre || "Fiche"), ligneMatch: ligneMatch || "", fiche: f, consignes: (f.notes || ""), dispositif: dispositif || [], vue: vue === "2d" ? "2d" : "3d", image3d: image3d });
+      await exporterCpaPDF(jsPDF, { titre: (f.title || titre || "Fiche"), ligneMatch: ligneMatch || "", fiche: f, consignes: (f.notes || ""), dispositif: dispositif || [], vue: vue === "2d" ? "2d" : "3d", image3d: image3d, format: format });
       setPdfMsg(null);
     } catch (e) { setPdfMsg("Export PDF impossible. Réessaie."); setTimeout(() => setPdfMsg(null), 2600); }
   }
@@ -10540,6 +10569,7 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, noms,
         <Target size={18} style={{ flex: "0 0 auto" }} />
         <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 15, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titre}</div>
         <button type="button" onClick={enregistrer} disabled={!dirty} title="Enregistrer la fiche" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: dirty ? "#2E8B61" : "rgba(255,255,255,0.16)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 11px", fontWeight: 800, fontSize: 13, cursor: dirty ? "pointer" : "default", whiteSpace: "nowrap", opacity: dirty ? 1 : 0.6 }}><Check size={15} /> {dirty ? "Enregistrer" : "Enregistré"}</button>
+        <button type="button" onClick={() => setFormat((f) => f === "a4" ? "a3" : "a4")} title="Format d'impression du PDF (A4 ou A3)" style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.16)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 10px", fontWeight: 800, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>{format.toUpperCase()}</button>
         <button type="button" onClick={() => exporterPDF("3d")} disabled={!pret || !!pdfMsg} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.jaune, color: C.bleuNuit, border: "none", borderRadius: 9, padding: "8px 11px", fontWeight: 800, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", opacity: (!pret || !!pdfMsg) ? 0.6 : 1 }}><FileDown size={15} /> PDF 3D</button>
         <button type="button" onClick={() => exporterPDF("2d")} disabled={!pret || !!pdfMsg} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", color: C.bleuNuit, border: "none", borderRadius: 9, padding: "8px 11px", fontWeight: 800, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", opacity: (!pret || !!pdfMsg) ? 0.6 : 1 }}><FileDown size={15} /> PDF 2D</button>
         <button type="button" onClick={fermer} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.16)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 12px", fontWeight: 800, fontSize: 13, cursor: "pointer" }}><X size={16} /> Fermer</button>
