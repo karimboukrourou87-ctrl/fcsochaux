@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.94";
+const APP_VERSION = "16.19.95";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -10338,6 +10338,11 @@ async function exporterCpaPDF(jsPDF, info) {
   const nearHalf = (bx1 - bx0) / 2 * 0.98, farHalf = persp ? nearHalf * 0.60 : nearHalf;
   const P = (u, v) => { const hw = nearHalf + (farHalf - nearHalf) * v; return [cxp + (u - 0.5) * 2 * hw, pyA + (1 - v) * ph]; };
   const FP = (x, z) => P((x + 34) / 68, 1 - Math.max(0, Math.min(52.5, z)) / 52.5);
+  const img3d = (info.vue === "3d" && info.image3d) ? info.image3d : null;
+  if (img3d) {
+    // PDF 3D : on insere la vraie image 3D (joueurs en volume, terrain pastel) a la place du terrain dessine.
+    try { doc.addImage(img3d, "JPEG", M + 8, pTop + 8, pw - 16, ph, undefined, "FAST"); } catch (e) {}
+  } else {
   // bandes de tonte pastel (par profondeur)
   const nb = 7;
   for (let i = 0; i < nb; i++) {
@@ -10396,6 +10401,7 @@ async function exporterCpaPDF(jsPDF, info) {
     sc(txtA); doc.setFont("helvetica", "bold"); doc.setFontSize(Math.max(7, r * 0.95));
     doc.text(String(p.num || ""), pt[0], pt[1] + r * 0.34, { align: "center" });
   });
+  }
   // legende
   const ly = pyB + 6;
   const pastille = (xx, colArr, lbl) => { sf(colArr); doc.circle(xx + 4, ly + 4, 3.5, "F"); sc(encre); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text(lbl, xx + 11, ly + 7); return xx + 14 + doc.getTextWidth(lbl); };
@@ -10445,12 +10451,13 @@ async function exporterCpaPDF(jsPDF, info) {
 }
 
 // Fenetre plein ecran : le tableau 3D (iframe) et le pont de messages avec l'appli.
-function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, onSave, onClose }) {
+function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, noms, onSave, onClose }) {
   const iframeRef = useRef(null);
   const ficheRef = useRef(fiche || null);
   const pending = useRef({});
   const saveTimer = useRef(null);
   const onSaveRef = useRef(onSave); onSaveRef.current = onSave;
+  const nomsRef = useRef(noms); nomsRef.current = noms;
   const [titre, setTitre] = useState((fiche && fiche.title) || titreInitial || "Fiche");
   const [pret, setPret] = useState(false);
   const [pdfMsg, setPdfMsg] = useState(null);
@@ -10465,6 +10472,7 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, onSav
       if (d.type === "ready") {
         setPret(true);
         envoyer("setTenue", { tenue: TENUE_FCSM });
+        if (nomsRef.current) envoyer("setNoms", { noms: nomsRef.current });
         if (fiche) envoyer("loadFiche", { fiche: fiche });
         else if (modele) envoyer("newFiche", { modele: modele });
       } else if (d.type === "change") {
@@ -10497,8 +10505,10 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, onSav
     try {
       let f = ficheRef.current || fiche || {};
       try { const rep = await demander("getFiche", {}); if (rep && rep.fiche) f = rep.fiche; } catch (e) {}
+      let image3d = null;
+      if (vue === "3d") { try { const r = await demander("exportScene", { w: 1600, h: 1120 }); if (r && r.image) image3d = r.image; } catch (e) {} }
       const jsPDF = await chargerJsPDF();
-      await exporterCpaPDF(jsPDF, { titre: (f.title || titre || "Fiche"), ligneMatch: ligneMatch || "", fiche: f, consignes: (f.notes || ""), dispositif: dispositif || [], vue: vue === "2d" ? "2d" : "3d" });
+      await exporterCpaPDF(jsPDF, { titre: (f.title || titre || "Fiche"), ligneMatch: ligneMatch || "", fiche: f, consignes: (f.notes || ""), dispositif: dispositif || [], vue: vue === "2d" ? "2d" : "3d", image3d: image3d });
       setPdfMsg(null);
     } catch (e) { setPdfMsg("Export PDF impossible. Réessaie."); setTimeout(() => setPdfMsg(null), 2600); }
   }
@@ -10722,6 +10732,16 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
       return { role: role, nom: p ? p.nom : "", num: p ? p.num : "" };
     }).filter((x) => x.nom || x.num);
   }
+  // Correspondance numero de maillot -> NOM DE FAMILLE (en majuscules) pour l'afficher dans le dos des joueurs du tableau 3D.
+  const cpaNoms = (() => {
+    const map = {};
+    compoJoueurs.forEach((cj) => {
+      const p = trouve(cj.id);
+      const surname = (p && p.nom ? String(p.nom) : "").trim();
+      if (cj.num != null && cj.num !== "" && surname) map[String(cj.num)] = surname.toUpperCase();
+    });
+    return map;
+  })();
   const GK_COL = "#2FA36B"; // couleur distincte du gardien
   const [pick, setPick] = useState(null);       // index de slot à remplir
   const [cpaModal, setCpaModal] = useState(null); // fiche CPA ouverte dans le tableau 3D
@@ -11373,6 +11393,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
           fiche={cpaModal.fiche}
           ligneMatch={cpaLigneMatch}
           dispositif={cpaModalDispositif}
+          noms={cpaNoms}
           onSave={cpaSauver}
           onClose={() => setCpaModal(null)}
         />
