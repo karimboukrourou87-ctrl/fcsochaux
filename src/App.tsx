@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.4";
+const APP_VERSION = "16.20.5";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -3444,7 +3444,7 @@ function telechargerDoc(doc, nom) {
 // Fenêtre d'aperçu du PDF avant enregistrement (commune à tous les exports)
 function ApercuPDF({ url, nom, onClose }) {
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(10,20,35,0.82)", zIndex: 2147483000, display: "flex", flexDirection: "column", padding: "10px 10px calc(10px + env(safe-area-inset-bottom))" }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(10,20,35,0.82)", zIndex: 2147483000, display: "flex", flexDirection: "column", padding: "calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom))" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#fff", padding: "6px 2px 10px" }}>
         <FileDown size={18} />
         <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 14.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Aperçu : {nom}</div>
@@ -18187,7 +18187,7 @@ function ProgrammeSemaine({ db, localDb, peutValider, userId, encadrement, cats,
       </div>
       {ligneEdit && <EditLignePlanning match={ligneEdit.match} cats={cats} encadrement={encadrement} onClose={() => setLigneEdit(null)} onSave={sauverLigne} />}
       {apercuUrl && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(10,20,35,0.82)", zIndex: 2147483000, display: "flex", flexDirection: "column", padding: "10px 10px calc(10px + env(safe-area-inset-bottom))" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(10,20,35,0.82)", zIndex: 2147483000, display: "flex", flexDirection: "column", padding: "calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom))" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#fff", padding: "6px 2px 10px" }}>
             <CalendarDays size={18} />
             <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 14.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Aperçu du programme · {label}</div>
@@ -18201,7 +18201,7 @@ function ProgrammeSemaine({ db, localDb, peutValider, userId, encadrement, cats,
         </div>
       )}
       {apercuImg && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(10,20,35,0.82)", zIndex: 2147483000, display: "flex", flexDirection: "column", padding: "10px 10px calc(10px + env(safe-area-inset-bottom))" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(10,20,35,0.82)", zIndex: 2147483000, display: "flex", flexDirection: "column", padding: "calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom))" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#fff", padding: "6px 2px 10px" }}>
             <CalendarDays size={18} />
             <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 14.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Aperçu image · {label}</div>
