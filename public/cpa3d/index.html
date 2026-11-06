@@ -757,10 +757,14 @@ function eimiTex() {
   if (!chestTextCache['__eimi']) {
     const t = canvasTex(512, 150, (g) => {
       g.strokeStyle = '#15325C'; g.fillStyle = '#15325C'; g.lineCap = 'round'; g.lineWidth = 15;
-      g.beginPath(); g.arc(72, 78, 34, Math.PI * 0.22, Math.PI * 1.85); g.stroke();
-      g.beginPath(); g.moveTo(98, 52); g.quadraticCurveTo(142, 42, 118, 92); g.stroke();
-      g.font = '800 96px Arial, "Barlow Condensed", sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle';
-      g.fillText('eimi', 150, 82);
+      g.font = '800 96px Arial, "Barlow Condensed", sans-serif'; g.textBaseline = 'middle';
+      // On centre l'ensemble (symbole + "eimi") au milieu de l'image pour qu'il soit aligne sous PEUGEOT.
+      const txt = 'eimi', tw = g.measureText(txt).width, swW = 78, gap = 18, total = swW + gap + tw;
+      const x0 = (512 - total) / 2, cxSwirl = x0 + 36;
+      g.beginPath(); g.arc(cxSwirl, 78, 32, Math.PI * 0.22, Math.PI * 1.85); g.stroke();
+      g.beginPath(); g.moveTo(cxSwirl + 24, 52); g.quadraticCurveTo(cxSwirl + 66, 42, cxSwirl + 42, 92); g.stroke();
+      g.textAlign = 'left';
+      g.fillText(txt, x0 + swW + gap, 82);
     });
     chestTextCache['__eimi'] = new THREE.MeshLambertMaterial({ map: t, transparent: true, alphaTest: 0.04, polygonOffset: true, polygonOffsetFactor: -2 });
   }
