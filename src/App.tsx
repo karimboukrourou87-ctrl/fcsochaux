@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.6";
+const APP_VERSION = "16.20.07";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -6856,11 +6856,9 @@ function limiteHorsPeriode(cat) {
 }
 /* Nombre total de mutes de base sur une feuille de match (indicatif, hors ajustement arbitrage) */
 function limiteMutesTotal(cat) {
-  const ci = CATEGORIES.find((c) => c.id === cat);
-  const type = ci ? ci.type : 11;
-  const senior = ci && (ci.groupe === "PRO" || ci.groupe === "Loisirs" || cat === "N2" || cat === "Ligue 2" || cat === "SENIORS F");
-  const national = /NAT/.test(cat || "");
-  if (senior || national) return type === 11 ? 6 : 4;
+  // Regle du club : 4 mutes maximum sur une feuille de match officielle, de U7 jusqu'a la N2
+  // et des U11F jusqu'aux Seniors F. Les categories sans feuille de match (plateaux U7 a U10,
+  // foot sante) ne sont pas concernees : le blocage n'est applique que la ou categorieCartons est vrai.
   return 4;
 }
 /* Comptage des mutations actives d'un effectif */
@@ -11063,6 +11061,12 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
   const idsConvoques = [...used, ...remplacants];
   const dejaConvoqueId = (id) => used.includes(id) || remplacants.includes(id);
   const nbHorsConvoques = idsConvoques.map(trouve).filter(Boolean).filter((p) => typeMutation(p) === "hors").length;
+  // Quota des 4 mutes maximum sur la feuille de match (seulement la ou il y a une feuille de match officielle).
+  const feuilleDeMatch = categorieCartons(cat);
+  const limMutesCompo = limiteMutesTotal(cat);
+  const estMuteCompte = (p) => { const t = typeMutation(p); return t === "normale" || t === "hors" || t === "sansdate"; };
+  const nbMutesConvoques = idsConvoques.map(trouve).filter(Boolean).filter(estMuteCompte).length;
+  const quotaMutesAtteint = feuilleDeMatch && nbMutesConvoques >= limMutesCompo;
   const badgeMut = (p) => {
     const t = typeMutation(p);
     if (t === "hors") return { label: "Hors période", bg: "#FBEAD9", col: "#B87A2B" };
@@ -11230,9 +11234,17 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
         return (
           <div style={{ background: "#fff", border: `1px solid ${atteint ? "#F0DBA8" : C.grisClair}`, borderRadius: 12, padding: "10px 12px", marginBottom: 12 }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              {feuilleDeMatch && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: quotaMutesAtteint ? "#FBE3E3" : "#E7EEF6", color: quotaMutesAtteint ? C.rouge : C.bleu, border: `1px solid ${quotaMutesAtteint ? "#F3C9C9" : "#CFE0F2"}`, borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 800 }}>Mutés sur la feuille : {nbMutesConvoques} / {limMutesCompo}</span>}
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: atteint ? "#FBEAD9" : "#FBEAD9", color: "#B87A2B", border: "1px solid #F0DBA8", borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 800 }}>Hors période sur la feuille : {nbHorsConvoques} / {limHorsCompo}</span>
               {simplesConv > 0 && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#E7EEF6", color: C.bleu, borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 800 }}>Mutations simples : {simplesConv}</span>}
             </div>
+            {feuilleDeMatch && (
+              <div style={{ fontSize: 11.5, color: quotaMutesAtteint ? C.rouge : C.gris, marginTop: 7, lineHeight: 1.45, fontWeight: quotaMutesAtteint ? 700 : 400 }}>
+                {quotaMutesAtteint
+                  ? `Quota atteint : ${limMutesCompo} mutés maximum sur la feuille de match. Les autres joueurs mutés seront bloqués.`
+                  : `${limMutesCompo} mutés maximum sur la feuille de match.${contratPossible(cat) ? " Les joueurs sous contrat ne comptent pas." : ""}`}
+              </div>
+            )}
             <div style={{ fontSize: 11.5, color: atteint ? "#B87A2B" : C.gris, marginTop: 7, lineHeight: 1.45, fontWeight: atteint ? 700 : 400 }}>
               {atteint
                 ? `Quota atteint : ${limHorsCompo} mutation${limHorsCompo > 1 ? "s" : ""} hors période maximum. Les autres joueurs hors période seront bloqués.`
@@ -11436,7 +11448,8 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
                 const rge = false; // les rouges sont gérés via la période de suspension (bloque = susp)
                 const bm = badgeMut(p);
                 const bloqueHors = typeMutation(p) === "hors" && !dejaConvoqueId(p.id) && nbHorsConvoques >= limHorsCompo;
-                const bloque = suspBloc || rge || bloqueHors;
+                const bloqueMutes = feuilleDeMatch && estMuteCompte(p) && !dejaConvoqueId(p.id) && nbMutesConvoques >= limMutesCompo;
+                const bloque = suspBloc || rge || bloqueHors || bloqueMutes;
                 return (
                   <button key={p.id} onClick={() => { if (bloque) return; assign(pick, p.id); }} disabled={bloque} style={{
                     display: "flex", alignItems: "center", gap: 11, padding: 11, borderRadius: 12,
@@ -11445,7 +11458,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
                     <Avatar p={p} size={38} radius={10} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 800 }}>{p.prenom} {p.nom}</div>
-                      <div style={{ fontSize: 12, color: bloque ? C.rouge : (suspSurcl || suspInfo) ? "#B87A2B" : C.gris }}>{suspBloc ? ("Suspendu" + texteDispo(p)) : suspInfo ? "Suspendu en compétition, autorisé sur ce match non officiel" : suspSurcl ? `Sous le coup d'une suspension (dans ${p.cat}). Vérifie le calendrier de ${cat} avant de l'aligner.` : bloqueHors ? `Quota hors période atteint (${limHorsCompo} max)` : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
+                      <div style={{ fontSize: 12, color: bloque ? C.rouge : (suspSurcl || suspInfo) ? "#B87A2B" : C.gris }}>{suspBloc ? ("Suspendu" + texteDispo(p)) : suspInfo ? "Suspendu en compétition, autorisé sur ce match non officiel" : suspSurcl ? `Sous le coup d'une suspension (dans ${p.cat}). Vérifie le calendrier de ${cat} avant de l'aligner.` : bloqueHors ? `Quota hors période atteint (${limHorsCompo} max)` : bloqueMutes ? `Quota mutés atteint (${limMutesCompo} max)` : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
                       {p.licence ? <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 700, marginTop: 1 }}>Licence {p.licence}</div> : null}
                       {(() => {
                         if (estEssai) { const me = minutesEssai(p, db); return <div style={{ fontSize: 11, fontWeight: 700, marginTop: 2, display: "flex", alignItems: "center", gap: 4, color: C.gris }}><Timer size={11} /> {me} min à l'essai</div>; }
@@ -11492,16 +11505,18 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
                 const bancPlein = remplacants.length >= maxRempl;
                 const bm = badgeMut(p);
                 const bloqueHors = typeMutation(p) === "hors" && !dejaConvoqueId(p.id) && nbHorsConvoques >= limHorsCompo;
-                const bloque = suspBloc || rge || bancPlein || bloqueHors;
+                const bloqueMutes = feuilleDeMatch && estMuteCompte(p) && !dejaConvoqueId(p.id) && nbMutesConvoques >= limMutesCompo;
+                const bloque = suspBloc || rge || bancPlein || bloqueHors || bloqueMutes;
+                const styleBloc = suspBloc || rge || bloqueHors || bloqueMutes;
                 return (
                 <button key={p.id} onClick={() => { if (bloque) return; ajouterRemplacant(p.id); }} disabled={bloque} style={{
                   display: "flex", alignItems: "center", gap: 11, padding: 11, borderRadius: 12,
-                  border: `1px solid ${(suspBloc || rge || bloqueHors) ? "#F3C9C9" : (suspSurcl || suspInfo) ? "#F0DBA8" : C.grisClair}`, background: (suspBloc || rge || bloqueHors) ? "#FDF2F2" : (suspSurcl || suspInfo) ? "#FFF7E6" : "#fff", cursor: bloque ? "default" : "pointer", textAlign: "left", opacity: (suspBloc || rge || bloqueHors) ? 0.75 : 1,
+                  border: `1px solid ${styleBloc ? "#F3C9C9" : (suspSurcl || suspInfo) ? "#F0DBA8" : C.grisClair}`, background: styleBloc ? "#FDF2F2" : (suspSurcl || suspInfo) ? "#FFF7E6" : "#fff", cursor: bloque ? "default" : "pointer", textAlign: "left", opacity: styleBloc ? 0.75 : 1,
                 }}>
                   <Avatar p={p} size={38} radius={10} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 800 }}>{p.prenom} {p.nom}</div>
-                    <div style={{ fontSize: 12, color: (suspBloc || rge || bloqueHors) ? C.rouge : (suspSurcl || suspInfo) ? "#B87A2B" : C.gris }}>{suspBloc ? ("Suspendu" + texteDispo(p)) : suspInfo ? "Suspendu en compétition, autorisé sur ce match non officiel" : suspSurcl ? `Sous le coup d'une suspension (dans ${p.cat}). Vérifie le calendrier de ${cat} avant de l'aligner.` : bloqueHors ? `Quota hors période atteint (${limHorsCompo} max)` : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
+                    <div style={{ fontSize: 12, color: styleBloc ? C.rouge : (suspSurcl || suspInfo) ? "#B87A2B" : C.gris }}>{suspBloc ? ("Suspendu" + texteDispo(p)) : suspInfo ? "Suspendu en compétition, autorisé sur ce match non officiel" : suspSurcl ? `Sous le coup d'une suspension (dans ${p.cat}). Vérifie le calendrier de ${cat} avant de l'aligner.` : bloqueHors ? `Quota hors période atteint (${limHorsCompo} max)` : bloqueMutes ? `Quota mutés atteint (${limMutesCompo} max)` : rge ? "Carton rouge à régulariser" : (p.poste || "Poste libre")}</div>
                     {p.licence ? <div style={{ fontSize: 11.5, color: C.bleu, fontWeight: 700, marginTop: 1 }}>Licence {p.licence}</div> : null}
                     <div style={{ fontSize: 11, fontWeight: 700, marginTop: 3, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", color: (!estEssai && moyMinutesCompo > 0 && mn < moyMinutesCompo) ? "#E67E22" : C.gris }}>
                       <Timer size={11} /> {mn} min{estEssai ? " à l'essai" : ""}{!estEssai && mnSurcl > 0 && <span style={{ color: C.bleu, fontWeight: 700 }}>· {surclassementTexte(p, db, saisonCourante())}</span>}
@@ -18930,7 +18945,7 @@ function DocumentsAdmin({ players, cat, db, mutate, lectureSeule, demo, adminUnl
             {mut.sansdate > 0 ? <Pastille bg="#FBEAD9" color="#B87A2B">{mut.sansdate} sans date</Pastille> : null}
             {mut.expirees > 0 ? <Pastille bg={C.grisClair} color={C.gris}>{mut.expirees} expirée{mut.expirees > 1 ? "s" : ""}</Pastille> : null}
           </div>
-          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Total {mut.total} muté{mut.total > 1 ? "s" : ""} actif{mut.total > 1 ? "s" : ""}. Limite de base sur la feuille de match : {limT} mutés dont {limH} hors période. Le total peut être relevé selon le nombre d'arbitres du club.</div>
+          <div style={{ fontSize: 11.5, color: C.gris, marginTop: 8, lineHeight: 1.5 }}>Total {mut.total} muté{mut.total > 1 ? "s" : ""} actif{mut.total > 1 ? "s" : ""}.{categorieCartons(cat) ? ` Limite sur la feuille de match : ${limT} mutés maximum, dont ${limH} hors période.` : " Catégorie sans feuille de match : pas de limite de mutés."}</div>
           {horsPeriode.length > 0 && (
             <div style={{ marginTop: 10, borderTop: `1px solid ${C.grisClair}`, paddingTop: 10 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: "#B87A2B", marginBottom: 6 }}>Joueurs mutés hors période ({horsPeriode.length})</div>
