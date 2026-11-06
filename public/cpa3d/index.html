@@ -31,7 +31,7 @@ input,textarea,select{font-family:inherit}
 #views{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:6px}
 #views button{background:rgba(10,15,24,.72);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:7px 9px;font:700 12px 'Barlow Condensed';letter-spacing:.6px;text-transform:uppercase}
 #views button.on{background:var(--acc);color:#111;border-color:var(--acc)}
-#caption{position:absolute;left:0;right:0;bottom:0;padding:26px 16px 14px;background:linear-gradient(transparent,rgba(0,0,0,.72));font:700 clamp(19px,5vw,28px) 'Inter',system-ui,sans-serif;letter-spacing:-.2px;text-shadow:0 2px 8px rgba(0,0,0,.6);pointer-events:none;opacity:0;transition:opacity .25s;display:flex;align-items:center;gap:10px}
+#caption{position:absolute;left:0;right:0;bottom:0;padding:26px 16px 14px;background:linear-gradient(transparent,rgba(0,0,0,.72));font:800 clamp(20px,5vw,30px) 'Barlow Condensed',sans-serif;letter-spacing:.5px;text-transform:uppercase;text-shadow:0 2px 8px rgba(0,0,0,.6);pointer-events:none;opacity:0;transition:opacity .25s;display:flex;align-items:center;justify-content:center;text-align:center;gap:10px}
 #caption.show{opacity:1}
 #caption .dot{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;color:#111;font-size:18px}
 #toast{position:absolute;left:50%;top:12px;transform:translateX(-50%) translateY(-80px);background:#fff;color:#111;padding:9px 14px;border-radius:12px;font-weight:600;font-size:14px;transition:transform .3s;z-index:20;max-width:86%;text-align:center}
@@ -83,7 +83,7 @@ input,textarea,select{font-family:inherit}
 .fld:focus{border-color:var(--acc)}
 textarea.fld{min-height:110px;resize:vertical;line-height:1.4}
 .cap{display:flex;gap:8px;align-items:center;margin:6px 0}
-.cap .dot{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#111;font:800 13px 'Inter',system-ui,sans-serif}
+.cap .dot{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#111;font:800 14px 'Barlow Condensed',sans-serif}
 .lib{display:flex;flex-direction:column;gap:6px}
 .libi{display:flex;align-items:center;gap:6px;background:var(--panel2);border-radius:11px;padding:8px 10px}
 .libi span{flex:1;font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -252,6 +252,7 @@ details summary{font:700 14px 'Barlow Condensed';letter-spacing:1.2px;text-trans
   <div class="row"><label>Taille des joueurs</label><input type="range" id="scale" min="1" max="2.4" step="0.1"></div>
   <div class="row"><label>Afficher les numéros</label><div class="seg" id="numsSeg"><button data-n="1">Oui</button><button data-n="0">Non</button></div></div>
   <div class="row"><label>Vitesse animation</label><div class="seg" id="speedSeg"><button data-s="0.6">Lente</button><button data-s="1">Normale</button><button data-s="1.6">Rapide</button></div></div>
+  <div class="row"><label>Temps de réaction</label><div class="seg" id="reactSeg"><button data-rc="0.1">Rapide</button><button data-rc="0.4">Normal</button><button data-rc="0.9">Lent</button></div></div>
 
   <div class="row"><label>Maillot Adversaire</label><input type="color" id="colB"></div>
   <div class="row"><label>Maillot gardiens</label><input type="color" id="colGK"></div>
@@ -519,13 +520,14 @@ function canvasTex(w, h, draw) {
 
 // terrain (la bordure change selon le stade)
 let pitchMesh, outGround;
-function makePitchTex(surround, synth) {
+function makePitchTex(surround, synth, pastel) {
   const PX = 24, W = (PITCH.X1 - PITCH.X0) * PX, H = (PITCH.Z1 - PITCH.Z0) * PX;
   const U = x => (x - PITCH.X0) * PX, V = z => (z - PITCH.Z0) * PX;
+  const lineCol = pastel ? 'rgba(47,125,70,.95)' : 'rgba(206,170,80,.95)';
   return canvasTex(W, H, (g) => {
     const band = 5.25;
     for (let z = PITCH.Z0, i = 0; z < PITCH.Z1; z += band, i++) {
-      g.fillStyle = synth ? '#163A6B' : (i % 2 ? '#163A6B' : '#102B52');
+      g.fillStyle = pastel ? (i % 2 ? '#e9f3ec' : '#dceadf') : (synth ? '#163A6B' : (i % 2 ? '#163A6B' : '#102B52'));
       g.fillRect(0, V(z), W, band * PX + 1);
     }
     for (let i = 0; i < 26000; i++) {
@@ -544,7 +546,7 @@ function makePitchTex(surround, synth) {
       g.strokeRect(U(-12), V(3), U(12) - U(-12), V(12) - V(3));
       g.strokeStyle = 'rgba(255,214,0,.8)'; g.beginPath(); g.moveTo(U(-34), V(30)); g.lineTo(U(34), V(30)); g.stroke();
     }
-    g.strokeStyle = 'rgba(206,170,80,.95)'; g.lineWidth = 0.13 * PX; g.lineCap = 'round';
+    g.strokeStyle = lineCol; g.lineWidth = 0.13 * PX; g.lineCap = 'round';
     const rect = (x1, z1, x2, z2) => g.strokeRect(U(x1), V(z1), U(x2) - U(x1), V(z2) - V(z1));
     rect(-34, 0, 34, 52.5);
     rect(-20.16, 0, 20.16, 16.5);
@@ -553,11 +555,13 @@ function makePitchTex(surround, synth) {
     g.beginPath(); g.arc(U(0), V(52.5), 9.15 * PX, Math.PI, Math.PI * 2); g.stroke();
     g.beginPath(); g.arc(U(34), V(0), 1 * PX, Math.PI / 2, Math.PI); g.stroke();
     g.beginPath(); g.arc(U(-34), V(0), 1 * PX, 0, Math.PI / 2); g.stroke();
-    g.fillStyle = 'rgba(206,170,80,.95)';
+    g.fillStyle = lineCol;
     g.beginPath(); g.arc(U(0), V(11), 0.22 * PX, 0, Math.PI * 2); g.fill();
     g.beginPath(); g.arc(U(0), V(52.5), 0.22 * PX, 0, Math.PI * 2); g.fill();
   });
 }
+let pitchPastelTex = null;
+function getPitchPastelTex() { if (!pitchPastelTex) pitchPastelTex = makePitchTex(null, false, true); return pitchPastelTex; }
 (function buildPitch() {
   const geo = new THREE.PlaneGeometry(PITCH.X1 - PITCH.X0, PITCH.Z1 - PITCH.Z0);
   pitchMesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: makePitchTex(null) }));
@@ -635,6 +639,8 @@ const G = {
 };
 const decalTex = new Map();
 let teamKit = store.get('cpa3d_kit', {}) || {};
+// Noms de famille a afficher dans le dos (numero -> NOM), envoyes par l'application depuis la compo du jour.
+let teamNames = {};
 function decalMat(url) {
   if (!decalTex.has(url)) {
     const t = new THREE.TextureLoader().load(url); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
@@ -718,6 +724,21 @@ function backNumber(num, shirt) {
   }
   return backNumCache[key];
 }
+const backNameCache = {};
+function backName(name, shirt) {
+  const key = name + '|' + shirt;
+  if (!backNameCache[key]) {
+    const t = canvasTex(256, 72, (g) => {
+      g.fillStyle = lightColor(shirt) ? '#14204a' : '#ffffff';
+      g.font = '800 46px "Barlow Condensed", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(String(name).toUpperCase(), 128, 40);
+    });
+    backNameCache[key] = new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 });
+  }
+  return backNameCache[key];
+}
+// Nom de famille a graver dans le dos : seulement notre equipe (A), joueur de champ, et si l'appli a fourni le nom.
+function nomDos(p) { return (!p.gk && p.team === 'A') ? (teamNames[String(p.num)] || '') : ''; }
 function makePlayer(p) { return realModel && ui.realPlayers ? makePlayerReal(p) : makePlayerSimple(p); }
 /* ============ joueur réaliste : maillage d'un seul tenant animé par squelette ============ */
 const MODEL_META = {"nv":8979,"nt":16068,"step":0.0005,"lo":[-0.4,-0.02,-0.26],"bones":["hips","spine","chest","neck","head","upperArmL","forearmL","upperArmR","forearmR","thighL","shinL","footL","thighR","shinR","footR"],"parent":[-1,0,1,2,3,2,5,2,7,0,9,10,0,12,13],"joints":[[0,0.95,0],[0,1.08,0.0],[0,1.25,0.0],[0,1.52,-0.005],[0,1.615,0.005],[0.19,1.445,-0.012],[0.236,1.172,-0.03],[-0.19,1.445,-0.012],[-0.236,1.172,-0.03],[0.088,0.935,0.0],[0.097,0.505,0.01],[0.1,0.095,-0.02],[-0.088,0.935,0.0],[-0.097,0.505,0.01],[-0.1,0.095,-0.02]]};
@@ -811,6 +832,7 @@ function makePlayerReal(p) {
   const B = n => bones[M.bones.indexOf(n)], chest = B('chest');
   // numéro dans le dos et images du maillot, portés par l'os de la poitrine
   const bn = new THREE.Mesh(G.plane, backNumber(p.num, shirt)); bn.scale.set(0.2, 0.2, 1); bn.position.set(0, 0.07, -0.124); bn.rotation.y = Math.PI; chest.add(bn);
+  { const nmD = nomDos(p); if (nmD) { const nn = new THREE.Mesh(G.plane, backName(nmD, shirt)); nn.scale.set(0.27, 0.076, 1); nn.position.set(0, 0.19, -0.1235); nn.rotation.y = Math.PI; chest.add(nn); } }
   if (ours) {
     const kit = teamKit;
     const decal = (url, asp, w, x, y, z, ry = 0) => { const m = new THREE.Mesh(G.plane, decalMat(url)); const hh = Math.min(w / asp, w * 1.2); m.scale.set(hh * asp, hh, 1); m.position.set(x, y, z); m.rotation.y = ry; chest.add(m); };
@@ -915,6 +937,7 @@ function makePlayerSimple(p) {
   });
   // numéro dans le dos
   const bn = new THREE.Mesh(H.back, backNumber(p.num, shirt)); bn.scale.set(0.2, 0.2, 1); bn.position.set(0, 1.3, -0.122); bn.rotation.y = Math.PI; root.add(bn);
+  { const nmD = nomDos(p); if (nmD) { const nn = new THREE.Mesh(H.back, backName(nmD, shirt)); nn.scale.set(0.27, 0.076, 1); nn.position.set(0, 1.42, -0.1215); nn.rotation.y = Math.PI; root.add(nn); } }
   // images importées par l'utilisateur, sur le devant du maillot
   const kit = teamKit;
   const decal = (url, asp, w, x, y, z, ry = 0) => {
@@ -1370,12 +1393,13 @@ function resetPose() { pose = null; play = null; applyPose(); showCaption(); upd
 function startPlay(all) {
   const S = stepList(); if (!S.length) { toast('Ajoutez d\'abord une course ou un ballon'); return; }
   closeSheet();
-  if (all) { pose = { k: 0, f: 0 }; play = { all: true, pause: 0 }; }
+  const rd = ui.reaction || 0; // temps de reaction : delai avant que les joueurs se mettent a bouger
+  if (all) { pose = { k: 0, f: 0 }; play = { all: true, pause: rd }; }
   else {
     if (!pose) pose = { k: 0, f: 0 };
     else if (pose.f >= 1 && pose.k < S.length - 1) pose = { k: pose.k + 1, f: 0 };
     else if (pose.f >= 1) { resetPose(); return; }
-    play = { all: false, pause: 0 };
+    play = { all: false, pause: pose.f === 0 ? rd : 0 };
   }
   showCaption(); updatePlayBtn();
 }
@@ -1433,7 +1457,7 @@ function loop(now) {
       pose.f = Math.min(1, pose.f + dt * ui.speed / 1.7);
       if (pose.f >= 1) {
         const S = stepList();
-        if (play.all && pose.k < S.length - 1) { play.pause = 0.35; pose = { k: pose.k + 1, f: 0 }; showCaption(); }
+        if (play.all && pose.k < S.length - 1) { play.pause = (ui.reaction || 0) + 0.15; pose = { k: pose.k + 1, f: 0 }; showCaption(); }
         else { play = null; updatePlayBtn(); }
       }
     }
@@ -1755,6 +1779,7 @@ syncQty();
 $('#scale').addEventListener('input', e => { state.settings.scale = parseFloat(e.target.value); playerObjs.forEach(g => g.scale.setScalar(state.settings.scale)); commit(); });
 document.querySelectorAll('#numsSeg button').forEach(b => b.onclick = () => { state.settings.nums = b.dataset.n === '1'; buildPlayers(); syncUI(); commit(); });
 document.querySelectorAll('#speedSeg button').forEach(b => b.onclick = () => { ui.speed = parseFloat(b.dataset.s); store.set('cpa3d_speed', ui.speed); syncUI(); });
+document.querySelectorAll('#reactSeg button').forEach(b => b.onclick = () => { ui.reaction = parseFloat(b.dataset.rc); store.set('cpa3d_reaction', ui.reaction); syncUI(); });
 [['colTrim', 'trimA'], ['colShorts', 'shortsA'], ['colSocks', 'socksA'], ['colA', 'A'], ['colB', 'B'], ['colGK', 'GK']].forEach(([id, k]) => $('#' + id).addEventListener('input', e => { state.colors[k] = e.target.value; buildPlayers(); commit(); }));
 $('#kitYB').onclick = () => { pushUndo(); Object.assign(state.colors, KIT_YB); buildPlayers(); syncUI(); commit(); toast('Tenue jaune et bleu appliquée'); };
 // les images du maillot sont réduites et gardées une seule fois pour toute l'équipe,
@@ -1820,6 +1845,7 @@ function syncUI() {
   $('#scale').value = state.settings.scale;
   document.querySelectorAll('#numsSeg button').forEach(b => b.classList.toggle('on', (b.dataset.n === '1') === !!state.settings.nums));
   document.querySelectorAll('#speedSeg button').forEach(b => b.classList.toggle('on', parseFloat(b.dataset.s) === ui.speed));
+  document.querySelectorAll('#reactSeg button').forEach(b => b.classList.toggle('on', parseFloat(b.dataset.rc) === ui.reaction));
   $('#colA').value = state.colors.A; $('#colB').value = state.colors.B; $('#colGK').value = state.colors.GK;
   $('#colTrim').value = state.colors.trimA; $('#colShorts').value = state.colors.shortsA; $('#colSocks').value = state.colors.socksA;
   document.querySelectorAll('#menu input[type=color]').forEach(ci => { if (ci._hex) { ci._hex.value = ci.value.toUpperCase(); ci._hex.classList.remove('bad'); } });
@@ -1968,11 +1994,20 @@ function makeSnapshot() {
   openModal('mSnap');
 }
 /* rendu 3D haute définition pour le papier */
-function render3D(wpx, hpx) {
+function render3D(wpx, hpx, light) {
   const oldSize = new THREE.Vector2(); renderer.getSize(oldSize);
   const oldPR = renderer.getPixelRatio(), oldAsp = camera.aspect, oldFov = camera.fov;
   const oldPos = camera.position.clone(), oldTgt = controls.ref.target.clone();
   if (selRing) selRing.visible = false;
+  // Mode clair pour le PDF 3D : terrain vert pastel, pas de stade, fond clair. On restaure tout apres la capture.
+  let lightSaved = null;
+  if (light) {
+    lightSaved = { map: pitchMesh.material.map, bg: scene.background, fog: scene.fog, stad: stadiumGroup.visible, outCol: outGround.material.color.clone() };
+    pitchMesh.material.map = getPitchPastelTex(); pitchMesh.material.needsUpdate = true;
+    outGround.material.color.set('#e9f3ec');
+    scene.background = new THREE.Color('#f4f8f5'); scene.fog = null;
+    stadiumGroup.visible = false;
+  }
   renderer.setPixelRatio(1); renderer.setSize(wpx, hpx, false);
   camera.aspect = wpx / hpx; camera.fov = (ui.view && VIEWS[ui.view] && VIEWS[ui.view].fov) || 45;
   if (ui.view) { const { p, t } = viewTarget(ui.view); camera.position.copy(p); camera.lookAt(t); }
@@ -1980,6 +2015,12 @@ function render3D(wpx, hpx) {
   renderer.render(scene, camera);
   const out = document.createElement('canvas'); out.width = wpx; out.height = hpx;
   out.getContext('2d').drawImage(renderer.domElement, 0, 0, wpx, hpx);
+  if (light && lightSaved) {
+    pitchMesh.material.map = lightSaved.map; pitchMesh.material.needsUpdate = true;
+    outGround.material.color.copy(lightSaved.outCol);
+    scene.background = lightSaved.bg; scene.fog = lightSaved.fog;
+    stadiumGroup.visible = lightSaved.stad;
+  }
   renderer.setPixelRatio(oldPR); renderer.setSize(oldSize.x, oldSize.y, false);
   camera.aspect = oldAsp; camera.fov = oldFov; camera.position.copy(oldPos); camera.lookAt(oldTgt); camera.updateProjectionMatrix();
   if (selRing) selRing.visible = true;
@@ -2144,6 +2185,9 @@ const CPA3D = {
     saveKit(); buildPlayers(); syncUI(); commit();
   },
   setStade: (nom) => setStadium(nom),
+  // Image 3D claire (terrain vert pastel, joueurs en volume, sans stade) pour le PDF 3D du club.
+  exportScene(w = 1600, h = 1120) { return render3D(Math.round(w) || 1600, Math.round(h) || 1120, true).toDataURL('image/jpeg', 0.92); },
+  setNoms(noms) { teamNames = (noms && typeof noms === 'object') ? noms : {}; buildPlayers(); },
   setGestionFichiers(actif) { host.handlesFiles = !!actif; },
   on(type, cb) { (host.listeners[type] = host.listeners[type] || []).push(cb); },
 };
@@ -2158,6 +2202,8 @@ window.addEventListener('message', async (e) => {
       case 'newFiche': CPA3D.newFiche(m.modele); reply('ok', {}); break;
       case 'setTenue': CPA3D.setTenue(m.tenue); reply('ok', {}); break;
       case 'setStade': CPA3D.setStade(m.stade); reply('ok', {}); break;
+      case 'setNoms': CPA3D.setNoms(m.noms); reply('ok', {}); break;
+      case 'exportScene': reply('render', { image: CPA3D.exportScene(m.w, m.h) }); break;
       case 'gestionFichiers': CPA3D.setGestionFichiers(m.actif); reply('ok', {}); break;
       case 'exportPDF': case 'exportImage': {
         const blob = m.action === 'exportPDF' ? await CPA3D.exportPDF(m.format, m.orientation) : await CPA3D.exportImage();
@@ -2186,6 +2232,7 @@ function loadState(s) {
 }
 
 ui.speed = store.get('cpa3d_speed', 1);
+ui.reaction = store.get('cpa3d_reaction', 0.4);
 ui.realPlayers = store.get('cpa3d_real', true) !== false;
 document.querySelectorAll('#realSeg button').forEach(b => {
   b.classList.toggle('on', (b.dataset.r === '1') === ui.realPlayers);
