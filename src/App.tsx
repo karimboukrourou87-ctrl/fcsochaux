@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.19.95";
+const APP_VERSION = "16.19.99";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -10411,6 +10411,19 @@ async function exporterCpaPDF(jsPDF, info) {
   sc(encre); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text("Ballon", lx + 29, ly + 7); lx = lx + 29 + doc.getTextWidth("Ballon");
   sd([42, 102, 176]); doc.setLineWidth(2); doc.line(lx + 8, ly + 4, lx + 26, ly + 4); sc(encre); doc.text("Course", lx + 31, ly + 7);
   let cy = pTop + ph + legendH + 12 + 26;
+  // Taches des joueurs : les etiquettes posees sur le tableau (Tireur, Mur, Ecran, 1er poteau...).
+  const taches = (Array.isArray(fiche.players) ? fiche.players : [])
+    .filter((p) => p && p.team === "A" && p.label)
+    .map((p) => (p.num ? "N°" + p.num + " " : "") + String(p.label));
+  if (taches.length) {
+    sf(or); doc.rect(M, cy - 11, 4, 14, "F");
+    sc(bleu); doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text("Tâches des joueurs", M + 12, cy);
+    cy += 4;
+    sc(encre); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+    const lignesT = doc.splitTextToSize(taches.join("   ·   "), pw - 10);
+    lignesT.forEach((l) => { cy += 15; if (cy < H - 60) doc.text(l, M + 6, cy); });
+    cy += 18;
+  }
   // Dispositif (joueurs concernes), si renseigne
   const disp = Array.isArray(info.dispositif) ? info.dispositif.filter((x) => x && (x.nom || x.num)) : [];
   if (disp.length) {
@@ -10455,12 +10468,13 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, noms,
   const iframeRef = useRef(null);
   const ficheRef = useRef(fiche || null);
   const pending = useRef({});
-  const saveTimer = useRef(null);
   const onSaveRef = useRef(onSave); onSaveRef.current = onSave;
   const nomsRef = useRef(noms); nomsRef.current = noms;
   const [titre, setTitre] = useState((fiche && fiche.title) || titreInitial || "Fiche");
   const [pret, setPret] = useState(false);
   const [pdfMsg, setPdfMsg] = useState(null);
+  const [dirty, setDirty] = useState(false); // modifications non enregistrees (enregistrement manuel)
+  const dirtyRef = useRef(false); dirtyRef.current = dirty;
   function envoyer(action, extra) {
     try { const w = iframeRef.current && iframeRef.current.contentWindow; if (w) w.postMessage(Object.assign({ target: "cpa3d", action: action }, extra || {}), "*"); } catch (e) {}
   }
@@ -10478,20 +10492,28 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, noms,
       } else if (d.type === "change") {
         ficheRef.current = d.fiche;
         if (d.fiche && d.fiche.title) setTitre(d.fiche.title);
-        // Enregistrement differe : au plus une sauvegarde 5 s apres le dernier geste (evite les sauvegardes a chaque mouvement).
-        if (saveTimer.current) clearTimeout(saveTimer.current);
-        saveTimer.current = setTimeout(() => { saveTimer.current = null; if (onSaveRef.current && ficheRef.current) onSaveRef.current(ficheRef.current); }, 5000);
+        // Pas d'enregistrement automatique : on marque seulement qu'il y a des modifications a enregistrer.
+        setDirty(true);
       }
     }
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // A la fermeture du tableau : on enregistre immediatement la derniere version (rien n'est perdu).
-  useEffect(() => () => {
-    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
-    if (onSaveRef.current && ficheRef.current) onSaveRef.current(ficheRef.current);
+  // Securite : avertir si on ferme ou recharge l'onglet du navigateur avec des modifications non enregistrees.
+  useEffect(() => {
+    const h = (e) => { if (dirtyRef.current) { e.preventDefault(); e.returnValue = ""; } };
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
   }, []);
+  function enregistrer() { if (onSaveRef.current && ficheRef.current) onSaveRef.current(ficheRef.current); setDirty(false); }
+  function fermer() {
+    if (dirtyRef.current) {
+      const ok = window.confirm("Vous avez des modifications non enregistrées. Voulez-vous les enregistrer avant de fermer ?");
+      if (ok) enregistrer();
+    }
+    onClose();
+  }
   function demander(action, extra) {
     return new Promise((res, rej) => {
       const id = "r" + Date.now() + "_" + Math.random().toString(16).slice(2);
@@ -10516,10 +10538,11 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, noms,
     <div style={{ position: "fixed", inset: 0, zIndex: 130, background: "#0b1018", display: "flex", flexDirection: "column" }}>
       <div style={{ background: C.bleu, color: "#fff", padding: "10px 12px", display: "flex", alignItems: "center", gap: 9, flex: "0 0 auto" }}>
         <Target size={18} style={{ flex: "0 0 auto" }} />
-        <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titre}</div>
+        <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 15, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titre}</div>
+        <button type="button" onClick={enregistrer} disabled={!dirty} title="Enregistrer la fiche" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: dirty ? "#2E8B61" : "rgba(255,255,255,0.16)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 11px", fontWeight: 800, fontSize: 13, cursor: dirty ? "pointer" : "default", whiteSpace: "nowrap", opacity: dirty ? 1 : 0.6 }}><Check size={15} /> {dirty ? "Enregistrer" : "Enregistré"}</button>
         <button type="button" onClick={() => exporterPDF("3d")} disabled={!pret || !!pdfMsg} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.jaune, color: C.bleuNuit, border: "none", borderRadius: 9, padding: "8px 11px", fontWeight: 800, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", opacity: (!pret || !!pdfMsg) ? 0.6 : 1 }}><FileDown size={15} /> PDF 3D</button>
         <button type="button" onClick={() => exporterPDF("2d")} disabled={!pret || !!pdfMsg} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", color: C.bleuNuit, border: "none", borderRadius: 9, padding: "8px 11px", fontWeight: 800, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", opacity: (!pret || !!pdfMsg) ? 0.6 : 1 }}><FileDown size={15} /> PDF 2D</button>
-        <button type="button" onClick={onClose} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.16)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 12px", fontWeight: 800, fontSize: 13, cursor: "pointer" }}><X size={16} /> Fermer</button>
+        <button type="button" onClick={fermer} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.16)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 12px", fontWeight: 800, fontSize: 13, cursor: "pointer" }}><X size={16} /> Fermer</button>
       </div>
       {pdfMsg && <div style={{ background: "#11203a", color: "#fff", fontSize: 12.5, padding: "6px 12px", flex: "0 0 auto" }}>{pdfMsg}</div>}
       <div style={{ flex: 1, position: "relative", minHeight: 0, background: "#0b1018" }}>
