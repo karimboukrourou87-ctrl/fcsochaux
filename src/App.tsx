@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.5";
+const APP_VERSION = "16.20.6";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -4972,8 +4972,10 @@ export default function App() {
     // perdre une saisie), en plus du bouton « Enregistrer » qui envoie immédiatement.
     dirtyCatsRef.current.add(cat);
     setDirty(true);
-    if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
-    autoSaveRef.current = setTimeout(() => { autoSaveRef.current = null; try { if (dirtyCatsRef.current.size > 0) enregistrerManuel(); } catch (e) {} }, 4000);
+    // Plus d'enregistrement automatique : l'utilisateur enregistre lui-meme (bouton "Enregistrer").
+    // Les modifs non enregistrees sont protegees par la demande au changement d'onglet et par l'avertissement
+    // du navigateur a la fermeture/rechargement (voir le beforeunload plus bas).
+    if (autoSaveRef.current) { clearTimeout(autoSaveRef.current); autoSaveRef.current = null; }
   }
 
   function enregistrerManuel() {
@@ -5069,6 +5071,13 @@ export default function App() {
       else if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
     } catch (e) {}
   }, [nbMsgNonLus]);
+
+  // Securite : si des modifications ne sont pas enregistrees, le navigateur avertit avant de fermer ou recharger la page.
+  useEffect(() => {
+    const h = (e) => { if (dirty && !demo) { e.preventDefault(); e.returnValue = ""; } };
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
+  }, [dirty, demo]);
 
   if (!demo) {
     if (!estConfigure()) return <Login configManquante onDemo={() => setDemo(true)} />;
