@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.07";
+const APP_VERSION = "16.20.09";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -3140,10 +3140,12 @@ function usePlanningClub(demo, db, mutate, cats) {
       if (pl) { const rep = reparerPlages(pl); setRemote(rep.pl); }
     } catch (e) {}
   }, [demo]);
-  // Rafraîchissement automatique : toutes les 15 s, et dès qu'on revient sur l'application
+  // Rafraichissement automatique : toutes les 8 s, et des qu'on revient sur l'application.
+  // 8 s est le bon reglage pour les alarmes vestiaire/terrain et les accuses de reception :
+  // le coach et la direction voient les changements quasi instantanement, sans solliciter la base en continu.
   useEffect(() => {
     if (demo) return;
-    const id = setInterval(rafraichir, 300000);
+    const id = setInterval(rafraichir, 8000);
     const onVisible = () => { if (document.visibilityState === "visible") rafraichir(); };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", rafraichir);
@@ -10614,11 +10616,19 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, noms,
     window.addEventListener("beforeunload", h);
     return () => window.removeEventListener("beforeunload", h);
   }, []);
-  function enregistrer() { if (onSaveRef.current && ficheRef.current) onSaveRef.current(ficheRef.current); setDirty(false); }
-  function fermer() {
+  async function enregistrer() {
+    // On demande au tableau 3D son etat REEL a cet instant (positions, courses, joueurs) au lieu de se
+    // fier a une copie mise en cache qui peut etre restee sur le modele de depart. C'est ce qui garantit
+    // qu'on enregistre bien la sequence preparee, et pas la sequence modele.
+    let f = ficheRef.current;
+    try { const rep = await demander("getFiche", {}); if (rep && rep.fiche) f = rep.fiche; } catch (e) {}
+    if (onSaveRef.current && f) { ficheRef.current = f; onSaveRef.current(f); }
+    setDirty(false);
+  }
+  async function fermer() {
     if (dirtyRef.current) {
       const ok = window.confirm("Vous avez des modifications non enregistrées. Voulez-vous les enregistrer avant de fermer ?");
-      if (ok) enregistrer();
+      if (ok) await enregistrer();
     }
     onClose();
   }
@@ -10662,6 +10672,8 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, noms,
 }
 
 function Compo({ demo, players, cat, catInfo, db, mutate }) {
+  const _adminCtx = useContext(AdminCtx);
+  const sauverTout = _adminCtx && _adminCtx.sauver; // enregistrement reel immediat en base (pour les CPA)
   const matchsCat = (db.matches || []).filter((m) => m.cat === cat).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const aujourdhui = hoyISO();
   // Pour un joueur suspendu de la catégorie : match officiel où il redevient disponible (date + adversaire).
@@ -10736,6 +10748,9 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
       m.cpa = arr;
       return d;
     });
+    // Un CPA enregistre doit l'etre REELLEMENT (ecriture en base), sans dependre du gros bouton "Enregistrer".
+    // On laisse React appliquer la modif locale, puis on declenche l'enregistrement reel.
+    if (sauverTout && !demo) setTimeout(() => { try { sauverTout(); } catch (e) {} }, 60);
   }
   function cpaSupprimer(entry) {
     if (compoScellee) return;
