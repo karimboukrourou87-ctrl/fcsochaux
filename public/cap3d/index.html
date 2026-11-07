@@ -2325,7 +2325,11 @@ let params; try { params = new URLSearchParams(location.search); } catch (e) { p
 setStadium(params.get('stade') || store.get('cpa3d_stadium', 'jauneBleu'));
 resize();
 const saved = store.get('cpa3d_current', null);
-loadState(saved && saved.players ? saved : PRESETS.cornerOff.build());
+// Dans l'application (iframe), l'appli est l'unique source de verite : elle envoie tout de suite la fiche
+// enregistree ou le modele a charger. On part donc d'un plateau vide et on attend ce message, au lieu
+// d'afficher la copie locale (ancien travail) qui serait ensuite remplacee -> effet "ma sequence reste
+// 2 s puis le modele reprend le dessus". En usage autonome (hors appli), on garde le comportement habituel.
+loadState(host.embedded ? PRESETS.vide.build() : (saved && saved.players ? saved : PRESETS.cornerOff.build()));
 renderHint(); renderSteps();
 setView('tv', true);
 document.fonts && document.fonts.ready.then(() => { buildPlayers(); buildActions(); });
