@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.10";
+const APP_VERSION = "16.20.11";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -10616,6 +10616,21 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, noms,
     window.addEventListener("beforeunload", h);
     return () => window.removeEventListener("beforeunload", h);
   }, []);
+  // A l'ouverture d'une fiche existante, on affiche son repere pour pouvoir le comparer a ce qui avait ete enregistre.
+  useEffect(() => {
+    if (fiche) { setTimeout(() => flashDiag("Fiche ouverte : " + sigFiche(fiche)), 400); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Repere de controle (diagnostic) : nombre de joueurs, de courses et somme des positions.
+  // Permet de VOIR si ce qui est enregistre/recharge correspond bien au travail prepare.
+  function sigFiche(f) {
+    try {
+      const ps = (f && f.players) || [];
+      const pos = ps.reduce((s, p) => s + (+p.x || 0) + (+p.z || 0), 0);
+      return ps.length + "j / " + (((f && f.actions) || []).length) + "c / pos " + pos.toFixed(1);
+    } catch (e) { return "?"; }
+  }
+  function flashDiag(txt) { setPdfMsg(txt); setTimeout(() => setPdfMsg((m) => m === txt ? null : m), 6000); }
   async function enregistrer() {
     // On demande au tableau 3D son etat REEL a cet instant (positions, courses, joueurs) au lieu de se
     // fier a une copie mise en cache qui peut etre restee sur le modele de depart. C'est ce qui garantit
@@ -10624,6 +10639,7 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, noms,
     try { const rep = await demander("getFiche", {}); if (rep && rep.fiche) f = rep.fiche; } catch (e) {}
     if (onSaveRef.current && f) { ficheRef.current = f; onSaveRef.current(f); }
     setDirty(false);
+    flashDiag("Enregistré : " + sigFiche(f));
   }
   async function fermer() {
     if (dirtyRef.current) {
