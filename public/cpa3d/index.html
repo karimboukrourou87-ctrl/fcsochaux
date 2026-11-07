@@ -52,6 +52,9 @@ input,textarea,select{font-family:inherit}
 #tools button svg{width:24px;height:24px}
 #tools button.on{color:var(--acc)}
 #playbar{display:flex;align-items:center;gap:6px;padding:7px 10px calc(8px + env(safe-area-inset-bottom));background:var(--panel)}
+#botbar{display:flex;flex-direction:column;transition:transform .28s ease}
+body.immersif #botbar{position:absolute;left:0;right:0;bottom:0;z-index:16;transform:translateY(112%);box-shadow:0 -6px 18px rgba(0,0,0,.45)}
+body.immersif.revBot #botbar{transform:none}
 #steps{display:flex;gap:5px}
 #steps button{width:38px;height:36px;border-radius:10px;font:800 15px 'Barlow Condensed';background:var(--panel2);border:2px solid transparent}
 #steps button.on{border-color:currentColor}
@@ -158,6 +161,7 @@ details summary{font:700 14px 'Barlow Condensed';letter-spacing:1.2px;text-trans
     <div id="toast"></div>
   </div>
 
+  <div id="botbar">
   <div id="hint"></div>
 
   <nav id="tools">
@@ -175,6 +179,7 @@ details summary{font:700 14px 'Barlow Condensed';letter-spacing:1.2px;text-trans
     <button class="pb" id="btnReset" aria-label="Revenir au départ"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
     <button class="pb" id="btnNext" aria-label="Temps suivant"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 5v14l11-7zM16 5h2v14h-2z"/></svg></button>
     <button class="pb main" id="btnPlay"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg>Jouer</button>
+  </div>
   </div>
 </div>
 
@@ -2285,6 +2290,7 @@ window.addEventListener('message', async (e) => {
       case 'setTenue': CPA3D.setTenue(m.tenue); reply('ok', {}); break;
       case 'setStade': CPA3D.setStade(m.stade); reply('ok', {}); break;
       case 'setNoms': CPA3D.setNoms(m.noms); reply('ok', {}); break;
+      case 'immersif': { const on = !!m.on; document.body.classList.toggle('immersif', on); if (!on) document.body.classList.remove('revBot'); setTimeout(() => { try { resize(); } catch (err) {} }, 90); reply('ok', {}); break; }
       case 'exportScene': reply('render', { image: CPA3D.exportScene(m.w, m.h) }); break;
       case 'gestionFichiers': CPA3D.setGestionFichiers(m.actif); reply('ok', {}); break;
       case 'exportPDF': case 'exportImage': {
@@ -2337,6 +2343,19 @@ requestAnimationFrame(loop);
 if (params.get('modele') && PRESETS[params.get('modele')]) loadState(withKit(PRESETS[params.get('modele')].build()));
 if (params.get('guide') !== '0' && !store.get('cpa3d_seen', false)) { store.set('cpa3d_seen', true); setTimeout(() => openModal('mWelcome'), 400); }
 initRealModel();
+// Mode plein ecran : la barre du bas (outils de dessin) reapparait quand la souris descend en bas,
+// ou au toucher pres du bas sur tablette (puis se remasque seule apres quelques secondes).
+window.addEventListener('mousemove', (e) => {
+  if (!document.body.classList.contains('immersif')) return;
+  document.body.classList.toggle('revBot', e.clientY > window.innerHeight - 120);
+});
+window.addEventListener('pointerdown', (e) => {
+  if (!document.body.classList.contains('immersif')) return;
+  if (e.clientY > window.innerHeight - 130) {
+    document.body.classList.add('revBot');
+    clearTimeout(window._revBotT); window._revBotT = setTimeout(() => document.body.classList.remove('revBot'), 4000);
+  }
+}, { passive: true });
 host.send('ready', { version: CPA3D.version });
 </script>
 </body>
