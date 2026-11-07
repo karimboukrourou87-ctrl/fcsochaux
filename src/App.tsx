@@ -4,7 +4,7 @@ import {
   Plus, X, Trash2, ChevronLeft, Trophy, Award, Bell, Activity, Target,
   Footprints, Ruler, Weight, Gauge, Timer, Edit3, Save,
   HeartPulse, ShieldAlert, Star, MapPin, ArrowRightLeft, Eye, FileDown, Phone, Camera, LogOut,
-  Send, Check, Inbox, ListOrdered, ExternalLink, Bus, Upload, Lock, RefreshCw, TrendingUp, TrendingDown, Minus, Archive
+  Send, Check, Inbox, ListOrdered, ExternalLink, Bus, Upload, Lock, RefreshCw, TrendingUp, TrendingDown, Minus, Archive, Maximize2
 } from "lucide-react";
 
 // Contexte de verrouillage administratif : rôle (direction/responsable) + déverrouillage par mot de passe.
@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.11";
+const APP_VERSION = "16.20.13";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -10585,6 +10585,8 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, noms,
   const [dirty, setDirty] = useState(false); // modifications non enregistrees (enregistrement manuel)
   const dirtyRef = useRef(false); dirtyRef.current = dirty;
   const [format, setFormat] = useState("a4"); // format d'impression du PDF : a4 ou a3
+  const [immersif, setImmersif] = useState(false); // plein ecran : masque les barres pour agrandir la vue
+  const [revealTop, setRevealTop] = useState(false); // en-tete revelee au survol du haut (en mode plein ecran)
   function envoyer(action, extra) {
     try { const w = iframeRef.current && iframeRef.current.contentWindow; if (w) w.postMessage(Object.assign({ target: "cpa3d", action: action }, extra || {}), "*"); } catch (e) {}
   }
@@ -10621,6 +10623,17 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, noms,
     if (fiche) { setTimeout(() => flashDiag("Fiche ouverte : " + sigFiche(fiche)), 400); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Mode plein ecran : on previent le tableau 3D pour qu'il masque aussi sa barre du bas (outils de dessin).
+  useEffect(() => { if (pret) envoyer("immersif", { on: immersif }); if (!immersif) setRevealTop(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [immersif, pret]);
+  // Touche Echap pour sortir du plein ecran.
+  useEffect(() => {
+    if (!immersif) return;
+    const h = (e) => { if (e.key === "Escape") setImmersif(false); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [immersif]);
   // Repere de controle (diagnostic) : nombre de joueurs, de courses et somme des positions.
   // Permet de VOIR si ce qui est enregistre/recharge correspond bien au travail prepare.
   function sigFiche(f) {
@@ -10670,9 +10683,10 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, noms,
   }
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 130, background: "#0b1018", display: "flex", flexDirection: "column" }}>
-      <div style={{ background: C.bleu, color: "#fff", padding: "calc(10px + env(safe-area-inset-top)) 12px 10px", display: "flex", flexWrap: "wrap", rowGap: 6, alignItems: "center", gap: 9, flex: "0 0 auto" }}>
+      <div onMouseEnter={() => { if (immersif) setRevealTop(true); }} onMouseLeave={() => { if (immersif) setRevealTop(false); }} style={{ background: C.bleu, color: "#fff", padding: "calc(10px + env(safe-area-inset-top)) 12px 10px", display: "flex", flexWrap: "wrap", rowGap: 6, alignItems: "center", gap: 9, flex: "0 0 auto", ...(immersif ? { position: "absolute", top: 0, left: 0, right: 0, zIndex: 40, transform: revealTop ? "none" : "translateY(-112%)", transition: "transform .25s ease", boxShadow: "0 6px 18px rgba(0,0,0,0.45)" } : {}) }}>
         <Target size={18} style={{ flex: "0 0 auto" }} />
         <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 15, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titre}</div>
+        <button type="button" onClick={() => setImmersif((v) => !v)} title="Plein écran : masquer les barres pour agrandir la vue" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: immersif ? C.jaune : "rgba(255,255,255,0.16)", color: immersif ? C.bleuNuit : "#fff", border: "none", borderRadius: 9, padding: "8px 11px", fontWeight: 800, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}><Maximize2 size={15} /> {immersif ? "Réduire" : "Plein écran"}</button>
         <button type="button" onClick={enregistrer} disabled={!dirty} title="Enregistrer la fiche" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: dirty ? "#2E8B61" : "rgba(255,255,255,0.16)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 11px", fontWeight: 800, fontSize: 13, cursor: dirty ? "pointer" : "default", whiteSpace: "nowrap", opacity: dirty ? 1 : 0.6 }}><Check size={15} /> {dirty ? "Enregistrer" : "Enregistré"}</button>
         <button type="button" onClick={() => setFormat((f) => f === "a4" ? "a3" : "a4")} title="Format d'impression du PDF (A4 ou A3)" style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.16)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 10px", fontWeight: 800, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>{format.toUpperCase()}</button>
         <button type="button" onClick={() => exporterPDF("3d")} disabled={!pret || !!pdfMsg} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.jaune, color: C.bleuNuit, border: "none", borderRadius: 9, padding: "8px 11px", fontWeight: 800, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", opacity: (!pret || !!pdfMsg) ? 0.6 : 1 }}><FileDown size={15} /> PDF 3D</button>
@@ -10683,6 +10697,11 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, noms,
       <div style={{ flex: 1, position: "relative", minHeight: 0, background: "#0b1018" }}>
         <iframe ref={iframeRef} src="/cpa3d/index.html?guide=0" title="Tableau CPA 3D" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "0", display: "block", background: "#0b1018" }} allow="fullscreen" />
       </div>
+      {immersif && !revealTop && (
+        <div onMouseEnter={() => setRevealTop(true)} onPointerDown={() => setRevealTop(true)} title="Afficher les boutons" style={{ position: "absolute", top: 0, left: 0, right: 0, height: 26, zIndex: 39, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ width: 46, height: 5, borderRadius: 3, background: "rgba(255,255,255,0.5)", marginTop: 4 }} />
+        </div>
+      )}
     </div>
   );
 }
@@ -10789,6 +10808,27 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
       m.cpa = arr;
       return d;
     });
+  }
+  // Reprendre toutes les fiches CPA d'un autre match de la categorie (pour ne pas tout refaire au prochain match).
+  function cpaReprendreMatch(srcId) {
+    if (compoScellee || !matchSel || !srcId || srcId === matchSel) return;
+    const src = (db.matches || []).find((x) => x.id === srcId);
+    if (!src || !Array.isArray(src.cpa) || !src.cpa.length) return;
+    mutate((d) => {
+      const m = d.matches.find((x) => x.id === matchSel);
+      if (!m) return d;
+      const arr = Array.isArray(m.cpa) ? m.cpa.slice() : [];
+      src.cpa.forEach((e) => {
+        let copie; try { copie = JSON.parse(JSON.stringify(e)); } catch (err) { copie = { ...e }; }
+        copie.id = uid();
+        copie.maj = new Date().toISOString();
+        arr.push(copie);
+      });
+      m.cpa = arr;
+      return d;
+    });
+    if (sauverTout && !demo) setTimeout(() => { try { sauverTout(); } catch (e) {} }, 60);
+    setImportSrc("");
   }
   // Bibliotheque de strategies type (par categorie, comme les compos types).
   const cpaTypes = (db.config && db.config.cpaTypes && db.config.cpaTypes[cat]) || [];
@@ -10909,6 +10949,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
   const [pick, setPick] = useState(null);       // index de slot à remplir
   const [cpaModal, setCpaModal] = useState(null); // fiche CPA ouverte dans le tableau 3D
   const [cpaJoueursEntry, setCpaJoueursEntry] = useState(null); // id de la fiche dont on edite les joueurs concernes
+  const [importSrc, setImportSrc] = useState(""); // match source pour reprendre ses CPA
   const cpaModalDispositif = cpaModal ? dispositifFiche(cpaFiches.find((e) => e.id === cpaModal.id) || {}) : [];
   const [pickRempl, setPickRempl] = useState(false);
   const [pdfCompoMsg, setPdfCompoMsg] = useState(null);
@@ -11247,6 +11288,25 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
               </div>
             </div>
           )}
+          {!compoScellee && (() => {
+            const matchsAvecCpa = matchsCat.filter((m) => m.id !== matchSel && Array.isArray(m.cpa) && m.cpa.length > 0);
+            if (!matchsAvecCpa.length) return null;
+            return (
+              <div style={{ background: "#F7F9FB", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 10, marginBottom: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: C.encre, marginBottom: 2 }}>Reprendre les CPA d'un autre match</div>
+                <div style={{ fontSize: 11, color: C.gris, marginBottom: 8, lineHeight: 1.4 }}>Copie toutes les fiches d'un match précédent vers ce match, pour ne pas tout refaire. Tu pourras ensuite les ajuster.</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <select value={importSrc} onChange={(e) => setImportSrc(e.target.value)} style={{ flex: 1, minWidth: 180, padding: "7px 10px", borderRadius: 8, border: `1px solid ${C.grisClair}`, fontSize: 12.5, background: "#fff", color: C.encre }}>
+                    <option value="">Choisir un match...</option>
+                    {matchsAvecCpa.map((m) => (
+                      <option key={m.id} value={m.id}>{(m.date ? jjmm(m.date) + " · " : "") + (m.adversaire || "Match") + " (" + m.cpa.length + " fiche" + (m.cpa.length > 1 ? "s" : "") + ")"}</option>
+                    ))}
+                  </select>
+                  <button type="button" disabled={!importSrc} onClick={() => cpaReprendreMatch(importSrc)} style={{ cursor: importSrc ? "pointer" : "default", borderRadius: 8, padding: "7px 13px", fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${importSrc ? C.bleu : C.grisClair}`, background: importSrc ? C.bleu : "#EEF1F4", color: importSrc ? "#fff" : C.gris, whiteSpace: "nowrap" }}>Importer les CPA</button>
+                </div>
+              </div>
+            );
+          })()}
           {compoScellee ? (
             cpaFiches.length === 0 ? <div style={{ fontSize: 11.5, color: C.gris }}>Aucune fiche pour ce match.</div> : null
           ) : (
