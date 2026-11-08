@@ -893,7 +893,7 @@ function makePlayerReal(p) {
     try { const em = new THREE.Mesh(G.plane, eimiTex()); em.scale.set(0.185, 0.052, 1); em.position.set(0, -0.012, 0.126); chest.add(em); } catch (e) {}
     if (kit.crest) decal(kit.crest, kit.crestAsp || 1, 0.082, 0.072, 0.118, 0.129, 0.3);
   }
-  const rig = { root, skinned: true, hipL: B('thighL'), hipR: B('thighR'), kneeL: B('shinL'), kneeR: B('shinR'),
+  const rig = { root, skinned: true, head: B('head'), hipL: B('thighL'), hipR: B('thighR'), kneeL: B('shinL'), kneeR: B('shinR'),
     armL: B('upperArmL'), armR: B('upperArmR'), elbowL: B('forearmL'), elbowR: B('forearmR') };
   g.userData.rig = rig; g.userData.anim = { phase: hash(p.id) % 7, amp: 0, last: null, face: null };
   idlePose(rig, 0, 0);
@@ -950,7 +950,7 @@ function makePlayerSimple(p) {
   if (style === 1) { const hc = mesh(H.hairCurly, hair, head, 0, 0.035, -0.012); hc.scale.set(0.95, 0.8, 1.02); }
   else { const hs = mesh(H.hairShort, hair, head, 0, 0.012, -0.008, false, 0.95); hs.scale.set(style === 2 ? 0.94 : 0.97, style === 2 ? 0.9 : 1.06, 1.02); hs.rotation.x = -0.18; }
   // jambes articulées (hanche, genou)
-  const rig = { root };
+  const rig = { root, head };
   [-1, 1].forEach(sd => {
     const hip = new THREE.Group(); hip.position.set(sd * 0.085, 0.935, 0); root.add(hip);
     mesh(H.shortLeg, shorts, hip, 0, -0.07, 0, true, 0.85);
@@ -1106,6 +1106,24 @@ function updateRigs(dt, now) {
     an.face = angLerp(an.face, target, Math.min(1, dt * (dist > 0.004 ? 12 : 5)));
     b.rotation.y = an.face;
     idlePose(g.userData.rig, an.amp, an.phase);
+    // Pivot de la tete vers le ballon, EN PLUS de l'orientation du corps (epaules inchangees).
+    // Pilote separement de la tete, borne a la nuque ; a l'arret seulement (l'animation Jouer n'est pas touchee).
+    const rg = g.userData.rig;
+    if (rg && rg.head) {
+      let hy;
+      if (dist > 0.004) {
+        hy = 0;                                        // en course : tete dans l'axe du corps (Jouer inchange)
+      } else {
+        const aBall = Math.atan2(bp.x - pos.x, bp.z - pos.z);
+        hy = aBall - an.face;                          // angle local tete = direction ballon - orientation du corps
+        while (hy > Math.PI) hy -= Math.PI * 2;
+        while (hy < -Math.PI) hy += Math.PI * 2;
+        const neckMax = 1.05;                          // ~60 deg : rotation de nuque realiste, jamais le dos au ballon
+        if (hy > neckMax) hy = neckMax; else if (hy < -neckMax) hy = -neckMax;
+      }
+      an.head = (an.head == null) ? hy : an.head + (hy - an.head) * Math.min(1, dt * 7);
+      rg.head.rotation.y = an.head;
+    }
     // légère respiration au repos
     g.userData.rig.root.scale.y = 1 + (1 - an.amp) * 0.006 * Math.sin(now / 600 + an.phase);
   });
