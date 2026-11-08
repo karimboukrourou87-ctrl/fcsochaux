@@ -1084,8 +1084,23 @@ function updateRigs(dt, now) {
     let target;
     if (dist > 0.004) target = Math.atan2(dx, dz);               // en mouvement : face au deplacement
     else {
-      const fh = (!play) ? faceHints.get(id) : null;             // a l'arret et hors animation : face a sa course
-      target = fh ? Math.atan2(fh.x - pos.x, fh.z - pos.z) : Math.atan2(bp.x - pos.x, bp.z - pos.z);
+      // Orientation a l'arret : les epaules sont TOUJOURS cote ballon (on ne tourne jamais le dos au ballon).
+      // Si le joueur a une course, le corps s'ouvre vers l'espace de l'appel, mais plafonne a la position
+      // de trois-quarts (~72 deg), pour garder le ballon et l'adversaire dans le champ de vision.
+      // Le ballon reste la reference ; la course ne fait qu'ouvrir la posture, elle ne commande pas l'orientation.
+      const aBall = Math.atan2(bp.x - pos.x, bp.z - pos.z);
+      const fh = (!play) ? faceHints.get(id) : null;
+      if (fh) {
+        const aRun = Math.atan2(fh.x - pos.x, fh.z - pos.z);
+        let d = aRun - aBall;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;                     // ecart le plus court ballon -> course
+        const maxOuv = 1.27;                                       // ~72 deg : trois-quarts, ballon jamais dans le dos
+        if (d > maxOuv) d = maxOuv; else if (d < -maxOuv) d = -maxOuv;
+        target = aBall + d;                                        // epaules cote ballon, ouvertes au plus a 3/4 vers la course
+      } else {
+        target = aBall;                                            // sans course : face au ballon
+      }
     }
     if (an.face == null) an.face = target;
     an.face = angLerp(an.face, target, Math.min(1, dt * (dist > 0.004 ? 12 : 5)));
