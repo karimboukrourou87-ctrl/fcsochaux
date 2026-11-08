@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.18";
+const APP_VERSION = "16.20.19";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -15238,6 +15238,8 @@ function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessur
   const [histo, setHisto] = useState(false);
   const [importMsg, setImportMsg] = useState(null);
   const [coller, setColler] = useState(false);
+  const [annulCible, setAnnulCible] = useState(null); // séance qu'on veut marquer annulée { id, date }
+  const [motifAnnul, setMotifAnnul] = useState("");
   const [texteColle, setTexteColle] = useState("");
   const [nbMois, setNbMois] = useState(false);
   const [confirmFusion, setConfirmFusion] = useState(false);
@@ -15594,6 +15596,33 @@ function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessur
     setConfirmFusion(false);
   };
 
+  // Marque une séance comme annulée (avec motif facultatif). La séance reste visible dans le planning
+  // mais ne compte pas comme séance pointée (seanceValidee reste false). Crée l'enregistrement si besoin.
+  const appliquerAnnulation = (motif) => {
+    const cible = annulCible;
+    if (!cible) return;
+    mutate((d) => {
+      d.trainings = d.trainings || [];
+      let idx = cible.id ? d.trainings.findIndex((x) => x.id === cible.id) : -1;
+      if (idx < 0) idx = d.trainings.findIndex((x) => x.cat === cat && x.date === cible.date);
+      if (idx >= 0) d.trainings[idx] = { ...d.trainings[idx], annulee: true, motifAnnul: motif || "" };
+      else d.trainings.push({ id: uid(), cat, date: cible.date, presence: {}, pointe: false, annulee: true, motifAnnul: motif || "" });
+      return d;
+    });
+    setAnnulCible(null);
+    setMotifAnnul("");
+  };
+
+  // Rétablit une séance annulée : elle repasse en "À pointer".
+  const retablirSeance = (t, date) => {
+    mutate((d) => {
+      let idx = (t && t.id) ? d.trainings.findIndex((x) => x.id === t.id) : -1;
+      if (idx < 0) idx = d.trainings.findIndex((x) => x.cat === cat && x.date === date);
+      if (idx >= 0) d.trainings[idx] = { ...d.trainings[idx], annulee: false, motifAnnul: "" };
+      return d;
+    });
+  };
+
   return (
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
@@ -15883,14 +15912,30 @@ function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessur
                   .map(([id]) => nomDe(id)).filter(Boolean)
                   .sort((a, b) => a.localeCompare(b, "fr"));
                 const valide = seanceValidee(t);
+                const annulee = !valide && !!(t && t.annulee);
                 const absentsNoms = valide ? nomsParStatut("absent", "absent_j", "absent_nj", "malade") : [];
                 const blessesNoms = valide ? nomsParStatut("blesse") : [];
                 return (
-                  <Card key={en.date} onClick={() => valide ? setOpen(t) : setEdit(t || { cat, date: en.date, presence: {} })}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: valide ? 8 : 0 }}>
+                  <Card key={en.date} onClick={() => { if (annulee) return; valide ? setOpen(t) : setEdit(t || { cat, date: en.date, presence: {} }); }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: (valide || annulee) ? 8 : 0 }}>
                       <div style={{ fontWeight: 800 }}>{jourLong(en.date)}</div>
-                      {valide ? <Pastille bg="#E2F4E9" color={C.vert}>{nbPres} présents</Pastille> : <Pastille bg={C.jaune} color={C.bleuNuit}>À pointer</Pastille>}
+                      {valide ? (
+                        <Pastille bg="#E2F4E9" color={C.vert}>{nbPres} présents</Pastille>
+                      ) : annulee ? (
+                        <Pastille bg={C.grisClair} color={C.gris}>Séance annulée</Pastille>
+                      ) : (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
+                          <Pastille bg={C.jaune} color={C.bleuNuit}>À pointer</Pastille>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); setMotifAnnul(""); setAnnulCible({ id: t && t.id, date: en.date }); }} style={{ display: "inline-flex", alignItems: "center", gap: 5, border: `1px solid ${C.grisClair}`, background: "#fff", color: C.gris, borderRadius: 999, padding: "5px 11px", fontSize: 12, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}><X size={13} /> Séance annulée</button>
+                        </div>
+                      )}
                     </div>
+                    {annulee && (
+                      <>
+                        {t.motifAnnul ? <div style={{ fontSize: 12.5, color: C.gris, marginTop: 2, lineHeight: 1.45 }}><strong>Motif :</strong> {t.motifAnnul}</div> : <div style={{ fontSize: 12.5, color: C.gris, marginTop: 2 }}>Aucun motif indiqué.</div>}
+                        <button type="button" onClick={(e) => { e.stopPropagation(); retablirSeance(t, en.date); }} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: "7px 0 0", textDecoration: "underline" }}>Rétablir la séance</button>
+                      </>
+                    )}
                     {valide && (
                       <>
                         {t.theme && <div style={{ fontSize: 13, color: C.gris, marginBottom: 8 }}>{t.theme}</div>}
@@ -15967,6 +16012,14 @@ function Entrainements({ players, cat, db, mutate, estMedical, onSignalerBlessur
           footer={<Btn variant="accent" full disabled={!texteColle.trim()} onClick={() => { if (traiterImportSeances(texteColle)) setColler(false); }}><Save size={16} /> Importer</Btn>}>
           <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>Colle ici le contenu du fichier JSON des séances, puis touche Importer. Utile si le téléchargement du fichier pose problème sur ton appareil.</div>
           <textarea value={texteColle} onChange={(e) => setTexteColle(e.target.value)} rows={10} placeholder='{ "trainings": [ ... ] }' style={{ width: "100%", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 11, fontSize: 12.5, fontFamily: "monospace", resize: "vertical", boxSizing: "border-box" }} />
+        </Modal>
+      )}
+
+      {annulCible && (
+        <Modal title="Séance annulée" onClose={() => { setAnnulCible(null); setMotifAnnul(""); }}
+          footer={<Btn variant="accent" full onClick={() => appliquerAnnulation(motifAnnul)}><X size={16} /> Valider l'annulation</Btn>}>
+          <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 10, lineHeight: 1.5 }}>La séance restera affichée dans le planning, marquée comme annulée. Elle ne sera pas comptée dans les séances pointées. Le motif est facultatif et s'affichera sur la bannière de la séance.</div>
+          <Field label="Motif (facultatif)"><Inp value={motifAnnul} onChange={(e) => setMotifAnnul(e.target.value)} placeholder="Ex : terrain impraticable, intempéries..." autoFocus /></Field>
         </Modal>
       )}
 
