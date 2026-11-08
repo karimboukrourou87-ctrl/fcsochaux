@@ -1678,6 +1678,28 @@ controls.ref.enableDamping = true; controls.ref.dampingFactor = 0.09;
 controls.ref.maxPolarAngle = 1.48; controls.ref.minDistance = 6; controls.ref.maxDistance = 120;
 controls.ref.addEventListener('start', () => { camTween = null; ui.view = null; document.querySelectorAll('#views button').forEach(b => b.classList.remove('on')); });
 
+// Zoom molette maitrise (PC) : on reprend la main sur la molette pour un zoom progressif et borne.
+// OrbitControls applique directement la force de la molette (pave tactile de precision / molette rapide),
+// ce qui faisait sauter la camera au plus pres ou au plus loin d'un coup. Ici, chaque cran change la distance
+// d'un petit pourcentage PLAFONNE, entre minDistance et maxDistance. Le zoom a deux doigts (tablette) reste
+// gere par OrbitControls et n'est pas touche. On intercepte en phase capture uniquement sur le terrain 3D.
+window.addEventListener('wheel', (e) => {
+  if (e.target !== canvas) return; // sur les panneaux lateraux : defilement normal
+  e.preventDefault();
+  e.stopPropagation();
+  camTween = null; ui.view = null;
+  document.querySelectorAll('#views button').forEach(b => b.classList.remove('on'));
+  const tgt = controls.ref.target;
+  const offset = camera.position.clone().sub(tgt);
+  let dist = offset.length();
+  const u = Math.max(-1, Math.min(1, e.deltaY / 100)); // magnitude bornee a +/-1 par evenement
+  dist = dist * (1 + 0.16 * u);                        // 16% max par cran, quelle que soit la vitesse
+  dist = Math.max(controls.ref.minDistance, Math.min(controls.ref.maxDistance, dist));
+  offset.setLength(dist);
+  camera.position.copy(tgt).add(offset);
+  controls.ref.update();
+}, { passive: false, capture: true });
+
 /* ============ interface ============ */
 const HINTS = {
   move: 'Glissez un joueur pour le déplacer. Touchez un joueur ou une flèche pour la modifier.',
