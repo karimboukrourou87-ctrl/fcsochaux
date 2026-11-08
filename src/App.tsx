@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.13";
+const APP_VERSION = "16.20.16";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -13802,12 +13802,35 @@ function DefiJonglageLigue({ match, players, db, mutate, onClose }) {
     return aNom ? { ...r, pd: 50, pg: 50, alt: 50 } : { ...r, pd: 0, pg: 0, alt: 0 };
   }) }));
   const effacer = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => ({ ...r, pd: "", pg: "", alt: "" })) }));
-  const enregistrer = () => { mutate((d) => { d.matches.find((x) => x.id === match.id).jonglage = j; return d; }); };
-  // Enregistrement complet : local puis envoi au serveur (sinon les noms sont perdus au rechargement).
-  const enregistrerDef = () => { enregistrer(); setMsgSave("Enregistrement..."); setTimeout(() => { try { if (sauver) sauver(); } catch (e) {} setMsgSave("Enregistré"); setTimeout(() => setMsgSave(""), 2000); }, 120); };
+  // Enregistrement auto MODERE : on persiste 2,5 s apres la derniere saisie, et seulement si quelque chose a change
+  // (jamais a chaque frappe, jamais pour rien). Plus un enregistrement a la fermeture. Les donnees adverses ne se perdent plus.
+  const jRef = useRef(j); jRef.current = j;
+  const autoRef = useRef(null);
+  const lastSavedRef = useRef(null);
+  const premierRef = useRef(true);
+  const persister = (force) => {
+    const s = JSON.stringify(jRef.current);
+    if (!force && s === lastSavedRef.current) return; // rien de nouveau : on n'enregistre pas pour rien
+    lastSavedRef.current = s;
+    mutate((d) => { const mm = d.matches.find((x) => x.id === match.id); if (mm) mm.jonglage = jRef.current; return d; });
+    if (autoRef.current) clearTimeout(autoRef.current);
+    autoRef.current = setTimeout(() => { try { if (sauver) sauver(); } catch (e) {} }, 150);
+  };
+  useEffect(() => {
+    if (premierRef.current) { premierRef.current = false; lastSavedRef.current = JSON.stringify(j); return; }
+    const t = setTimeout(() => persister(false), 2500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [j]);
+  useEffect(() => () => { persister(false); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const manqueNum = () => !String(jRef.current.matchNum || "").trim();
+  const enregistrerDef = () => {
+    // L'enregistrement est toujours possible, meme sans numero de match (on ne perd rien). Seule la fiche PDF l'exige.
+    persister(true); setMsgSave("Enregistré"); setTimeout(() => setMsgSave(""), 2000);
+  };
   async function telecharger() {
-    enregistrer(); setMsgPdf("Préparation du PDF...");
-    setTimeout(() => { try { if (sauver) sauver(); } catch (e) {} }, 120);
+    if (manqueNum()) { window.alert("Numéro de match obligatoire : saisis le numéro de match avant de générer la fiche PDF."); return; }
+    persister(true); setMsgPdf("Préparation du PDF...");
     try { const jsPDF = await chargerJsPDF(); exporterDefiJonglageLiguePDF(jsPDF, j, match); setMsgPdf(null); }
     catch (e) { setMsgPdf("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
   }
@@ -13859,7 +13882,7 @@ function DefiJonglageLigue({ match, players, db, mutate, onClose }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
         <Field label="Date"><Inp type="date" value={j.date || ""} onChange={(e) => setJ((o) => ({ ...o, date: e.target.value }))} /></Field>
         <Field label="Journée N°"><Inp value={j.journee} onChange={(e) => setJ((o) => ({ ...o, journee: e.target.value }))} /></Field>
-        <Field label="Match N°"><Inp value={j.matchNum} onChange={(e) => setJ((o) => ({ ...o, matchNum: e.target.value }))} /></Field>
+        <Field label={"Match N°" + (String(j.matchNum || "").trim() ? "" : " (obligatoire pour le PDF)")}><Inp value={j.matchNum} onChange={(e) => setJ((o) => ({ ...o, matchNum: e.target.value }))} style={String(j.matchNum || "").trim() ? undefined : { borderColor: C.rouge, background: "#FFF5F5" }} /></Field>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
         <Field label="Score domicile"><Inp type="number" inputMode="numeric" min={0} value={j.scoreDom} onChange={(e) => setJ((o) => ({ ...o, scoreDom: e.target.value === "" ? "" : String(Math.max(0, parseInt(e.target.value, 10) || 0)) }))} placeholder="Buts marqués" /></Field>
@@ -14087,11 +14110,34 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
     return aNom ? { ...r, pd1: 50, pd2: 50, pg1: 50, pg2: 50 } : { ...r, pd1: 0, pd2: 0, pg1: 0, pg2: 0 };
   }) }));
   const effacer = (cote) => setJ((o) => ({ ...o, [cote]: o[cote].map((r) => ({ ...r, pd1: "", pd2: "", pg1: "", pg2: "" })) }));
-  const enregistrer = () => { mutate((d) => { d.matches.find((x) => x.id === match.id).jonglage = j; return d; }); };
-  const enregistrerDef = () => { enregistrer(); setMsgSave("Enregistrement..."); setTimeout(() => { try { if (sauver) sauver(); } catch (e) {} setMsgSave("Enregistré"); setTimeout(() => setMsgSave(""), 2000); }, 120); };
+  // Enregistrement auto MODERE : 2,5 s apres la derniere saisie, seulement si quelque chose a change, + a la fermeture.
+  const jRef = useRef(j); jRef.current = j;
+  const autoRef = useRef(null);
+  const lastSavedRef = useRef(null);
+  const premierRef = useRef(true);
+  const persister = (force) => {
+    const s = JSON.stringify(jRef.current);
+    if (!force && s === lastSavedRef.current) return;
+    lastSavedRef.current = s;
+    mutate((d) => { const mm = d.matches.find((x) => x.id === match.id); if (mm) mm.jonglage = jRef.current; return d; });
+    if (autoRef.current) clearTimeout(autoRef.current);
+    autoRef.current = setTimeout(() => { try { if (sauver) sauver(); } catch (e) {} }, 150);
+  };
+  useEffect(() => {
+    if (premierRef.current) { premierRef.current = false; lastSavedRef.current = JSON.stringify(j); return; }
+    const t = setTimeout(() => persister(false), 2500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [j]);
+  useEffect(() => () => { persister(false); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const manqueNum = () => !String(jRef.current.matchNum || "").trim();
+  const enregistrerDef = () => {
+    // L'enregistrement est toujours possible, meme sans numero de match (on ne perd rien). Seule la fiche PDF l'exige.
+    persister(true); setMsgSave("Enregistré"); setTimeout(() => setMsgSave(""), 2000);
+  };
   async function telecharger() {
-    enregistrer(); setMsgPdf("Préparation du PDF...");
-    setTimeout(() => { try { if (sauver) sauver(); } catch (e) {} }, 120);
+    if (manqueNum()) { window.alert("Numéro de match obligatoire : saisis le numéro de match avant de générer la fiche PDF."); return; }
+    persister(true); setMsgPdf("Préparation du PDF...");
     try { const jsPDF = await chargerJsPDF(); exporterDefiJonglagePDF(jsPDF, j, match); setMsgPdf(null); }
     catch (e) { setMsgPdf("Module d'impression indisponible. Sur le site en ligne, le document se génère normalement."); }
   }
@@ -14152,7 +14198,7 @@ function DefiJonglage({ match, players, db, mutate, onClose }) {
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
         <Field label="Groupe"><Inp value={j.groupe} onChange={(e) => setJ((o) => ({ ...o, groupe: e.target.value }))} placeholder="Groupe 1" /></Field>
-        <Field label="N° du match"><Inp value={j.matchNum} onChange={(e) => setJ((o) => ({ ...o, matchNum: e.target.value }))} /></Field>
+        <Field label={"N° du match" + (String(j.matchNum || "").trim() ? "" : " (obligatoire pour le PDF)")}><Inp value={j.matchNum} onChange={(e) => setJ((o) => ({ ...o, matchNum: e.target.value }))} style={String(j.matchNum || "").trim() ? undefined : { borderColor: C.rouge, background: "#FFF5F5" }} /></Field>
       </div>
       {tableau("dom", "ÉQUIPE RECEVANTE", "#F7BE8C")}
       {tableau("vis", "ÉQUIPE VISITEUSE", "#F7BE8C")}
