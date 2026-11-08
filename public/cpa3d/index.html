@@ -1064,11 +1064,14 @@ function idlePose(r, amp, ph) {
 }
 const angLerp = (a, b, t) => { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return a + d * t; };
 let ballLast = null;
+// Orientation a l'arret : chaque joueur qui a une course est tourne vers la direction de sa course,
+// pour que la sequence se lise sans avoir a lancer l'animation. (Additif, ne change pas l'animation "Jouer".)
+let faceHints = new Map();
 function updateRigs(dt, now) {
   const bp = ball.position;
   if (ballLast) { const bdx = bp.x - ballLast.x, bdz = bp.z - ballLast.z, bd = Math.hypot(bdx, bdz); if (bd > 1e-4) { ball.rotateOnWorldAxis(new THREE.Vector3(bdz / bd, 0, -bdx / bd), bd / BALL_R); } }
   ballLast = bp.clone();
-  playerObjs.forEach(g => {
+  playerObjs.forEach((g, id) => {
     const an = g.userData.anim, b = g.userData.body; if (!an || !b) return;
     if (g.userData.lying) { b.rotation.y = g.userData.rot; return; }
     const pos = g.position;
@@ -1078,7 +1081,12 @@ function updateRigs(dt, now) {
     const speed = dt > 0 ? dist / dt : 0;
     an.amp += (Math.min(1, speed / 5) - an.amp) * Math.min(1, dt * 8);
     an.phase += dist * 2.3 / Math.max(0.6, state.settings.scale / 1.5);
-    const target = dist > 0.004 ? Math.atan2(dx, dz) : Math.atan2(bp.x - pos.x, bp.z - pos.z);
+    let target;
+    if (dist > 0.004) target = Math.atan2(dx, dz);               // en mouvement : face au deplacement
+    else {
+      const fh = (!play) ? faceHints.get(id) : null;             // a l'arret et hors animation : face a sa course
+      target = fh ? Math.atan2(fh.x - pos.x, fh.z - pos.z) : Math.atan2(bp.x - pos.x, bp.z - pos.z);
+    }
     if (an.face == null) an.face = target;
     an.face = angLerp(an.face, target, Math.min(1, dt * (dist > 0.004 ? 12 : 5)));
     b.rotation.y = an.face;
@@ -1204,6 +1212,11 @@ function disposeGroup(gr) {
 function buildActions() {
   disposeGroup(actionsGroup);
   const { res } = chains();
+  // Orientation a l'arret : on retient la direction de la premiere course de chaque joueur.
+  faceHints = new Map();
+  state.actions.slice().sort((a, b) => a.step - b.step || a.id - b.id).forEach(a => {
+    if (a.type === 'run' && a.pid != null && a.to && !faceHints.has(a.pid)) faceHints.set(a.pid, { x: a.to.x, z: a.to.z });
+  });
   const hid = new Set(state.players.filter(p => p.hidden).map(p => p.id));
   state.actions.forEach(a => { if (hid.has(a.pid)) return; const ch = res.get(a.id); if (ch) actionsGroup.add(buildArrow(a, ch)); });
 }
