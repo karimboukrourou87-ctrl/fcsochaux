@@ -1095,7 +1095,7 @@ function updateRigs(dt, now) {
         let d = aRun - aBall;
         while (d > Math.PI) d -= Math.PI * 2;
         while (d < -Math.PI) d += Math.PI * 2;                     // ecart le plus court ballon -> course
-        const maxOuv = 1.27;                                       // ~72 deg : trois-quarts, ballon jamais dans le dos
+        const maxOuv = Math.PI / 4;                               // 45 deg : corps nettement face au ballon, leger appel vers la course
         if (d > maxOuv) d = maxOuv; else if (d < -maxOuv) d = -maxOuv;
         target = aBall + d;                                        // epaules cote ballon, ouvertes au plus a 3/4 vers la course
       } else {
@@ -2397,11 +2397,11 @@ initRealModel();
 // ou au toucher pres du bas sur tablette (puis se remasque seule apres quelques secondes).
 window.addEventListener('mousemove', (e) => {
   if (!document.body.classList.contains('immersif')) return;
-  document.body.classList.toggle('revBot', e.clientY > window.innerHeight - 120);
+  document.body.classList.toggle('revBot', e.clientY > window.innerHeight - 60);
 });
 window.addEventListener('pointerdown', (e) => {
   if (!document.body.classList.contains('immersif')) return;
-  if (e.clientY > window.innerHeight - 130) {
+  if (e.clientY > window.innerHeight - 40) {
     document.body.classList.add('revBot');
     clearTimeout(window._revBotT); window._revBotT = setTimeout(() => document.body.classList.remove('revBot'), 4000);
   }
