@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.16";
+const APP_VERSION = "16.20.18";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -10719,7 +10719,23 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
   };
   const matchProchain = matchsCat.find((m) => (m.date || "") >= aujourdhui);
   const matchDefaut = matchProchain ? matchProchain.id : (matchsCat.length ? matchsCat[matchsCat.length - 1].id : "");
-  const [matchSel, setMatchSel] = useState(matchDefaut);
+  // Memoire du dernier match selectionne (par categorie, 1h). En changeant d'onglet (Matchs, Seances, Accueil)
+  // et en revenant sur Compo, on garde le MEME match. Apres 1h sans y revenir, ou sans memoire, on repart sur ""
+  // (Composition generale, sans match) : on ne saute JAMAIS automatiquement au prochain match, pour eviter de
+  // modifier une autre compo par erreur. Seul un changement manuel du match met a jour la memoire.
+  const lireMatchMemo = (c) => { try { const raw = localStorage.getItem("fcsm_compo_match_" + c); if (raw) { const o = JSON.parse(raw); if (o && typeof o.id === "string" && typeof o.ts === "number" && (Date.now() - o.ts) < 3600000) return o.id; } } catch (e) {} return null; };
+  const valideMatchMemo = (m, c) => (m != null && (m === "" || (db.matches || []).some((x) => x.id === m && x.cat === c))) ? m : "";
+  const [matchSel, setMatchSel] = useState(() => valideMatchMemo(lireMatchMemo(cat), cat));
+  const premierCatRef = useRef(true);
+  useEffect(() => {
+    if (premierCatRef.current) { premierCatRef.current = false; return; }
+    setMatchSel(valideMatchMemo(lireMatchMemo(cat), cat));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cat]);
+  useEffect(() => {
+    try { localStorage.setItem("fcsm_compo_match_" + cat, JSON.stringify({ id: matchSel, ts: Date.now() })); } catch (e) {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchSel]);
   const [convocCompo, setConvocCompo] = useState(false);
   const key = matchSel || cat;
   // Encadrement du match (liste commune du club) : coach, coach adjoint, dirigeant, délégué
@@ -14495,6 +14511,10 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
     ...Object.keys((cur && cur.blancs) || {}),
     ...Object.keys((cur && cur.blesses) || {}),
   ]);
+  // Pour les "joueurs non retenus" et le basculement, on se base sur la COMPO reelle du match (titulaires + remplacants)
+  // et sur une VRAIE participation (minutes, but, passe, carton), pas sur un simple marqueur residuel.
+  const idsLineupSeul = new Set([...Object.values(lineupRap.slots || {}), ...(lineupRap.remplacants || [])]);
+  const aJoueRap = (id) => (+(((cur && cur.tempsJeu) || {})[id]) > 0) || !!(((cur && cur.buteurs) || {})[id]) || !!(((cur && cur.passeurs) || {})[id]) || !!(((cur && cur.jaunes) || {})[id]) || !!(((cur && cur.rouges) || {})[id]);
   const surclassesPresents = surclassesRap.filter((p) => idsCompo.has(p.id) && !players.some((q) => q.id === p.id));
   useEffect(() => { trace("surclassés présents dans ce match", { nb: surclassesPresents.length, noms: surclassesPresents.map((p) => p.prenom + " " + p.nom) }); }, [surclassesPresents.length]);
   // Les joueurs avec un motif de non-retenu (non qualifié, prévu en catégorie supérieure, blessé, suspendu, absent)
@@ -14510,7 +14530,7 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
     .map((e) => ({ id: e.id, prenom: e.prenom || "", nom: e.nom || "", poste: e.poste || "", photo: e.photo || "", cat: e.cat, essai: true }));
   // La feuille de match ne contient QUE les joueurs de la compo (titulaires + remplaçants prévus, ou ayant déjà
   // des stats/cartons sur ce match). Les autres joueurs de la catégorie basculent dans « Joueurs non retenus ».
-  const joueursRapport = [...players.filter((p) => idsCompo.has(p.id) && !motifsNonRetenu.has(p.id) && !estSuspenduRap(p)), ...surclassesPresents, ...essaisPresents];
+  const joueursRapport = [...players.filter((p) => idsCompo.has(p.id) && (idsLineupSeul.has(p.id) || !motifsNonRetenu.has(p.id)) && !estSuspenduRap(p)), ...surclassesPresents, ...essaisPresents];
   // Diagnostic temps de jeu : compare le temps de jeu stocké sur le match avec les joueurs affichés,
   // pour repérer un éventuel écart d'identifiants (temps enregistré sous un id absent de la feuille).
   useEffect(() => {
@@ -14541,7 +14561,15 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
   function retirerSurclSup(pid) { mutate((d) => { const m = d.matches.find((x) => x.id === match.id); if (m.surclasses) delete m.surclasses[pid]; return d; }); }
 
   // Joueurs de la catégorie non retenus (ni titulaire, ni remplaçant, sans stats)
-  const nonRetenusDispo = players.filter((p) => !idsCompo.has(p.id) || estSuspenduRap(p));
+  const nonRetenusDispo = players.filter((p) => (!idsLineupSeul.has(p.id) && !aJoueRap(p.id)) || estSuspenduRap(p));
+  // Nettoyage : si un joueur qui a une etiquette "non retenu" est (re)place dans la compo (titulaire/remplacant),
+  // on efface son etiquette, pour que la feuille de match, la convocation et le PDF restent coherents.
+  const motifsALever = [...motifsNonRetenu].filter((id) => idsLineupSeul.has(id));
+  useEffect(() => {
+    if (!motifsALever.length) return;
+    mutate((d) => { const m = d.matches.find((x) => x.id === match.id); if (m && m.nonRetenus) motifsALever.forEach((id) => { delete m.nonRetenus[id]; }); return d; });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [motifsALever.join(",")]);
   const catsSup = categoriesAuDessus(match.cat);
   function setNonRetenu(joueurId, motif) {
     mutate((d) => {
