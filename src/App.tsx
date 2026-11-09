@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.24";
+const APP_VERSION = "16.20.25";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -15007,7 +15007,9 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
                   {catsSup.map((c) => <option key={c} value={"Prévu en " + c}>{"Prévu en " + c}</option>)}
                   <option value="Non qualifié">Non qualifié</option>
                   <option value="Suspendu">Suspendu</option>
-                  <option value="Blessé">Blessé</option>
+                  {motif === "Blessé" && <option value="Blessé">Blessé (à préciser)</option>}
+                  <option value="Blessé (club)">Blessé (club)</option>
+                  <option value="Blessé (extérieur)">Blessé (extérieur)</option>
                   <option value="Absent">Absent</option>
                 </Sel>
               </div>
