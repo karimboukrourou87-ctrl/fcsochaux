@@ -1399,6 +1399,8 @@ function OrganisationMatchs({ demo, db, mutate, cat, peutValider, onClose, plann
 }
 
 function Classement({ cat, db, mutate, peutValider, onClose }) {
+  const _ctx = useContext(AdminCtx);
+  const sauverTout = _ctx && _ctx.sauver; // sauvegarde manuelle en base (l'auto-save a ete retire en V16.20.06)
   const url = ((db.config && db.config.classement) || {})[cat] || "";
   const peutEditer = !!peutValider; // seule la direction peut saisir / modifier le lien
   const [editer, setEditer] = useState(!url && peutEditer);
@@ -1425,6 +1427,8 @@ function Classement({ cat, db, mutate, peutValider, onClose }) {
       if (u && direct) d.config.classementDirect[cat] = true; else delete d.config.classementDirect[cat];
       return d;
     });
+    // Enregistrement reel en base : sans ca, le lien etait perdu au rechargement (regression de l'auto-save retire en V16.20.06).
+    if (sauverTout) setTimeout(() => { try { sauverTout(); } catch (e) {} }, 60);
     setEditer(false);
   }
 
@@ -1453,7 +1457,7 @@ function Classement({ cat, db, mutate, peutValider, onClose }) {
         <div style={{ fontSize: 13, color: C.encre, background: "#F4F7FB", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 12, lineHeight: 1.5 }}>Le lien du classement n'a pas encore été renseigné par la direction pour cette catégorie.</div>
       ) : direct ? (
         <>
-          <div style={{ fontSize: 13, color: C.encre, background: "#F4F7FB", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 12, marginBottom: 12, lineHeight: 1.5 }}>Le classement de cette catégorie s'ouvre directement dans le navigateur. Il vient de s'ouvrir dans un onglet. Touche le bouton ci-dessous pour le rouvrir.</div>
+          <div style={{ fontSize: 13, color: C.encre, background: "#F4F7FB", border: `1px solid ${C.grisClair}`, borderRadius: 10, padding: 12, marginBottom: 12, lineHeight: 1.5 }}>Cette catégorie est réglée pour ouvrir le classement directement dans le navigateur. Touche le bouton ci-dessous pour l'ouvrir, ou « Modifier le lien » en bas pour changer le lien ou ce réglage.</div>
           <Btn variant="accent" full onClick={() => window.open(url, "_blank", "noopener")}><ExternalLink size={16} /> Ouvrir le classement</Btn>
         </>
       ) : (
@@ -1804,7 +1808,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.28";
+const APP_VERSION = "16.20.30";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -5540,7 +5544,7 @@ export default function App() {
             Consultation seule sur cette catégorie. Tu peux tout voir, mais la modification est réservée à son responsable.
           </div>
         )}
-        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={(d) => { setTransportFocus(typeof d === "string" ? d : null); setShowTransport(true); if (rafraichirTransport) rafraichirTransport(); }} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowSauvegarde(true)) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowAcces(true)) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => demanderDeverrouillageAdmin(() => setShowDocs(true))} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onArrets={() => setShowArrets(true)} onMessagerie={ouvrirMessagerie} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} msgVuLe={msgVuLe} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onVestiaire={() => { setShowVestiaire(true); if (rafraichirPlanning) rafraichirPlanning(); }} demVestiaire={peutValider ? demandesVestiaire : []} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
+        {tab === "accueil" && <Accueil db={{ ...db, reunions: reunionsSource }} cat={cat} setTab={setTab} onScores={() => setShowScores(true)} onDemandes={() => setShowDemandes(true)} onClassement={() => { const u = ((db.config && db.config.classement) || {})[cat]; const dir = ((db.config && db.config.classementDirect) || {})[cat]; if (u && dir && !peutValider) { window.open(u, "_blank", "noopener"); } else { setShowClassement(true); } }} onTransport={(d) => { setTransportFocus(typeof d === "string" ? d : null); setShowTransport(true); if (rafraichirTransport) rafraichirTransport(); }} onOrganisation={() => setShowOrganisation(true)} onSauvegarde={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowSauvegarde(true)) : null} onPlanning={() => setShowPlanning(true)} onPlanningHebdo={() => setShowPlanningHebdo(true)} onAcces={estAdmin ? () => demanderDeverrouillageAdmin(() => setShowAcces(true)) : null} onProgramme={() => setShowProgramme(true)} onDocuments={() => demanderDeverrouillageAdmin(() => setShowDocs(true))} onSuivi={() => setShowSuivi(true)} onInfirmerie={() => { setEntSous("infirmerie"); setTab("entrainements"); }} onArrets={() => setShowArrets(true)} onMessagerie={ouvrirMessagerie} msgListe={messagesSource} msgMe={{ nom: monNom, email: (demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")), role: monRole, cats: cats }} peutMsgDir={peutValider} msgVuLe={msgVuLe} onBilan={() => setShowBilan(true)} onPlateaux={() => setShowTournois(true)} onReunions={() => setShowReunions(true)} onCalendrier={() => setShowCalendrier(true)} demResume={demResume} demPlanning={peutValider ? demandesPlanning : []} onValiderPlanning={validerDemandePlanning} onRefuserPlanning={refuserDemandePlanning} demNotifs={mesNotifsPlanning} onConfirmerLecture={confirmerLectureNotif} demAccuses={accusesClub.filter((a) => a.pourRole ? (a.pourRole === monRole) : a.pourCat ? cats.includes(a.pourCat) : peutValider)} onEffacerAccuse={effacerAccuse} demTransport={peutValider ? demandesTransport : []} onValiderTransport={validerTransport} onRefuserTransport={refuserTransport} onVestiaire={() => { setShowVestiaire(true); if (rafraichirPlanning) rafraichirPlanning(); }} demVestiaire={peutValider ? demandesVestiaire : []} onRafraichir={rafraichirTout} estMedical={estMedical} monEmail={demo ? "karim.b@fcsm.fr" : ((session && session.user && session.user.email) || "")} />}
         {tab === "effectif" && <Effectif players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} lectureSeule={estMedical} peutValider={peutValider} demo={demo} adminUnlock={adminUnlock} onDemanderDeverrouillage={demanderDeverrouillageAdmin} auteur={{ nom: monNom, role: monRole }} />}
         {tab === "compo" && <Compo demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} />}
         {tab === "matchs" && <Matchs demo={demo} players={players} cat={cat} catInfo={catInfo} db={db} mutate={mutate} peutValider={peutValider} profil={profil} planning={planningClub} majPlanning={majPlanningClub} onNotifierCorrection={notifierCorrection} />}
