@@ -1804,7 +1804,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.25";
+const APP_VERSION = "16.20.28";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -14779,11 +14779,20 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 800, color: C.bleuNuit, display: "inline-flex", alignItems: "center", gap: 6 }}><CalendarDays size={16} /> Match remis (certifié non joué)</div>
-                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.45 }}>{peutValider ? "Match scellé comme non joué (reporté). Il ne compte pas dans le bilan. Pour le rouvrir, lève la certification." : "Match scellé comme non joué (reporté). Il ne compte pas dans le bilan. Seule la direction peut le rouvrir."}</div>
+                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.45 }}>{autoriseCoach
+                  ? (peutValider ? "Correction autorisée : le coach peut rouvrir et corriger ce match. Referme quand c'est fait." : "La direction t'autorise à corriger : rouvre le match, saisis le bon résultat (joué ou remis), puis re-certifie.")
+                  : (peutValider ? "Match scellé comme non joué (reporté). Il ne compte pas dans le bilan. Rouvre-le toi-même, ou autorise une correction au coach." : "Match scellé comme non joué (reporté). Il ne compte pas dans le bilan. Seule la direction peut le rouvrir ou autoriser une correction.")}</div>
               </div>
-              {peutValider
-                ? <Btn variant="ghost" size="sm" onClick={() => marquerRemis(false)}>Rouvrir le match</Btn>
-                : <div style={{ fontSize: 11.5, fontWeight: 800, color: C.bleuNuit, display: "inline-flex", alignItems: "center", gap: 5, flex: "0 0 auto" }}><Lock size={14} /> Scellé</div>}
+              {peutValider ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: "0 0 auto", alignItems: "stretch" }}>
+                  <Btn variant="ghost" size="sm" onClick={() => marquerRemis(false)}>Rouvrir le match</Btn>
+                  <Btn variant={autoriseCoach ? "accent" : "ghost"} size="sm" onClick={() => autoriserCorrectionCoach(!autoriseCoach)}>{autoriseCoach ? "Refermer (re-sceller)" : "Autoriser une correction"}</Btn>
+                </div>
+              ) : autoriseCoach ? (
+                <Btn variant="accent" size="sm" onClick={() => { marquerRemis(false); terminerCorrectionCoach(); }}><Check size={15} /> Rouvrir et corriger</Btn>
+              ) : (
+                <div style={{ fontSize: 11.5, fontWeight: 800, color: C.bleuNuit, display: "inline-flex", alignItems: "center", gap: 5, flex: "0 0 auto" }}><Lock size={14} /> Scellé</div>
+              )}
             </div>
           ) : (
             <div>
@@ -14837,11 +14846,20 @@ function RapportMatch({ demo, match, players, db, mutate, onClose, onEdit, onDel
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 800, color: C.bleuNuit, display: "inline-flex", alignItems: "center", gap: 6 }}><CalendarDays size={16} /> {estTournoiPlateau ? `${cur.type} non disputé (scellé)` : "Match remis (certifié non joué)"}</div>
-                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.45 }}>{peutValider ? `Scellé comme non disputé. Ne compte pas dans le bilan. Pour le rouvrir, lève la certification.` : `Scellé comme non disputé. Ne compte pas dans le bilan. Seule la direction peut le rouvrir.`}</div>
+                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 2, lineHeight: 1.45 }}>{autoriseCoach
+                  ? (peutValider ? "Correction autorisée : le coach peut rouvrir et corriger. Referme quand c'est fait." : "La direction t'autorise à corriger : rouvre, saisis le bon résultat, puis re-certifie.")
+                  : (peutValider ? "Scellé comme non disputé. Ne compte pas dans le bilan. Rouvre-le toi-même, ou autorise une correction au coach." : "Scellé comme non disputé. Ne compte pas dans le bilan. Seule la direction peut le rouvrir ou autoriser une correction.")}</div>
               </div>
-              {peutValider
-                ? <Btn variant="ghost" size="sm" onClick={() => marquerRemis(false)}>Rouvrir</Btn>
-                : <div style={{ fontSize: 11.5, fontWeight: 800, color: C.bleuNuit, display: "inline-flex", alignItems: "center", gap: 5, flex: "0 0 auto" }}><Lock size={14} /> Scellé</div>}
+              {peutValider ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: "0 0 auto", alignItems: "stretch" }}>
+                  <Btn variant="ghost" size="sm" onClick={() => marquerRemis(false)}>Rouvrir</Btn>
+                  <Btn variant={autoriseCoach ? "accent" : "ghost"} size="sm" onClick={() => autoriserCorrectionCoach(!autoriseCoach)}>{autoriseCoach ? "Refermer (re-sceller)" : "Autoriser une correction"}</Btn>
+                </div>
+              ) : autoriseCoach ? (
+                <Btn variant="accent" size="sm" onClick={() => { marquerRemis(false); terminerCorrectionCoach(); }}><Check size={15} /> Rouvrir et corriger</Btn>
+              ) : (
+                <div style={{ fontSize: 11.5, fontWeight: 800, color: C.bleuNuit, display: "inline-flex", alignItems: "center", gap: 5, flex: "0 0 auto" }}><Lock size={14} /> Scellé</div>
+              )}
             </div>
           ) : (
             <div>
