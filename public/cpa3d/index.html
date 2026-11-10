@@ -2106,7 +2106,7 @@ function openTraj(id) {
   } else {
     fill($('#trBend'), [[0, 'Tout droit'], [0.2, 'Gauche'], [0.4, 'Gauche +'], [-0.2, 'Droite'], [-0.4, 'Droite +']], (a.bend || 0), v => a.bend = v);
   }
-  fill($('#trStep'), [1, 2, 3, 4].map(n => [n, 'Temps ' + n]), a.step, v => a.step = v);
+  fill($('#trStep'), Array.from({ length: NSTEPS }, (_, i) => i + 1).map(n => [n, 'Temps ' + n]), a.step, v => a.step = v);
   openModal('mTraj');
 }
 $('#trDel').onclick = () => { pushUndo(); state.actions = state.actions.filter(x => x.id !== trId); buildActions(); commit(); closeModal('mTraj'); };
