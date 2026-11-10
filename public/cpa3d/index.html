@@ -55,10 +55,11 @@ input,textarea,select{font-family:inherit}
 #botbar{display:flex;flex-direction:column;transition:transform .28s ease}
 body.immersif #botbar{position:absolute;left:0;right:0;bottom:0;z-index:16;transform:translateY(112%);box-shadow:0 -6px 18px rgba(0,0,0,.45)}
 body.immersif.revBot #botbar{transform:none}
-#steps{display:flex;gap:5px}
-#steps button{width:38px;height:36px;border-radius:10px;font:800 15px 'Barlow Condensed';background:var(--panel2);border:2px solid transparent}
+#steps{display:flex;gap:5px;flex:1 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}
+#steps::-webkit-scrollbar{display:none}
+#steps button{flex:0 0 auto;width:38px;height:36px;border-radius:10px;font:800 15px 'Barlow Condensed';background:var(--panel2);border:2px solid transparent}
 #steps button.on{border-color:currentColor}
-#playbar .sp{flex:1}
+#playbar .sp{flex:0 0 6px}
 .pb{height:38px;min-width:38px;padding:0 9px;border-radius:10px;background:var(--panel2);display:flex;align-items:center;justify-content:center;gap:5px;font-weight:700;font-size:13px}
 .pb svg{width:20px;height:20px}
 .pb.main{background:var(--acc);color:#111;padding:0 13px}
@@ -269,6 +270,8 @@ details summary{font:700 14px 'Barlow Condensed';letter-spacing:1.2px;text-trans
   <div class="row"><label>Couleur de peau</label><div class="seg" id="skinSeg"><button data-sk="varie">Variée</button><button data-sk="#f1c7a4">Claire</button><button data-sk="#d9a27e">Mate</button><button data-sk="#a86f4c">Hâlée</button><button data-sk="#5c3a24">Foncée</button></div></div>
   <div class="row"><label>Vitesse animation</label><div class="seg" id="speedSeg"><button data-s="0.6">Lente</button><button data-s="1">Normale</button><button data-s="1.6">Rapide</button></div></div>
   <div class="row"><label>Temps de réaction</label><div class="seg" id="reactSeg"><button data-rc="0.1">Rapide</button><button data-rc="0.4">Normal</button><button data-rc="0.9">Lent</button></div></div>
+  <div class="row"><label>Opacité conduite</label><input type="range" id="condOp" min="0" max="1" step="0.05"></div>
+  <div class="empty" style="margin:-4px 0 8px">Transparence de la flèche quand le porteur conduit le ballon (0 = invisible, 100 % = pleine).</div>
   <div id="hiddenWrap" style="display:none"><h3>Joueurs masqués</h3><div id="hiddenBox" class="chips"></div><button class="btn c" id="showAll" style="width:100%;margin-top:6px">Tout réafficher</button></div>
 
   <div class="row"><label>Maillot Adversaire</label><input type="color" id="colB"></div>
@@ -363,8 +366,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 /* ============ constantes ============ */
 const $ = s => document.querySelector(s);
-const STEP_COLORS = ['#ffd23f', '#35d0ff', '#ff5fa2', '#9dff5c'];
-const NSTEPS = 4;
+const STEP_COLORS = ['#ffd23f', '#35d0ff', '#ff5fa2', '#9dff5c', '#ff8a3d', '#b98cff', '#ff5c5c', '#3dd6b0', '#6ea8ff', '#e6e6e6'];
+const NSTEPS = 10;
 const DEF_COLORS = { A: '#2f6fe0', B: '#e0533d', GK: '#26a65b', shortsA: '#15203a', shortsB: '#f2f2f2', trimA: '#2f6fe0', socksA: '#f4f4f4' };
 const KIT_YB = { A: '#f6d40c', trimA: '#1f4fc4', shortsA: '#18245e', socksA: '#f6d40c' };
 const SKINS = ['#f1c7a4', '#d9a27e', '#a86f4c', '#7a4a2e', '#e8b896', '#5c3a24'];
@@ -379,8 +382,8 @@ let pose = null; // {k, f}
 let play = null; // {all:bool, pause:number}
 
 function blank() {
-  return { v: 1, title: 'Nouvelle fiche', notes: '', captions: { 1: '', 2: '', 3: '', 4: '' },
-    colors: { ...DEF_COLORS }, settings: { scale: 1.5, nums: true },
+  return { v: 1, title: 'Nouvelle fiche', notes: '', captions: { 1: '', 2: '', 3: '', 4: '', 5: '', 6: '', 7: '', 8: '', 9: '', 10: '' },
+    colors: { ...DEF_COLORS }, settings: { scale: 1.5, nums: true, conduiteOp: 0.35 },
     players: [], ball: { x: 0, z: 11 }, actions: [], zones: [], nextId: 1 };
 }
 const clone = o => JSON.parse(JSON.stringify(o));
@@ -1187,6 +1190,7 @@ function chains() {
     if (a.type === 'run') {
       const from = ppos.get(a.pid); if (!from) continue;
       res.set(a.id, { from: { ...from }, to: a.to }); ppos.set(a.pid, { ...a.to });
+      if (a.ball) bpos = { ...a.to }; // conduite de balle : le ballon suit le porteur
     } else {
       res.set(a.id, { from: { ...bpos }, to: a.to }); bpos = { ...a.to };
     }
@@ -1208,12 +1212,15 @@ function buildArrow(a, ch, preview = false) {
   const curve = curveOf(a, ch);
   const len = curve.getLength(); if (len < 0.3) return grp;
   const col = stepColor(a.step);
+  // conduite de balle : course du porteur dessinee en transparence (opacite reglable), le ballon suit
+  const conduite = a.type === 'run' && !!a.ball;
+  const op = conduite ? ((state.settings && state.settings.conduiteOp != null) ? state.settings.conduiteOp : 0.35) : 1;
   // la pointe s'arrête juste avant la cible
   const tEnd = Math.max(0, 1 - 0.55 / len);
   const end = curve.getPoint(1), tan = curve.getTangent(1).normalize();
   if (a.type === 'run') {
     const pts = []; for (let i = 0; i <= 40; i++) pts.push(curve.getPoint(i / 40 * tEnd));
-    const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, 0.11, 6), new THREE.MeshBasicMaterial({ color: col, transparent: preview, opacity: preview ? .7 : 1 }));
+    const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, 0.11, 6), new THREE.MeshBasicMaterial({ color: col, transparent: preview || op < 1, opacity: preview ? .7 : op }));
     grp.add(tube);
   } else {
     const n = Math.max(4, Math.floor(len / 0.55));
@@ -1227,12 +1234,12 @@ function buildArrow(a, ch, preview = false) {
       sh.computeLineDistances(); grp.add(sh);
     }
   }
-  const cone = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: a.type === 'run' ? col : '#ffffff' }));
+  const cone = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: a.type === 'run' ? col : '#ffffff', transparent: op < 1, opacity: op }));
   cone.position.copy(end).addScaledVector(tan, -0.37);
   cone.quaternion.setFromUnitVectors(UP, tan); grp.add(cone);
   if (!preview) {
     const mid = curve.getPoint(0.5);
-    const b = stepSprite(String(a.step), col); b.position.set(mid.x, mid.y + 0.75, mid.z); grp.add(b);
+    const b = stepSprite(String(a.step), col); b.position.set(mid.x, mid.y + 0.75, mid.z); if (op < 1) { b.material.transparent = true; b.material.opacity = op; } grp.add(b);
     // zone de toucher élargie pour la gomme
     const hitT = new THREE.Mesh(new THREE.TubeGeometry(curve, 16, 0.7, 5), new THREE.MeshBasicMaterial({ visible: false }));
     hitT.userData.actionId = a.id; grp.add(hitT);
@@ -1477,7 +1484,7 @@ function computePose() {
     if (a.step < cur) t = 1; else if (a.step === cur) t = a.type === 'pass' ? pose.f : ease(pose.f); else t = -1;
     if (t < 0) { if (a.type === 'run') blocked.add(a.pid); else ballBlocked = true; continue; }
     const pt = curveOf(a, ch).getPoint(t);
-    if (a.type === 'run') { pp.set(a.pid, new THREE.Vector3(pt.x, 0, pt.z)); if (t < 1) blocked.add(a.pid); }
+    if (a.type === 'run') { pp.set(a.pid, new THREE.Vector3(pt.x, 0, pt.z)); if (a.ball && !ballBlocked) { bp.set(pt.x, BALL_R, pt.z); if (t < 1) ballBlocked = true; } if (t < 1) blocked.add(a.pid); }
     else { bp.copy(pt); if (t < 1) ballBlocked = true; }
   }
   return { pp, bp };
@@ -1655,7 +1662,7 @@ canvas.addEventListener('pointermove', (e) => {
 });
 function previewAction(d) {
   const { ppos, bpos } = chains();
-  if (d.kind === 'run') return { a: { id: -1, type: 'run', pid: d.pid, to: d.to, step: ui.step, bend: [0, 0.2, 0.4, -0.2, -0.4][ui.bend] }, from: ppos.get(d.pid) };
+  if (d.kind === 'run') { const fr = ppos.get(d.pid); const porteur = fr && Math.hypot(fr.x - bpos.x, fr.z - bpos.z) < 1.5; return { a: { id: -1, type: 'run', pid: d.pid, to: d.to, step: ui.step, bend: [0, 0.2, 0.4, -0.2, -0.4][ui.bend], ball: porteur || undefined }, from: fr }; }
   return { a: { id: -1, type: 'pass', to: d.to, step: ui.step, kind: ui.passKind, curve: ui.passCurve }, from: bpos };
 }
 function showPreview() {
@@ -1680,7 +1687,7 @@ function endDrag(e) {
     const { a, from } = previewAction(d);
     if (!from || Math.hypot(a.to.x - from.x, a.to.z - from.z) < 1) return;
     pushUndo(d.snap); a.id = state.nextId++; state.actions.push(a); buildActions(); commit();
-    toast('Course ajoutée au temps ' + a.step + '. Touchez Jouer pour la voir');
+    toast((a.ball ? 'Conduite de balle ajoutée au temps ' : 'Course ajoutée au temps ') + a.step + '. Touchez Jouer pour la voir');
   } else if (d.kind === 'pass') {
     if (!d.to) { const gp = groundPoint(e); if (gp) d.to = gp; else return; }
     const { a, from } = previewAction(d);
@@ -1911,6 +1918,7 @@ document.querySelectorAll('#qtySeg button').forEach(b => b.onclick = () => { add
 function syncQty() { document.querySelectorAll('#qtySeg button').forEach(b => b.classList.toggle('on', parseInt(b.dataset.q) === addQty)); }
 syncQty();
 $('#scale').addEventListener('input', e => { state.settings.scale = parseFloat(e.target.value); playerObjs.forEach(g => g.scale.setScalar(state.settings.scale)); commit(); });
+$('#condOp').addEventListener('input', e => { (state.settings || (state.settings = {})).conduiteOp = parseFloat(e.target.value); buildActions(); commit(); });
 document.querySelectorAll('#numsSeg button').forEach(b => b.onclick = () => { state.settings.nums = b.dataset.n === '1'; buildPlayers(); syncUI(); commit(); });
 // Colonne de reglages rapides a gauche (sous "+ Joueurs") : un appui fait defiler la valeur, le bouton affiche la valeur du moment.
 const QT_SKIN = [['varie', 'Variée'], ['#f1c7a4', 'Claire'], ['#d9a27e', 'Mate'], ['#a86f4c', 'Hâlée'], ['#5c3a24', 'Foncée']];
@@ -1995,6 +2003,7 @@ document.querySelectorAll('#menu input[type=color]').forEach(ci => {
 function syncUI() {
   $('#title').value = state.title || '';
   $('#scale').value = state.settings.scale;
+  $('#condOp').value = (state.settings && state.settings.conduiteOp != null) ? state.settings.conduiteOp : 0.35;
   document.querySelectorAll('#numsSeg button').forEach(b => b.classList.toggle('on', (b.dataset.n === '1') === !!state.settings.nums));
   document.querySelectorAll('#speedSeg button').forEach(b => b.classList.toggle('on', parseFloat(b.dataset.s) === ui.speed));
   document.querySelectorAll('#reactSeg button').forEach(b => b.classList.toggle('on', parseFloat(b.dataset.rc) === ui.reaction));
