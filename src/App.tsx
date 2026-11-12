@@ -1808,7 +1808,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.34";
+const APP_VERSION = "16.20.35";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -7556,9 +7556,12 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
           const n = String(j.nom || "").trim(), pr = String(j.prenom || "").trim();
           const lic = String(j.licence || "").trim();
           if (!n && !pr && !lic) { ignore++; return; }
+          // Comparaison insensible aux espaces en trop et aux accents (evite les fiches en double a l'import).
+          const normId = (s) => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+          const nN = normId(n), nP = normId(pr);
           const existant = d.players.find((x) =>
             (lic && String(x.licence || "").trim() === lic) ||
-            (!lic && n && pr && (x.nom || "").toLowerCase() === n.toLowerCase() && (x.prenom || "").toLowerCase() === pr.toLowerCase())
+            (!lic && nN && nP && normId(x.nom) === nN && normId(x.prenom) === nP)
           );
           if (existant) {
             let change = false;
