@@ -48,6 +48,29 @@ function Sauvegarde({ db, mutate, cat, demo, estAdmin, userId, onClose }) {
   const [ok, setOk] = useState(null);
   const [compresBusy, setCompresBusy] = useState(false);
   const [compresMsg, setCompresMsg] = useState(null);
+  const [jsonBusy, setJsonBusy] = useState(false);
+  const [jsonMsg, setJsonMsg] = useState(null);
+
+  // Active ou desactive l'import JSON dans TOUTES les categories, une par une (le reglage config est stocke par categorie).
+  async function basculerJsonToutesCats(v) {
+    setJsonBusy(true);
+    setJsonMsg(v ? "Activation de l'import JSON dans toutes les catégories..." : "Désactivation de l'import JSON dans toutes les catégories...");
+    try {
+      const sb = await getSupabase();
+      const { data, error } = await sb.from("categorie_data").select("categorie, data");
+      if (error) throw error;
+      let nb = 0;
+      for (const row of (data || [])) {
+        const blob = { ...EMPTY_DB, ...(row.data || {}) };
+        blob.config = blob.config || {};
+        if (blob.config.jsonActif !== v) { blob.config.jsonActif = v; await saveCat(row.categorie, blob, userId); nb++; }
+      }
+      // Met a jour immediatement la categorie affichee pour que l'ecran reflete le changement.
+      mutate((d) => { d.config = d.config || {}; d.config.jsonActif = v; return d; });
+      setJsonMsg(v ? `Import JSON activé dans toutes les catégories (${nb} mise(s) à jour).` : `Import JSON désactivé dans toutes les catégories (${nb} mise(s) à jour).`);
+    } catch (e) { setJsonMsg("Opération impossible. Vérifie la connexion, puis réessaie."); }
+    finally { setJsonBusy(false); }
+  }
 
   // Recompresse toutes les photos déjà enregistrées (toutes catégories) à 300px, pour alléger la base et le trafic.
   async function compresserPhotosExistantes() {
@@ -202,11 +225,12 @@ function Sauvegarde({ db, mutate, cat, demo, estAdmin, userId, onClose }) {
       {estAdmin && !demo && (
         <div style={{ marginBottom: 18, paddingBottom: 18, borderBottom: `1px solid ${C.grisClair}` }}>
           <div style={{ fontWeight: 800, marginBottom: 6 }}>Import JSON des matchs et des fiches</div>
-          <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 8, lineHeight: 1.5 }}>Réservé à la direction. Active ce mode pour faire apparaître dans toute l'appli les boutons d'import par fichier / JSON (matchs, fiches joueurs, séances, encadrement, équipes). Désactivé, ils sont tous cachés.</div>
-          <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer", border: `1px solid ${jsonImportActif(db) ? C.jaune : C.grisClair}`, borderRadius: 12, padding: "11px 14px", background: "#fff" }}>
-            <input type="checkbox" checked={jsonImportActif(db)} onChange={(e) => { const v = e.target.checked; mutate((d) => { d.config = d.config || {}; d.config.jsonActif = v; return d; }); }} style={{ width: 20, height: 20, flex: "0 0 auto", cursor: "pointer" }} />
-            <span style={{ fontSize: 13.5, fontWeight: 800, color: C.encre }}>{jsonImportActif(db) ? "Import JSON activé" : "Import JSON désactivé"}</span>
+          <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 8, lineHeight: 1.5 }}>Réservé à la direction. Active ce mode pour faire apparaître dans toute l'appli, et dans toutes les catégories, les boutons d'import par fichier / JSON (matchs, fiches joueurs, séances, encadrement, équipes). Désactivé, ils sont tous cachés partout.</div>
+          <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: jsonBusy ? "default" : "pointer", opacity: jsonBusy ? 0.6 : 1, border: `1px solid ${jsonImportActif(db) ? C.jaune : C.grisClair}`, borderRadius: 12, padding: "11px 14px", background: "#fff" }}>
+            <input type="checkbox" checked={jsonImportActif(db)} disabled={jsonBusy} onChange={(e) => basculerJsonToutesCats(e.target.checked)} style={{ width: 20, height: 20, flex: "0 0 auto", cursor: jsonBusy ? "default" : "pointer" }} />
+            <span style={{ fontSize: 13.5, fontWeight: 800, color: C.encre }}>{jsonBusy ? "En cours..." : (jsonImportActif(db) ? "Import JSON activé" : "Import JSON désactivé")}</span>
           </label>
+          {jsonMsg && <div style={{ fontSize: 12.5, color: C.encre, background: C.fond, borderRadius: 10, padding: 10, marginTop: 8, lineHeight: 1.45 }}>{jsonMsg}</div>}
         </div>
       )}
 
@@ -1808,7 +1832,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.36";
+const APP_VERSION = "16.20.37";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
