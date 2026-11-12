@@ -1808,7 +1808,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.30";
+const APP_VERSION = "16.20.34";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -4171,12 +4171,7 @@ function exporterFichePDF(jsPDF, p, db, tests, stats, bilans, saison, matTot, mo
     ["Club", p.club],
   ]);
 
-  section("Parents / responsable");
-  paires([
-    ["Responsable", p.parentNom],
-    ["Téléphone", p.parentTel],
-    ["Contact (email)", p.parentEmail],
-  ]);
+  // Coordonnées des parents volontairement NON exportées sur le PDF de fiche (restent visibles dans l'application uniquement).
 
   if (jonglagesActifs(p.cat)) {
     section("Jonglages (max 50)");
@@ -7743,6 +7738,12 @@ function Effectif({ players, cat, catInfo, db, mutate, lectureSeule, peutValider
             {(orphelins.length > 0 || corbeille.length > 0) && (
               <Btn variant="ghost" size="sm" onClick={() => setRecup(true)}><ArrowRightLeft size={15} /> Récupérer des données supprimées ({orphelins.length + corbeille.length})</Btn>
             )}
+            {(players || []).some((p) => (p.tests || []).some((t) => t && (t.v10 || t.v20 || t.vma))) && (
+              <Btn variant="ghost" size="sm" onClick={async () => { setImportMsg("Préparation du PDF..."); try { const jsPDF = await chargerJsPDF(); exporterTestsVitessePDF(jsPDF, cat, players); setImportMsg(null); } catch (e) { setImportMsg("Téléchargement du module PDF impossible. Réessaie."); } }}><FileDown size={15} /> PDF résultats vitesse</Btn>
+            )}
+            {(players || []).length > 0 && (
+              <Btn variant="ghost" size="sm" onClick={async () => { setImportMsg("Préparation du PDF..."); try { const jsPDF = await chargerJsPDF(); exporterTestsVitessePDF(jsPDF, cat, players, { vierge: true }); setImportMsg(null); } catch (e) { setImportMsg("Téléchargement du module PDF impossible. Réessaie."); } }}><FileDown size={15} /> Feuille vierge à imprimer</Btn>
+            )}
           </div>
           {importMsg && <div style={{ fontSize: 12.5, fontWeight: 700, color: importMsg.includes("non valide") || importMsg.includes("impossible") ? C.rouge : C.vert, marginBottom: 10 }}>{importMsg}</div>}
           {recup && (
@@ -9914,6 +9915,113 @@ function GraphTests({ tests, cat }) {
   );
 }
 
+// PDF "Resultats tests de vitesse" par categorie, mise en page identique a la feuille officielle FCSM.
+// Genere a la demande depuis les donnees : toute correction d'un test apparait automatiquement.
+function exporterTestsVitessePDF(jsPDF, cat, players, opts) {
+  const vierge = !!(opts && opts.vierge); // feuille vierge a imprimer et remplir a la main
+  const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
+  const W = 842, H = 595, M = 36;
+  const NAVY = [26, 53, 83], NAVY2 = [14, 30, 51], JAUNE = [232, 196, 66], ENCRE = [22, 32, 46], GRIS = [122, 130, 142], ZEBRA = [238, 243, 250], TRAIT = [214, 221, 231];
+  const sc = (c) => doc.setTextColor(c[0], c[1], c[2]);
+  const sd = (c) => doc.setDrawColor(c[0], c[1], c[2]);
+  const sf = (c) => doc.setFillColor(c[0], c[1], c[2]);
+  try { doc.setProperties({ title: `Resultats tests vitesse ${cat}`, author: CLUB_LONG, creator: CLUB_LONG }); } catch (e) {}
+
+  const liste = (players || []).slice().sort((a, b) => (`${a.nom || ""} ${a.prenom || ""}`).localeCompare(`${b.nom || ""} ${b.prenom || ""}`, "fr", { sensitivity: "base" }));
+  const dates = [];
+  liste.forEach((p) => (p.tests || []).forEach((t) => { if (t && t.date) dates.push(t.date); }));
+  const sessionDate = dates.sort().slice(-1)[0] || "";
+  const testDe = (p) => (p.tests || []).filter((t) => t && t.date === sessionDate).slice(-1)[0] || null;
+  // Colonne VMA : garcons de U12 jusqu'au pro, filles de U15F jusqu'aux Seniors F. Pas en dessous.
+  const AVEC_VMA = ["U12", "U13", "U14", "U15", "6e/5e", "4e/3e", "U17 NAT", "U19 NAT", "N2", "Ligue 2", "U15F", "U18F", "U19F NAT", "SENIORS F"];
+  const avecVMA = AVEC_VMA.includes(cat);
+  const fmt = (v) => (v == null || v === "") ? "" : String(v).replace(".", ",");
+
+  const cols = [
+    { k: "num", t: ["N°"], w: 24, al: "center" },
+    { k: "nom", t: ["Nom"], w: 92, al: "left" },
+    { k: "prenom", t: ["Prénom"], w: 76, al: "left" },
+    { k: "naiss", t: ["Naissance"], w: 54, al: "center" },
+    { k: "taille", t: ["Taille", "(cm)"], w: 44, al: "center" },
+    { k: "poids", t: ["Poids", "(kg)"], w: 44, al: "center" },
+    { k: "v10e1", t: ["Vitesse", "10m", "E1"], w: 50, al: "center" },
+    { k: "v10e2", t: ["Vitesse", "10m", "E2"], w: 50, al: "center" },
+    { k: "v10", t: ["Vitesse", "10m", "Meilleur"], w: 56, al: "center", best: true },
+    { k: "v20e1", t: ["Vitesse", "20m", "E1"], w: 50, al: "center" },
+    { k: "v20e2", t: ["Vitesse", "20m", "E2"], w: 50, al: "center" },
+    { k: "v20", t: ["Vitesse", "20m", "Meilleur"], w: 56, al: "center", best: true },
+    { k: "v40", t: ["Vitesse", "40m", "E1"], w: 50, al: "center" },
+  ];
+  if (avecVMA) cols.push({ k: "vma", t: ["VMA", "(km/h)"], w: 50, al: "center" });
+  const totalW = cols.reduce((s, c) => s + c.w, 0);
+  const x0 = M + Math.max(0, ((W - 2 * M) - totalW) / 2);
+  const colX = []; let xx = x0; cols.forEach((c) => { colX.push(xx); xx += c.w; });
+  const headH = 34, topTable = 78;
+
+  const drawHead = (yy) => {
+    sf(NAVY); doc.rect(x0, yy, totalW, headH, "F");
+    cols.forEach((c, i) => {
+      sc(c.best ? JAUNE : [255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+      const cx = c.al === "left" ? colX[i] + 5 : colX[i] + c.w / 2;
+      const startY = yy + headH / 2 - (c.t.length - 1) * 4 + 3;
+      c.t.forEach((ln, li) => doc.text(ln, cx, startY + li * 8, c.al === "left" ? {} : { align: "center" }));
+    });
+    return yy + headH;
+  };
+
+  sf(NAVY2); doc.rect(0, 0, W, 5, "F");
+  sc(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(17);
+  doc.text(`${cat} | RÉSULTATS TESTS DE VITESSE`, W / 2, 40, { align: "center" });
+  if (typeof LOGO_CLUB === "string" && LOGO_CLUB) { try { doc.addImage(LOGO_CLUB, "PNG", W - M - 40, 14, 40, 48); } catch (e) {} }
+  sc(GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
+  if (vierge) doc.text("Date : ____ / ____ / ________        Réalisé par : ______________________________", W / 2, 56, { align: "center" });
+  else if (sessionDate) doc.text("Session du " + new Date(sessionDate + "T00:00:00").toLocaleDateString("fr-FR"), W / 2, 56, { align: "center" });
+
+  let y = drawHead(topTable);
+  let tableTop = topTable;
+  doc.setFontSize(8.5);
+  const rowH = 20;
+  liste.forEach((p, ri) => {
+    if (y + rowH > H - 40) { sd(TRAIT); doc.setLineWidth(0.5); colX.forEach((x) => doc.line(x, tableTop, x, y)); doc.line(x0 + totalW, tableTop, x0 + totalW, y); doc.rect(x0, tableTop, totalW, y - tableTop); doc.addPage(); y = 44; tableTop = y; y = drawHead(y); doc.setFontSize(8.5); }
+    if (ri % 2) { sf(ZEBRA); doc.rect(x0, y, totalW, rowH, "F"); }
+    const t = testDe(p);
+    const absent = !t;
+    const vals = {
+      num: String(ri + 1), nom: (p.nom || "").toUpperCase(), prenom: p.prenom || "",
+      naiss: p.dob ? String(p.dob).slice(0, 4) : "", taille: p.taille ? String(p.taille) : "", poids: p.poids ? String(p.poids) : "",
+      v10e1: t ? fmt(t.v10e1) : "", v10e2: t ? fmt(t.v10e2) : "", v10: t ? fmt(t.v10) : "",
+      v20e1: t ? fmt(t.v20e1) : "", v20e2: t ? fmt(t.v20e2) : "", v20: t ? fmt(t.v20) : "",
+      v40: t ? fmt(t.v40) : "", vma: t ? fmt(t.vma) : "",
+    };
+    const cy = y + rowH / 2 + 3;
+    cols.forEach((c, i) => {
+      const identite = ["num", "nom", "prenom", "naiss", "taille", "poids"].includes(c.k);
+      if (identite) {
+        sc(ENCRE); doc.setFont("helvetica", c.k === "nom" ? "bold" : "normal");
+        const cx = c.al === "left" ? colX[i] + 5 : colX[i] + c.w / 2;
+        doc.text(vals[c.k] || "", cx, cy, c.al === "left" ? {} : { align: "center" });
+      } else if (vierge) {
+        /* feuille vierge : colonnes de temps laissées vides à remplir à la main */
+      } else if (absent) {
+        if (c.k === "v10e1") { sc(GRIS); doc.setFont("helvetica", "italic"); doc.text("Absent", colX[i] + 5, cy); }
+      } else {
+        sc(ENCRE); doc.setFont("helvetica", c.best ? "bold" : "normal");
+        doc.text(vals[c.k] || "", colX[i] + c.w / 2, cy, { align: "center" });
+      }
+    });
+    sd(TRAIT); doc.setLineWidth(0.5); doc.line(x0, y + rowH, x0 + totalW, y + rowH);
+    y += rowH;
+  });
+  sd(TRAIT); doc.setLineWidth(0.5);
+  colX.forEach((x) => doc.line(x, tableTop, x, y)); doc.line(x0 + totalW, tableTop, x0 + totalW, y);
+  doc.rect(x0, tableTop, totalW, y - tableTop);
+
+  y += 18; sc(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+  doc.text("E1 = 1er essai   |   E2 = 2e essai   |   Meilleur = temps le plus rapide", x0, y);
+
+  telechargerDoc(doc, (vierge ? `Feuille_vierge_vitesse_${cat}` : `Resultats_vitesse_${cat}_${sessionDate || ""}`).replace(/[\s/]+/g, "_"));
+}
+
 function EditTest({ joueur, test, educateurs = [], onClose, onSave, onDelete, onAjouterEncadrant, encadrementListe, encadrementMaj }) {
   const avecJump = jumpActif(joueur.cat);
   const d0 = new Date();
@@ -9955,11 +10063,12 @@ function EditTest({ joueur, test, educateurs = [], onClose, onSave, onDelete, on
       </div>
       {encadrementMaj && !autre && <button type="button" onClick={() => setGererDir(true)} style={{ background: "none", border: "none", color: C.bleu, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: "underline", marginTop: -2, marginBottom: 12 }}>Gérer les dirigeants (ajouter, renommer, supprimer)</button>}
       {gererDir && <GestionDirigeants liste={encadrementListe} maj={encadrementMaj} onClose={() => setGererDir(false)} />}
-      <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13, margin: "6px 0 8px" }}>Vitesse</div>
+      <div style={{ fontWeight: 800, color: C.bleu, fontSize: 13, margin: "6px 0 4px" }}>Vitesse</div>
+      <div style={{ fontSize: 12, color: C.gris, marginBottom: 8, lineHeight: 1.4 }}>On ne garde ici que le meilleur temps. Les deux essais (E1/E2) n'apparaissent que sur le PDF des résultats.</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         {champNum("vma", "VMA", "km/h")}
-        {champNum("v10", "Vitesse 10 m", "s")}
-        {champNum("v20", "Vitesse 20 m", "s")}
+        {champNum("v10", "Vitesse 10 m (meilleur)", "s")}
+        {champNum("v20", "Vitesse 20 m (meilleur)", "s")}
         {champNum("v40", "Vitesse 40 m", "s")}
       </div>
       {avecJump && (
