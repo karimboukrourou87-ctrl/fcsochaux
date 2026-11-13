@@ -3,7 +3,7 @@ import {
   Home, Users, ClipboardList, CalendarDays, Dumbbell, Search,
   Plus, X, Trash2, ChevronLeft, Trophy, Award, Bell, Activity, Target,
   Footprints, Ruler, Weight, Gauge, Timer, Edit3, Save,
-  HeartPulse, ShieldAlert, Star, MapPin, ArrowRightLeft, Eye, FileDown, Phone, Camera, LogOut,
+  HeartPulse, ShieldAlert, Star, MapPin, ArrowRightLeft, Eye, EyeOff, FileDown, Phone, Camera, LogOut,
   Send, Check, Inbox, ListOrdered, ExternalLink, Bus, Upload, Lock, RefreshCw, TrendingUp, TrendingDown, Minus, Archive, Maximize2
 } from "lucide-react";
 
@@ -1832,7 +1832,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.38";
+const APP_VERSION = "16.20.40";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -4566,10 +4566,13 @@ function useConsultation() {
 
     const appliquer = () => {
       document.querySelectorAll('button, [role="button"], input[type="submit"]').forEach((el) => {
+        // Zone explicitement autorisee en lecture seule (ex : changer son propre mot de passe) : jamais grisee.
+        if (el.closest && el.closest(".fc-allow-consultation")) return;
         const texte = (el.textContent || "").toLowerCase();
         if (MOTS.some((m) => texte.includes(m))) el.classList.add("lecture-seule");
       });
       document.querySelectorAll("input, textarea").forEach((el) => {
+        if (el.closest && el.closest(".fc-allow-consultation")) return;
         const type = (el.type || "").toLowerCase();
         const place = (el.placeholder || "").toLowerCase();
         const auto = (el.getAttribute("autocomplete") || "").toLowerCase();
@@ -10857,6 +10860,11 @@ function ModalCpa3D({ titreInitial, modele, fiche, ligneMatch, dispositif, noms,
 function Compo({ demo, players, cat, catInfo, db, mutate }) {
   const _adminCtx = useContext(AdminCtx);
   const sauverTout = _adminCtx && _adminCtx.sauver; // enregistrement reel immediat en base (pour les CPA)
+  const numSaveRef = useRef(null); // anti-rebond pour l'enregistrement des numeros tapes au clavier
+  // Enregistrement immediat en base apres une modification de la compo (pour synchroniser entre appareils).
+  const persisterCompo = () => { if (sauverTout && !demo) setTimeout(() => { try { sauverTout(); } catch (e) {} }, 60); };
+  // Pour les numeros tapes : on attend une courte pause de saisie pour ne pas enregistrer a chaque chiffre.
+  const persisterNumero = () => { if (!sauverTout || demo) return; if (numSaveRef.current) clearTimeout(numSaveRef.current); numSaveRef.current = setTimeout(() => { try { sauverTout(); } catch (e) {} }, 600); };
   const matchsCat = (db.matches || []).filter((m) => m.cat === cat).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const aujourdhui = hoyISO();
   // Pour un joueur suspendu de la catégorie : match officiel où il redevient disponible (date + adversaire).
@@ -11194,6 +11202,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
       d.lineups[key] = lu; return d;
     });
     setPick(null);
+    persisterCompo();
   }
   function ajouterRemplacant(joueurId) {
     if (compoScellee) { setPickRempl(false); return; }
@@ -11204,6 +11213,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
       d.lineups[key] = lu; return d;
     });
     setPickRempl(false);
+    persisterCompo();
   }
   function retirerRemplacant(joueurId) {
     if (compoScellee) return;
@@ -11212,6 +11222,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
       lu.remplacants = (lu.remplacants || []).filter((id) => id !== joueurId);
       return d;
     });
+    persisterCompo();
   }
   function designerCapitaine(joueurId) {
     if (compoScellee) return;
@@ -11220,6 +11231,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
       lu.capitaine = (lu.capitaine === joueurId) ? null : joueurId;
       d.lineups[key] = lu; return d;
     });
+    persisterCompo();
   }
 
   function setNumero(pid, val) {
@@ -11232,6 +11244,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
       else { const lu = d.lineups[key] || { slots: {}, remplacants: [] }; lu.numeros = lu.numeros || {}; if (n === "") delete lu.numeros[pid]; else lu.numeros[pid] = n; d.lineups[key] = lu; }
       return d;
     });
+    persisterNumero();
   }
   const compoVide = Object.keys(lineup.slots || {}).length === 0;
   const derniereCompo = (() => {
@@ -11243,6 +11256,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
     if (compoScellee) return;
     if (!derniereCompo) return;
     mutate((d) => { d.lineups[key] = { formation: derniereCompo.formation, slots: { ...(derniereCompo.slots || {}) }, remplacants: [...(derniereCompo.remplacants || [])], capitaine: derniereCompo.capitaine || null, format: derniereCompo.format }; return d; });
+    persisterCompo();
   }
   // Compositions types : modèles enregistrés par catégorie, pour ne pas repartir d'une compo vierge.
   const compoTypes = (db.config && db.config.compoTypes && db.config.compoTypes[cat]) || [];
@@ -11274,6 +11288,7 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
     const rempFiltres = (t.remplacants || []).filter((id) => !estBloque(id));
     const capFiltre = (t.capitaine && !estBloque(t.capitaine)) ? t.capitaine : null;
     mutate((d) => { d.lineups[key] = { formation: t.formation, slots: slotsFiltres, remplacants: rempFiltres, capitaine: capFiltre, format: t.format, numeros: { ...(t.numeros || {}) } }; return d; });
+    persisterCompo();
     // Prévenir des joueurs écartés pour suspension.
     const retires = [...Object.values(t.slots || {}), ...(t.remplacants || [])].filter((id, i, arr) => arr.indexOf(id) === i && estBloque(id));
     if (retires.length && typeof window !== "undefined") {
@@ -11626,9 +11641,9 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
       </div>
 
       {/* Remplaçants */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
         <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}><ArrowRightLeft size={17} color={C.bleu} /> Remplaçants ({remplacantsValides.length}/{maxRempl})</div>
-        <div style={{ display: "flex", gap: 8, flex: "0 0 auto" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
           {!compoScellee && remplacants.length < maxRempl && <Btn variant="accent" size="sm" onClick={() => setPickRempl(true)}><Plus size={15} /> Ajouter</Btn>}
           <Btn variant="ghost" size="sm" onClick={() => setPickRempl(true)}><Users size={15} /> Effectif restant ({benchDispo.length})</Btn>
         </div>
@@ -18909,6 +18924,9 @@ function ChangerMotDePasse({ email, onClose }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState(false);
+  const [showA, setShowA] = useState(false); // afficher le mot de passe actuel
+  const [showN, setShowN] = useState(false); // afficher le nouveau mot de passe
+  const [showC, setShowC] = useState(false); // afficher la confirmation
   async function enregistrer() {
     setErr("");
     if ((nouveau || "").length < 6) { setErr("Le nouveau mot de passe doit faire au moins 6 caractères."); return; }
@@ -18924,21 +18942,32 @@ function ChangerMotDePasse({ email, onClose }) {
       setOk(true);
     } catch (e) { setBusy(false); setErr("Une erreur est survenue. Réessaie."); }
   }
+  // Champ mot de passe avec un oeil pour afficher / masquer la saisie.
+  const champMdp = (label, val, setVal, show, setShow) => (
+    <Field label={label}>
+      <div style={{ position: "relative" }}>
+        <Inp type={show ? "text" : "password"} value={val} onChange={(e) => { setVal(e.target.value); setErr(""); }} style={{ paddingRight: 44 }} />
+        <button type="button" onClick={() => setShow((s) => !s)} title={show ? "Masquer le mot de passe" : "Afficher le mot de passe"} aria-label={show ? "Masquer le mot de passe" : "Afficher le mot de passe"} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", padding: 6, cursor: "pointer", color: C.gris, display: "grid", placeItems: "center" }}>
+          {show ? <EyeOff size={18} /> : <Eye size={18} />}
+        </button>
+      </div>
+    </Field>
+  );
   return (
     <Modal title="Modifier mon mot de passe" onClose={onClose}
-      footer={ok
+      footer={<div className="fc-allow-consultation">{ok
         ? <Btn variant="accent" full onClick={onClose}>Fermer</Btn>
-        : <Btn variant="accent" full disabled={!ancien || !nouveau || !confirme || busy} onClick={enregistrer}><Save size={16} /> {busy ? "..." : "Enregistrer"}</Btn>}>
+        : <Btn variant="accent" full disabled={!ancien || !nouveau || !confirme || busy} onClick={enregistrer}><Save size={16} /> {busy ? "..." : "Enregistrer"}</Btn>}</div>}>
       {ok ? (
         <div style={{ background: "#E2F4E9", color: C.vert, borderRadius: 10, padding: "12px 14px", fontWeight: 700, fontSize: 13.5, lineHeight: 1.5 }}>Mot de passe modifié. Utilise le nouveau mot de passe lors de ta prochaine connexion.</div>
       ) : (
-        <>
+        <div className="fc-allow-consultation">
           <div style={{ fontSize: 12.5, color: C.gris, marginBottom: 12, lineHeight: 1.5 }}>Compte : <strong style={{ color: C.encre }}>{email}</strong>. Choisis un mot de passe personnel que toi seul connais.</div>
-          <Field label="Mot de passe actuel"><Inp type="password" value={ancien} onChange={(e) => { setAncien(e.target.value); setErr(""); }} /></Field>
-          <Field label="Nouveau mot de passe (6 caractères minimum)"><Inp type="password" value={nouveau} onChange={(e) => { setNouveau(e.target.value); setErr(""); }} /></Field>
-          <Field label="Confirmer le nouveau mot de passe"><Inp type="password" value={confirme} onChange={(e) => { setConfirme(e.target.value); setErr(""); }} /></Field>
+          {champMdp("Mot de passe actuel", ancien, setAncien, showA, setShowA)}
+          {champMdp("Nouveau mot de passe (6 caractères minimum)", nouveau, setNouveau, showN, setShowN)}
+          {champMdp("Confirmer le nouveau mot de passe", confirme, setConfirme, showC, setShowC)}
           {err && <div style={{ fontSize: 12.5, color: C.rouge, fontWeight: 700, marginTop: 4 }}>{err}</div>}
-        </>
+        </div>
       )}
     </Modal>
   );
