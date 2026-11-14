@@ -1832,7 +1832,7 @@ const C = {
   pelouse2: "#275B39",
 };
 const CLUB = "FC SOCHAUX-MONTBÉLIARD";
-const APP_VERSION = "16.20.40";
+const APP_VERSION = "16.20.41";
 // Hauteur reservee en bas des pages pour que la barre d'onglets (toujours visible) ne cache rien.
 const ESPACE_BARRE = "calc(62px + env(safe-area-inset-bottom))";
 // Interrupteur global (direction) : affiche ou masque toutes les importations JSON (matchs, fiches, séances...).
@@ -11238,10 +11238,14 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
     if (compoScellee) return;
     const mx = maxNumero(cat);
     const n = val === "" ? "" : Math.max(1, Math.min(mx, parseInt(val, 10) || 1));
-    const estOwn = players.some((x) => x.id === pid);
+    // Le numero est range DANS la compo du match (lineup.numeros), pour tous les joueurs.
+    // Il voyage ainsi avec la compo (qui se synchronise entre appareils) et ne modifie plus
+    // le numero de maillot global du joueur. A vide, on retire la valeur (retour au numero de maillot).
     mutate((d) => {
-      if (estOwn) { const pl = (d.players || []).find((x) => x.id === pid); if (pl) pl.numero = n; }
-      else { const lu = d.lineups[key] || { slots: {}, remplacants: [] }; lu.numeros = lu.numeros || {}; if (n === "") delete lu.numeros[pid]; else lu.numeros[pid] = n; d.lineups[key] = lu; }
+      const lu = d.lineups[key] || { formation: lineup.formation, slots: {}, remplacants: [] };
+      lu.numeros = lu.numeros || {};
+      if (n === "") delete lu.numeros[pid]; else lu.numeros[pid] = n;
+      d.lineups[key] = lu;
       return d;
     });
     persisterNumero();
@@ -11641,11 +11645,11 @@ function Compo({ demo, players, cat, catInfo, db, mutate }) {
       </div>
 
       {/* Remplaçants */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-        <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}><ArrowRightLeft size={17} color={C.bleu} /> Remplaçants ({remplacantsValides.length}/{maxRempl})</div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {!compoScellee && remplacants.length < maxRempl && <Btn variant="accent" size="sm" onClick={() => setPickRempl(true)}><Plus size={15} /> Ajouter</Btn>}
-          <Btn variant="ghost" size="sm" onClick={() => setPickRempl(true)}><Users size={15} /> Effectif restant ({benchDispo.length})</Btn>
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}><ArrowRightLeft size={17} color={C.bleu} /> Remplaçants ({remplacantsValides.length}/{maxRempl})</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {!compoScellee && remplacants.length < maxRempl && <div style={{ flex: 1 }}><Btn variant="accent" size="sm" full onClick={() => setPickRempl(true)}><Plus size={15} /> Ajouter</Btn></div>}
+          <div style={{ flex: 1 }}><Btn variant="ghost" size="sm" full onClick={() => setPickRempl(true)}><Users size={15} /> Effectif restant ({benchDispo.length})</Btn></div>
         </div>
       </div>
       {remplacants.length === 0 ? (
